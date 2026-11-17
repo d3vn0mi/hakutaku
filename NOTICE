@@ -1,0 +1,61 @@
+hakutaku
+Copyright (c) 2026 d3vn0mi
+
+This product is licensed under the MIT License. See LICENSE.
+
+
+Third-party software
+====================
+
+No third-party code is bundled yet.
+
+hakutaku is pre-release, and its repository holds no code so far. The analysis engines are not
+bundled: `hakutaku engines install` will install them separately, at versions pinned with integrity
+hashes in engines.lock.json. Each project is credited here when it is added, with the copyright line
+copied from its licence file at the pinned version. The full licence texts of anything the package
+bundles will be in THIRD_PARTY_LICENSES/.
+
+
+Analysis engines: planned, not bundled
+--------------------------------------
+
+scip-typescript (Sourcegraph)
+  https://github.com/sourcegraph/scip-typescript
+  Licence: Apache-2.0
+  Planned use: an engine, run as a separate program. TypeScript call sites and references, bound by
+  the compiler.
+
+dependency-cruiser
+  https://github.com/sverweij/dependency-cruiser
+  Licence: MIT
+  Planned use: an engine, run as a separate program. TypeScript and JavaScript import edges, cycles
+  and layer rules.
+
+grimp
+  https://github.com/python-grimp/grimp
+  Licence: BSD-2-Clause
+  Planned use: an engine, a Python library that hakutaku's driver runs. The Python import graph.
+
+ast-grep, with tree-sitter inside
+  https://github.com/ast-grep/ast-grep
+  https://github.com/tree-sitter/tree-sitter
+  Licence: MIT (both)
+  Planned use: an engine, its command-line program run as a separate program. The outline that mints
+  every definition's ID, call sites, string literals and the shell rules.
+
+scip-python (Sourcegraph), built on Pyright (Microsoft)
+  https://github.com/sourcegraph/scip-python
+  https://github.com/microsoft/pyright
+  Licence: MIT (both)
+  Planned use: an optional engine, run as a separate program at deep detail only. Python call sites,
+  bound by the compiler.
+
+TypeScript (Microsoft)
+  https://github.com/microsoft/TypeScript
+  Licence: Apache-2.0
+  Planned use: none directly. It runs inside scip-typescript and dependency-cruiser.
+
+SCIP, the index format (Sourcegraph)
+  https://github.com/scip-code/scip
+  Licence: Apache-2.0
+  Planned use: hakutaku will decode the SCIP indexes that the engines write.
