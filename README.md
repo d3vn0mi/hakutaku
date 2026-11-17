@@ -117,10 +117,17 @@ is kept.
 
 The road to 0.1:
 
-- [ ] **Phase 0: measure before building** (in progress). The analysis engines are pinned and
-      installed, and read-only snapshots of the test repositories are taken, one of them a public
-      repository (marimo). Next: a throwaway pipeline, then the containment checks against hostile
-      repositories, caller accuracy, dependency installs, deep Python, and the real costs.
+- [ ] **Phase 0: measure before building** (in progress).
+  - [x] The analysis engines are pinned and installed. Read-only snapshots of the test repositories
+        are taken, one of them a public repository (marimo).
+  - [x] A throwaway pipeline builds a full store from a snapshot inside the sandbox.
+  - [x] **Containment against 13 hostile repositories** ([`fixtures/hostile/`](fixtures/hostile/)).
+        Planted git pagers, filters, hooks and fsmonitors, a fake Python interpreter, rogue engine
+        configs, shadowing Python modules, host symlinks and path tricks: none of them ran, and
+        nothing from the host leaked. One resource finding: a 50 MB single-line minified file
+        exhausted the build's memory cap, so 0.1 keeps oversized and minified files out of every
+        engine's input.
+  - [ ] Caller accuracy (being judged now), dependency installs, deep Python, and the real costs.
 - [ ] **Engine and store.** Export, sandboxed extract, the store, metrics, launch manifests, the
       profile generator, redaction, gates, the synthetic sample and its oracle, `hakutaku map`.
 - [ ] **Tools and MCP server.** The 13 tools, with labels, paging and errors. `hakutaku query`. The
