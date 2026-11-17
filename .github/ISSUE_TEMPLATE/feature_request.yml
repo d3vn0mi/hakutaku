@@ -1,0 +1,73 @@
+name: Feature request
+description: Suggest an improvement. For an open-ended idea, start a discussion first.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the idea. hakutaku is **pre-release**, and its design puts agents first: a feature for people must never change, simplify or slow an agent's answer.
+
+        Larger or open-ended ideas fit better in [Discussions](https://github.com/d3vn0mi/hakutaku/discussions), where the design can be talked through before anyone writes code.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI (map, profile, engines, doctor)
+        - Build (export, extract, the sandbox, redaction)
+        - Store (metrics, entry points, IDs)
+        - Agent tools or the MCP server
+        - Viewer
+        - Languages and engines
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: audience
+    attributes:
+      label: Who is it for?
+      options:
+        - AI agents, through the tools or the MCP server
+        - People, through the viewer or the CLI
+        - Both
+        - Hosts that embed the library
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What you are trying to do, and what gets in the way today. Use the synthetic sample, or a public repository, for any example.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: The behaviour you have in mind. For a tool, sketch the call and the answer you would expect.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Other approaches or workarounds, and why they fall short.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: It does not need hakutaku to run code from the analysed repository, call a model, send anything over the network, or open a path that a model names.
+          required: true
+        - label: This request holds no private code, private paths or secrets.
+          required: true
+        - label: I searched the existing issues and discussions, and this one is new.
+          required: true

@@ -1,0 +1,84 @@
+name: Bug report
+description: Something hakutaku does wrong. Reproduce it on the synthetic sample, never with private code.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report a bug.
+
+        - **A security problem?** Do not open an issue. Report it privately, as [SECURITY.md](https://github.com/d3vn0mi/hakutaku/blob/main/SECURITY.md) describes.
+        - **No private code.** Reproduce on the bundled synthetic sample (`fixtures/observatory/`), or on the smallest synthetic repository you can write. Until the sample lands, a public repository pinned by commit is fine. Never paste private code, private paths, secrets, store files (`*.sqlite`) or screenshots of a private repository.
+        - hakutaku is **pre-release**, with 0.1 in progress, so some things are not built yet.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI (map, profile, engines, doctor)
+        - Build (export, extract, the sandbox, redaction)
+        - Store (metrics, entry points, IDs)
+        - Agent tools or the MCP server
+        - Viewer
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: hakutaku version or commit
+      placeholder: "0.1.0, or a commit SHA"
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected to see instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: On the synthetic sample, on a minimal synthetic repository, or on a public repository pinned by commit.
+      placeholder: |
+        1. hakutaku map fixtures/observatory --id observatory
+        2. hakutaku query code_callers observatory --args '{"symbol":"web/src/orbits/kepler.ts#Orbit.position"}'
+        3. The answer misses ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: answer
+    attributes:
+      label: The tool call and its answer
+      description: If a tool answered wrongly, paste the call and the JSON it returned. Leave it empty otherwise.
+      render: json
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: The output of `hakutaku doctor`, or your OS, Node.js and Python versions, and the sandbox in use (bubblewrap, systemd-run or none).
+      render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I reproduced this on the synthetic sample, on a minimal synthetic repository, or on a public repository pinned by commit.
+          required: true
+        - label: This report holds no private code, private paths, secrets, store files or screenshots of a private repository.
+          required: true
+        - label: I searched the existing issues, and this one is new.
+          required: true
