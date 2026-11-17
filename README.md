@@ -117,6 +117,10 @@ is kept.
 
 The road to 0.1:
 
+- [ ] **Phase 0: measure before building** (in progress). The analysis engines are pinned and
+      installed, and read-only snapshots of the test repositories are taken, one of them a public
+      repository (marimo). Next: a throwaway pipeline, then the containment checks against hostile
+      repositories, caller accuracy, dependency installs, deep Python, and the real costs.
 - [ ] **Engine and store.** Export, sandboxed extract, the store, metrics, launch manifests, the
       profile generator, redaction, gates, the synthetic sample and its oracle, `hakutaku map`.
 - [ ] **Tools and MCP server.** The 13 tools, with labels, paging and errors. `hakutaku query`. The
