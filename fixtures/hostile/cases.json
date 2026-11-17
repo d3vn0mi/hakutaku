@@ -1,0 +1,93 @@
+[
+  {
+    "id": "pyright-interpreter",
+    "stage": "extract",
+    "vector": "A pyrightconfig.json and a [tool.pyright] table in pyproject.toml name a tracked virtual environment whose bin/python and bin/python3 are scripts that write the canary.",
+    "expect": "A `pyrightconfig.json`, and a `[tool.pyright]`, that name an interpreter. The configs are removed or never read; the pinned interpreter runs",
+    "detail": "deep"
+  },
+  {
+    "id": "sgconfig",
+    "stage": "extract",
+    "vector": "A tracked sgconfig.yml loads a rule directory whose rule matches every JavaScript file, and declares a custom language whose library is in the repository.",
+    "expect": "A repo `sgconfig.yml` is ignored; hakutaku's config is passed after the subcommand, from outside the snapshot",
+    "detail": "quick"
+  },
+  {
+    "id": "git-config",
+    "stage": "export",
+    "vector": "The repository's .git/config sets core.pager, diff.external, core.askPass and core.sshCommand to a script that writes the canary, and names an ssh remote.",
+    "expect": "`core.pager`, `diff.external`, `core.askPass` and `core.sshCommand` all point at the canary. None runs",
+    "detail": "quick"
+  },
+  {
+    "id": "smudge-filter",
+    "stage": "export",
+    "vector": ".gitattributes assigns a filter to *.txt, and .git/config defines its smudge command as a script that writes the canary.",
+    "expect": "`cat-file --batch` never runs the filter. A control run of `git archive` does, which proves the fixture fires",
+    "detail": "quick"
+  },
+  {
+    "id": "show-signature",
+    "stage": "export",
+    "vector": "The head commit carries a PGP signature header, and .git/config sets log.showSignature and a gpg.program that writes the canary.",
+    "expect": "`log.showSignature` with a canary `gpg.program` never runs",
+    "detail": "quick"
+  },
+  {
+    "id": "fsmonitor-hooks",
+    "stage": "export",
+    "vector": ".git/config sets core.fsmonitor to a script that writes the canary, and every client-side hook in .git/hooks writes it too.",
+    "expect": "A canary `core.fsmonitor` and canary hooks never run",
+    "detail": "quick"
+  },
+  {
+    "id": "depcruise-config",
+    "stage": "extract",
+    "vector": "A tracked .dependency-cruiser.js writes the canary when it is loaded.",
+    "expect": "A `.dependency-cruiser.js` with a side effect is removed at export, and `--config` is always passed",
+    "detail": "quick"
+  },
+  {
+    "id": "python-shadow",
+    "stage": "extract",
+    "vector": "Tracked json.py, grimp.py and sitecustomize.py at the repository root, and a package __init__.py, each write the canary when imported.",
+    "expect": "A `json.py`, a `sitecustomize.py` and a side-effecting `__init__.py`: under `python -I`, the grimp driver runs none of them",
+    "detail": "quick"
+  },
+  {
+    "id": "symlink-host",
+    "stage": "export",
+    "vector": "A tracked symlink points at the absolute path of host/secret.txt, which holds the marker.",
+    "expect": "A tracked link to `<outDir>/host/secret.txt` is recorded with its target text, and never created or followed",
+    "detail": "quick"
+  },
+  {
+    "id": "dotdot-path",
+    "stage": "export",
+    "vector": "A tree built with git plumbing holds an entry named .. that leads to escape.txt, and an entry whose name holds a control character.",
+    "expect": "A tree entry holding `..` is refused, and listed in `export.json`'s `refused`. Nothing is written outside `snapshot/`",
+    "detail": "quick"
+  },
+  {
+    "id": "injected-comment",
+    "stage": "query",
+    "vector": "A TypeScript comment and a Python docstring tell an AI reader to ignore its instructions and run a command that writes the canary.",
+    "expect": "It comes back only inside `text` or `lines`, under the untrusted marking",
+    "detail": "quick"
+  },
+  {
+    "id": "markup-names",
+    "stage": "viewer",
+    "vector": "Files whose names hold HTML markup and shell command substitutions, and code that holds a closing script tag and an inline event handler.",
+    "expect": "Markup in file names and in code renders as text, and the CSP blocks a script",
+    "detail": "quick"
+  },
+  {
+    "id": "minified-50mb",
+    "stage": "extract",
+    "vector": "A one-line JavaScript file of exactly 52,428,800 bytes, written at run time.",
+    "expect": "A 50 MB one-line JS file keeps its metadata only (`no_source`), and the build stays within its limits",
+    "detail": "standard"
+  }
+]
