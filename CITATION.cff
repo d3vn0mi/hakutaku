@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+message: "If you use hakutaku in your work, please cite it as below."
+type: software
+title: "hakutaku: code intelligence for AI agents first, people second"
+abstract: >-
+  hakutaku maps a code repository for AI agents first and people second: who
+  calls what, what a change reaches, what matters most. It works from one
+  local store, and never runs the repository's code. It answers through an MCP
+  server, a CLI and a local viewer.
+authors:
+  - alias: d3vn0mi
+    website: "https://github.com/d3vn0mi"
+license: MIT
+repository-code: "https://github.com/d3vn0mi/hakutaku"
+url: "https://github.com/d3vn0mi/hakutaku"
+keywords:
+  - code intelligence
+  - model context protocol
+  - mcp
+  - ai agents
+  - static analysis
+  - code graph
+  - developer tools
