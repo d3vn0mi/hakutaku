@@ -153,13 +153,13 @@ Linux, install bubblewrap for the strongest sandbox. Windows is not supported in
 
 ```sh
 # 1. Map a repository: profile it, build its store, register it as "my-repo"
-npx @d3vn0mi/hakutaku map . --id my-repo
+npx hakutaku map . --id my-repo
 
 # 2. Explore the map in your browser (127.0.0.1, behind a session token)
-npx @d3vn0mi/hakutaku view my-repo --open
+npx hakutaku view my-repo --open
 
 # 3. Serve the tools to an agent, over stdio
-npx @d3vn0mi/hakutaku mcp my-repo
+npx hakutaku mcp my-repo
 ```
 
 On first use, `map` names the analysis engines it needs and asks before fetching their pinned,
@@ -215,7 +215,7 @@ another one.
 **Claude Code**
 
 ```sh
-claude mcp add hakutaku -- npx -y @d3vn0mi/hakutaku@0.1.0 mcp my-repo
+claude mcp add hakutaku -- npx -y hakutaku@0.1.0 mcp my-repo
 ```
 
 **Claude Desktop**, in `claude_desktop_config.json`:
@@ -225,7 +225,7 @@ claude mcp add hakutaku -- npx -y @d3vn0mi/hakutaku@0.1.0 mcp my-repo
   "mcpServers": {
     "hakutaku": {
       "command": "npx",
-      "args": ["-y", "@d3vn0mi/hakutaku@0.1.0", "mcp", "my-repo"]
+      "args": ["-y", "hakutaku@0.1.0", "mcp", "my-repo"]
     }
   }
 }
@@ -237,7 +237,7 @@ claude mcp add hakutaku -- npx -y @d3vn0mi/hakutaku@0.1.0 mcp my-repo
 |---|---|
 | Transport | stdio |
 | Command | `npx` |
-| Arguments | `-y @d3vn0mi/hakutaku@0.1.0 mcp <repo-id>...`, or `--all` in place of the ids |
+| Arguments | `-y hakutaku@0.1.0 mcp <repo-id>...`, or `--all` in place of the ids |
 
 `code_refresh` answers `refresh_disabled` unless the server was started with `--allow-refresh`. With
 that flag, it runs the same sandboxed build as `map`: one build at a time, at most once every 10
