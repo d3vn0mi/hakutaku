@@ -127,7 +127,12 @@ The road to 0.1:
         nothing from the host leaked. One resource finding: a 50 MB single-line minified file
         exhausted the build's memory cap, so 0.1 keeps oversized and minified files out of every
         engine's input.
-  - [ ] Caller accuracy (being judged now), dependency installs, deep Python, and the real costs.
+  - [x] **Caller accuracy**, judged blind by hand on a stratified sample. Every compiler-bound answer
+        in the sample was a real call. Import-scoped name matches were right often, but not often
+        enough to state as facts, so the `scoped` label tells agents to confirm with `code_snippet`.
+  - [x] **Dependency installs.** Installing a repository's dependencies, sandboxed and with scripts
+        off, found no extra callers, so hakutaku analyses bare snapshots and needs no network.
+  - [ ] Deep Python, and the real costs in resource-capped units.
 - [ ] **Engine and store.** Export, sandboxed extract, the store, metrics, launch manifests, the
       profile generator, redaction, gates, the synthetic sample and its oracle, `hakutaku map`.
 - [ ] **Tools and MCP server.** The 13 tools, with labels, paging and errors. `hakutaku query`. The
