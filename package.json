@@ -31,7 +31,7 @@
     "THIRD_PARTY_LICENSES"
   ],
   "engines": {
-    "node": ">=22.13"
+    "node": ">=22.16"
   },
   "os": [
     "linux",

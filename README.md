@@ -152,7 +152,7 @@ by adding fields at the end.
 
 ## Quick start (planned for 0.1)
 
-**Requirements (planned):** Linux or macOS, Node.js 22.13 or later (for `node:sqlite` without a flag),
+**Requirements (planned):** Linux or macOS, Node.js 22.16 or later (`node:sqlite` with FTS5),
 and git. Python 3 is used for Python imports; without it, a fallback resolver labels its edges. On
 Linux, install bubblewrap for the strongest sandbox. Windows is not supported in v1.
 

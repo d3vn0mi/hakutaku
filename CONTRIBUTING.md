@@ -27,7 +27,7 @@ Everyone who takes part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 **You will need:**
 
 - Linux or macOS. Windows is not supported in v1.
-- Node.js, the current LTS release. It must be 22.13 or later, so that `node:sqlite` needs no flag.
+- Node.js, the current LTS release. It must be 22.16 or later: from 22.16, `node:sqlite` needs no flag and its SQLite includes the FTS5 full-text index that hakutaku's store uses.
 - Python 3, for the grimp driver and the Python fixtures.
 - git.
 - Optional, on Linux: [bubblewrap](https://github.com/containers/bubblewrap), to run the hostile
