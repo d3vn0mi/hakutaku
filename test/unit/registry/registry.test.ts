@@ -6,6 +6,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -17,6 +18,7 @@ import {
   hakutakuDirs,
   loadRegistry,
   profilePathFor,
+  type Registry,
   type RegistryEntry,
   saveEntry,
   storePathFor,
@@ -55,16 +57,30 @@ const entry = (id: string): RegistryEntry => ({
 const registryFile = (): string => join(hakutakuDirs().data, "registry.json");
 
 it("keeps entries sorted by id and replaces an entry with the same id", () => {
+  const idsOnDisk = (): string[] =>
+    (JSON.parse(readFileSync(registryFile(), "utf8")) as Registry).repos.map(
+      (e) => e.id,
+    );
   saveEntry(entry("vega"));
   saveEntry(entry("observatory"));
+  expect(idsOnDisk()).toEqual(["observatory", "vega"]); // the file itself, not only a load
   saveEntry({ ...entry("vega"), detail: "quick" });
   expect(loadRegistry().repos.map((e) => [e.id, e.detail])).toEqual([
     ["observatory", "standard"],
     ["vega", "quick"],
   ]);
+  expect(idsOnDisk()).toEqual(["observatory", "vega"]);
   expect(
     readdirSync(hakutakuDirs().data).filter((f) => f.includes(".tmp")),
   ).toEqual([]);
+});
+
+it("replaces registry.json by a rename, never by a write in place", () => {
+  saveEntry(entry("vega"));
+  const before = statSync(registryFile()).ino;
+  saveEntry(entry("observatory"));
+  expect(statSync(registryFile()).ino).not.toBe(before);
+  expect(readdirSync(hakutakuDirs().data)).toEqual(["registry.json"]);
 });
 
 it("finds an entry and builds its paths", () => {
