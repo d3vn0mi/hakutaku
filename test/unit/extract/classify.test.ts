@@ -82,6 +82,13 @@ it("marks test support until nothing changes, and spares entries and files nobod
     new Set(["cli.ts"]),
   );
   expect(Object.fromEntries(reversed)).toEqual(Object.fromEntries(kinds));
+  // a file listed with an empty set of importers is imported by nobody too
+  const idle = new Map<string, FileKind>([
+    ["t.test.ts", "test"],
+    ["idle.ts", "code"],
+  ]);
+  markTestSupport(idle, new Map([["idle.ts", new Set<string>()]]), new Set());
+  expect(idle.get("idle.ts")).toBe("code");
 });
 it("finds package roots, top-level Python packages, folders and the root component", () => {
   const plan = computeComponents(
