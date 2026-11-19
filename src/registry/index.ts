@@ -6,6 +6,7 @@ export {
 } from "./dirs.js";
 export { computeFreshness } from "./freshness.js";
 export { withBuildLock } from "./lock.js";
+export { createRefReader } from "./refs.js";
 export { findEntry, loadRegistry, saveEntry } from "./registry.js";
 export type {
   HakutakuDirs,
