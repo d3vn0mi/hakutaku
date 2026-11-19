@@ -43,7 +43,8 @@
     "lint": "biome check .",
     "test": "vitest run test/unit",
     "check:tree": "vitest run test/repo/tree.test.ts",
-    "ci:local": "npm run build && npm run typecheck && npm run lint && npm test && npm run check:tree"
+    "check:secrets": "vitest run test/repo/secrets.test.ts",
+    "ci:local": "npm run build && npm run typecheck && npm run lint && npm test && npm run check:secrets && npm run check:tree"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.5",

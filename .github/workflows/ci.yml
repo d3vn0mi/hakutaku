@@ -28,6 +28,8 @@ jobs:
         run: npm run typecheck && npm run lint
       - name: unit tests
         run: npm test
+      - name: secret scan
+        run: npm run check:secrets
       - name: home paths and stray stores
         run: npm run check:tree
 
