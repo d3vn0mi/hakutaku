@@ -1,0 +1,57 @@
+{
+  "name": "hakutaku",
+  "version": "0.0.0",
+  "description": "Code intelligence for agents first, humans second.",
+  "license": "MIT",
+  "author": "d3vn0mi",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/d3vn0mi/hakutaku.git"
+  },
+  "type": "module",
+  "bin": {
+    "hakutaku": "dist/cli/main.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./build": {
+      "types": "./dist/build.d.ts",
+      "default": "./dist/build.js"
+    }
+  },
+  "files": [
+    "dist",
+    "python",
+    "ast-grep",
+    "engines.lock.json",
+    "NOTICE",
+    "THIRD_PARTY_LICENSES"
+  ],
+  "engines": {
+    "node": ">=22.13"
+  },
+  "os": [
+    "linux",
+    "darwin"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "biome check .",
+    "test": "vitest run test/unit",
+    "check:tree": "vitest run test/repo/tree.test.ts",
+    "ci:local": "npm run build && npm run typecheck && npm run lint && npm test && npm run check:tree"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.5",
+    "@types/node": "26.6.6",
+    "typescript": "7.0.2",
+    "vitest": "5.1.0"
+  },
+  "overrides": {
+    "vite": "7.3.7"
+  }
+}

@@ -1,61 +1,56 @@
 hakutaku
 Copyright (c) 2026 d3vn0mi
+Licensed under the MIT License. See LICENSE.
 
-This product is licensed under the MIT License. See LICENSE.
+hakutaku uses the projects below. Each entry gives the version hakutaku pins, its licence, and
+the copyright line copied from that version's licence file.
 
+## Bundled in the package
 
-Third-party software
-====================
+## Installed with the package
 
-No third-party code is bundled yet.
+## Run as separate programs
 
-hakutaku is pre-release, and its repository holds no code so far. The analysis engines are not
-bundled: `hakutaku engines install` will install them separately, at versions pinned with integrity
-hashes in engines.lock.json. Each project is credited here when it is added, with the copyright line
-copied from its licence file at the pinned version. The full licence texts of anything the package
-bundles will be in THIRD_PARTY_LICENSES/.
+## Runtime, not redistributed
 
+### Node.js
+Licence: MIT
+Use: runs hakutaku; node:sqlite embeds SQLite
 
-Analysis engines: planned, not bundled
---------------------------------------
+### SQLite
+Licence: public domain
+Use: the store, through node:sqlite
 
-scip-typescript (Sourcegraph)
-  https://github.com/sourcegraph/scip-typescript
-  Licence: Apache-2.0
-  Planned use: an engine, run as a separate program. TypeScript call sites and references, bound by
-  the compiler.
+### Python
+Licence: PSF-2.0
+Use: runs grimp, through hakutaku's driver
 
-dependency-cruiser
-  https://github.com/sverweij/dependency-cruiser
-  Licence: MIT
-  Planned use: an engine, run as a separate program. TypeScript and JavaScript import edges, cycles
-  and layer rules.
+### git
+Licence: GPL-2.0-only
+Use: hakutaku export runs it as a separate program, and never links it
 
-grimp
-  https://github.com/python-grimp/grimp
-  Licence: BSD-2-Clause
-  Planned use: an engine, a Python library that hakutaku's driver runs. The Python import graph.
+## Development tools
 
-ast-grep, with tree-sitter inside
-  https://github.com/ast-grep/ast-grep
-  https://github.com/tree-sitter/tree-sitter
-  Licence: MIT (both)
-  Planned use: an engine, its command-line program run as a separate program. The outline that mints
-  every definition's ID, call sites, string literals and the shell rules.
+### typescript
+Version: 7.0.2
+Licence: Apache-2.0
+Copyright: not stated in the licence file
+Use: compiles and typechecks hakutaku's source; development only
 
-scip-python (Sourcegraph), built on Pyright (Microsoft)
-  https://github.com/sourcegraph/scip-python
-  https://github.com/microsoft/pyright
-  Licence: MIT (both)
-  Planned use: an optional engine, run as a separate program at deep detail only. Python call sites,
-  bound by the compiler.
+### vitest
+Version: 5.1.0
+Licence: MIT
+Copyright: Copyright (c) 2021-Present VoidZero Inc. and Vitest contributors
+Use: runs the tests; development only
 
-TypeScript (Microsoft)
-  https://github.com/microsoft/TypeScript
-  Licence: Apache-2.0
-  Planned use: none directly. It runs inside scip-typescript and dependency-cruiser.
+### @biomejs/biome
+Version: 2.6.5
+Licence: MIT OR Apache-2.0
+Copyright: Copyright (c) 2023 Biome Developers and Contributors.
+Use: lints and formats the source; development only
 
-SCIP, the index format (Sourcegraph)
-  https://github.com/scip-code/scip
-  Licence: Apache-2.0
-  Planned use: hakutaku will decode the SCIP indexes that the engines write.
+### @types/node
+Version: 26.6.6
+Licence: MIT
+Copyright: Copyright (c) Microsoft Corporation.
+Use: Node.js type declarations for the typechecker; development only
