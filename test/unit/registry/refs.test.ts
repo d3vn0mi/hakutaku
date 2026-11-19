@@ -1,9 +1,11 @@
+import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
   utimesSync,
@@ -458,4 +460,86 @@ it("reads a file again when it was read within two seconds of its mtime", async 
   utimesSync(main, now, now); // and the same mtime, as a write in the same clock tick leaves
   expect(statSync(main).ino).toBe(ino);
   expect(read(repo, "HEAD")).toEqual({ commit: first });
+});
+
+it.each<[string, (main: string, sha: string) => void]>([
+  [
+    "its mtime",
+    (main, sha) => {
+      writeFileSync(main, `${sha}\n`); // in place: the same inode and size
+      utimesSync(main, OLD + 60, OLD + 60);
+    },
+  ],
+  [
+    "its inode",
+    (main, sha) => {
+      writeFileSync(`${main}.next`, `${sha}\n`); // the same size
+      utimesSync(`${main}.next`, OLD, OLD); // and the same mtime
+      renameSync(`${main}.next`, main);
+    },
+  ],
+  [
+    "its size",
+    (main, sha) => {
+      writeFileSync(main, `${sha}\n\n`); // in place: the same inode
+      utimesSync(main, OLD, OLD); // and the same mtime
+    },
+  ],
+])("reads a file again when %s alone changes", async (_, change) => {
+  const repo = await makeRepo(commits(2));
+  const first = rev(repo, "HEAD~1");
+  const main = join(repo, ".git/refs/heads/main");
+  age(join(repo, ".git/HEAD"), main);
+  const read = createRefReader();
+  expect(read(repo, "HEAD")).toEqual({ commit: rev(repo, "HEAD") });
+  change(main, first);
+  expect(read(repo, "HEAD")).toEqual({ commit: first });
+});
+
+it("recomputes when a path it found absent appears: a reftable directory, or a repo's .git", async () => {
+  const repo = await makeRepo(commits(2));
+  const head = rev(repo, "HEAD");
+  age(join(repo, ".git/HEAD"), join(repo, ".git/refs/heads/main"));
+  const read = createRefReader();
+  renameSync(join(repo, ".git"), join(repo, ".git-away"));
+  expect(read(repo, "HEAD")).toEqual(unknown("not a git repository"));
+  renameSync(join(repo, ".git-away"), join(repo, ".git"));
+  expect(read(repo, "HEAD")).toEqual({ commit: head });
+  mkdirSync(join(repo, ".git/reftable"));
+  expect(read(repo, "HEAD")).toEqual(
+    unknown("reftable ref storage is not read"),
+  );
+});
+
+it("skips a symbolic ref whose target leaves its directory for the next candidate, as git does", async () => {
+  const repo = await makeRepo(commits(2));
+  // refs/heads/../../HEAD joins to .git/HEAD, which would resolve to main's commit
+  writeFileSync(
+    join(repo, ".git/refs/heads/orbit"),
+    "ref: refs/heads/../../HEAD\n",
+  );
+  git(repo, "update-ref", "refs/remotes/orbit", "HEAD~1");
+  expect(createRefReader()(repo, "orbit")).toEqual({
+    commit: rev(repo, "HEAD~1"),
+  });
+  expect(rev(repo, "orbit")).toBe(rev(repo, "HEAD~1"));
+});
+
+it("answers unknown with EFBIG for a ref file over 64 KiB", async () => {
+  const repo = await makeRepo(commits(2));
+  const main = join(repo, ".git/refs/heads/main");
+  writeFileSync(main, `${rev(repo, "HEAD")}\n${" ".repeat(64 * 1024)}`); // a sha, then white space
+  expect(createRefReader()(repo, "HEAD")).toEqual(
+    unknown("cannot read refs/heads/main: EFBIG"),
+  );
+});
+
+it("answers unknown, without blocking, for a FIFO at a ref path", async () => {
+  const repo = await makeRepo(commits(2));
+  const main = join(repo, ".git/refs/heads/main");
+  rmSync(main);
+  execFileSync("mkfifo", [main]);
+  expect(createRefReader()(repo, "HEAD")).toEqual(
+    unknown("cannot read refs/heads/main: not a regular file"),
+  );
 });
