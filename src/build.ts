@@ -1,4 +1,7 @@
-// The "./build" export: what builds a store. Later tasks add export, extract and the profile.
+// The "./build" export: what builds a store. Later tasks add export, extract and the profile
+// generator.
+export type { Profile, Rules } from "./profile/index.js";
+export { loadProfile, loadRules, profileHash } from "./profile/index.js";
 export type {
   CallSiteRow,
   CallTargetRow,
