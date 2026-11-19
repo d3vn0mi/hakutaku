@@ -1,4 +1,6 @@
+import { execFileSync } from "node:child_process";
 import {
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   rmSync,
@@ -182,3 +184,20 @@ it("replaces each file by a rename, leaving no temporary file, in a directory it
   expect(readAttempt(path)?.result).toBe("failed");
   expect(readBuildFacts(path)?.ref).toBe("HEAD");
 });
+
+// A read of a FIFO blocks until a writer opens it, which would hang every later call.
+it.skipIf(process.platform === "win32")(
+  "reads null for an attempt.json or build.json that is not a regular file",
+  () => {
+    const path = join(tmp(), "store.sqlite");
+    execFileSync("mkfifo", [besideStore(path).attempt]);
+    execFileSync("mkfifo", [besideStore(path).build]);
+    expect(readAttempt(path)).toBeNull();
+    expect(readBuildFacts(path)).toBeNull();
+    const dir = join(tmp(), "store.sqlite");
+    mkdirSync(besideStore(dir).attempt, { recursive: true });
+    mkdirSync(besideStore(dir).build, { recursive: true });
+    expect(readAttempt(dir)).toBeNull();
+    expect(readBuildFacts(dir)).toBeNull();
+  },
+);

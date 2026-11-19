@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -263,3 +264,16 @@ it("closes a store once, however often close is called", () => {
   expect(() => s.close()).not.toThrow();
   expect(() => s.db.prepare("SELECT 1")).toThrow();
 });
+
+// SQLite's open of a FIFO blocks until a writer opens it, so openStore must refuse it unopened.
+it.skipIf(process.platform === "win32")(
+  "answers store unreadable for a FIFO, without opening it",
+  () => {
+    const path = join(tmp(), "store.sqlite");
+    execFileSync("mkfifo", [path]);
+    expect(openStore(path)).toEqual({
+      code: "not_built",
+      reason: "store unreadable",
+    });
+  },
+);

@@ -8,6 +8,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
@@ -105,9 +106,12 @@ export function writeBuildFacts(storePath: string, f: BuildFacts): void {
   writeJson(besideStore(storePath).build, f);
 }
 
+// A file that is not a regular one is never read: a read of a FIFO would block until a writer
+// opened it.
 function readJson<T>(path: string, guard: Guard<T>): T | null {
   let value: unknown;
   try {
+    if (!statSync(path).isFile()) return null;
     value = JSON.parse(readFileSync(path, "utf8"));
   } catch {
     return null;
