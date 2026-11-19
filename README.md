@@ -117,7 +117,7 @@ is kept.
 
 The road to 0.1:
 
-- [ ] **Phase 0: measure before building** (in progress).
+- [x] **Phase 0: measure before building** (done 2026-11-19).
   - [x] The analysis engines are pinned and installed. Read-only snapshots of the test repositories
         are taken, one of them a public repository (marimo).
   - [x] A throwaway pipeline builds a full store from a snapshot inside the sandbox.
@@ -132,7 +132,12 @@ The road to 0.1:
         enough to state as facts, so the `scoped` label tells agents to confirm with `code_snippet`.
   - [x] **Dependency installs.** Installing a repository's dependencies, sandboxed and with scripts
         off, found no extra callers, so hakutaku analyses bare snapshots and needs no network.
-  - [ ] Deep Python, and the real costs in resource-capped units.
+  - [x] **Deep Python.** A compiler-grade Python index found many real callers that import-scoped
+        name matching misses, so the deep detail level ships. It needs a larger memory cap (15 GB)
+        on big Python codebases.
+  - [x] **Real costs**, measured in resource-capped units. On a public repository of about 5,300
+        files (marimo), a full map took about a minute and peaked near 1.1 GB, queries answered in a
+        few milliseconds, and no network connection was opened.
 - [ ] **Engine and store.** Export, sandboxed extract, the store, metrics, launch manifests, the
       profile generator, redaction, gates, the synthetic sample and its oracle, `hakutaku map`.
 - [ ] **Tools and MCP server.** The 13 tools, with labels, paging and errors. `hakutaku query`. The
