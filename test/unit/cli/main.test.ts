@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
-import { COMMANDS } from "../../../src/cli/commands/index.js";
+import { COMMANDS, type Command } from "../../../src/cli/commands/index.js";
 import { main } from "../../../src/cli/main.js";
 
 const capture = () => {
@@ -37,4 +37,74 @@ it("lists every registered command in --help", async () => {
   const c = capture();
   expect(await main(["--help"], c.io)).toBe(0);
   for (const cmd of COMMANDS) expect(c.out.join("")).toContain(cmd.name);
+});
+
+// Registers a command for the length of one test, so the dispatcher is exercised
+// while the real list is still empty.
+async function withCommand<T>(
+  command: Command,
+  body: () => Promise<T>,
+): Promise<T> {
+  const list = COMMANDS as Command[];
+  list.push(command);
+  try {
+    return await body();
+  } finally {
+    list.splice(list.indexOf(command), 1);
+  }
+}
+
+it("exits 2 with the usage on stderr when no command is given", async () => {
+  const c = capture();
+  expect(await main([], c.io)).toBe(2);
+  expect(c.err.join("")).toMatch(/^usage: hakutaku <command> \[options\]$/m);
+  expect(c.out).toEqual([]);
+});
+
+it("prints the usage and one line per registered command on stdout for --help", async () => {
+  const c = capture();
+  const telescope: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async () => 0,
+  };
+  const code = await withCommand(telescope, () => main(["--help"], c.io));
+  expect(code).toBe(0);
+  expect(c.out.join("")).toBe(
+    "usage: hakutaku <command> [options]\n  telescope  points the observatory\n",
+  );
+  expect(c.err).toEqual([]);
+});
+
+it("runs a registered command with the arguments after its name and returns its code", async () => {
+  const c = capture();
+  const seen: string[][] = [];
+  const telescope: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async (argv) => {
+      seen.push(argv);
+      return 3;
+    },
+  };
+  const code = await withCommand(telescope, () =>
+    main(["telescope", "--ref", "v1", "north"], c.io),
+  );
+  expect(code).toBe(3);
+  expect(seen).toEqual([["--ref", "v1", "north"]]);
+});
+
+it("exits 1 with hakutaku: <message> on stderr when a command throws", async () => {
+  const c = capture();
+  const telescope: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async () => {
+      throw new Error("lens cap is on");
+    },
+  };
+  const code = await withCommand(telescope, () => main(["telescope"], c.io));
+  expect(code).toBe(1);
+  expect(c.err.join("")).toBe("hakutaku: lens cap is on\n");
+  expect(c.out).toEqual([]);
 });
