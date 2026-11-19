@@ -155,3 +155,23 @@ it("reads gui scripts, entry points and poetry scripts at the line of each key t
       "sky-view",
     ),
   ]));
+
+it("reads an entry-point value of 128 Ki inner spaces in linear time", () => {
+  // "observatory.cli" + spaces + "x" is no entry-point value; two adjacent \s* in one regex
+  // made its rejection quadratic, about 16 s a manifest at this length
+  const value = `observatory.cli${" ".repeat(131_072)}x`;
+  const started = performance.now();
+  expect(
+    readEntryPoints(
+      input(
+        {
+          "sim/pyproject.toml": `[project.scripts]\nsky = "${value}"\n`,
+          "sim/setup.cfg": `[options.entry_points]\nconsole_scripts =\n    sky = ${value}\n`,
+          "sim/src/observatory/cli.py": "",
+        },
+        { profile: SIM },
+      ),
+    ),
+  ).toEqual([]);
+  expect(performance.now() - started).toBeLessThan(1000);
+});

@@ -13,8 +13,9 @@ import type { EntryFact, ReadContext } from "./types.js";
 const MAX_DEPTH = 512;
 
 // "module:object.attr", with optional white space around ":" and an optional trailing
-// "[extras]", as the entry-point format writes it.
-const OBJECT_REF = /^([^\s:[\]]+)\s*(?::\s*([^\s:[\]]+))?\s*(?:\[[^\]]*\])?$/u;
+// "[extras]", as the entry-point format writes it. Each optional part takes its own trailing
+// white space, so no two \s* meet and a value is rejected in linear time.
+const OBJECT_REF = /^([^\s:[\]]+)\s*(?::\s*([^\s:[\]]+)\s*)?(?:\[[^\]]*\])?$/u;
 
 function objectRef(
   value: string,

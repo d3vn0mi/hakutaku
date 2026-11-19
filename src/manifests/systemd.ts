@@ -1,7 +1,9 @@
 // systemd units (§5.7): every *.service's ExecStart, ExecStartPre, ExecStartPost, ExecReload
-// and ExecStop in [Service], read as data. Each command, its -@:+! prefixes stripped, launches
-// what commands.ts finds in it, matched by suffix against the tracked paths, so %h/... and
-// absolute deploy prefixes do not matter. Kind unit, named after the unit file.
+// and ExecStop in [Service], read as data. Each command has its -@:+! prefixes stripped. Every
+// token of it then names the unique longest tracked path it ends with on a segment boundary,
+// so %h/... and absolute deploy prefixes do not matter and a wrapper (env, flock) hides
+// nothing; what commands.ts finds in it (python -m through the module index) counts too. Kind
+// unit, named after the unit file.
 //
 // A *.timer starts its service (Unit=, else the same-named .service), and that service's
 // entries are read here with the service as their manifest. A timer so adds no fact of its
@@ -67,11 +69,14 @@ export function readSystemdUnits(ctx: ReadContext): EntryFact[] {
           (words[0] ?? "").replace(PREFIXES, ""),
           ...words.slice(1),
         ];
-        for (const file of launchedFiles(
-          command,
-          ctx.bySuffix,
-          ctx.input.pythonModules,
-        )) {
+        const files = new Set(
+          launchedFiles(command, ctx.bySuffix, ctx.input.pythonModules),
+        );
+        for (const word of command) {
+          const file = ctx.bySuffix(word);
+          if (file !== null) files.add(file);
+        }
+        for (const file of files) {
           facts.push({
             file,
             qualname: null,

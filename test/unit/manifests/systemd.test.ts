@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import { readEntryPoints } from "../../../src/manifests/index.js";
-import { input } from "./input.js";
+import { input, SIM } from "./input.js";
 
 const unit = (file: string, manifest: string, line: number) => ({
   file,
@@ -92,5 +92,33 @@ it("joins a line ending in a backslash, strips the -@:+! prefixes, and reads onl
     unit("scripts/reload-sky.sh", manifest, 10),
     unit("scripts/stop-sky.sh", manifest, 11),
     unit("sim/src/observatory/tools/rebuild.py", manifest, 6),
+  ]);
+});
+
+it("matches every token of an Exec line by suffix, behind a wrapper too", () => {
+  const manifest = "deploy/sky-web.service";
+  expect(
+    readEntryPoints(
+      input(
+        {
+          [manifest]: [
+            "[Service]", // 1
+            "ExecStart=/usr/bin/env node /srv/observatory/web/dist/server.js --config /srv/observatory/deploy/sky.toml", // 2
+            "ExecStartPre=/usr/bin/flock /run/sky.lock %h/observatory/scripts/sync-sky.sh", // 3
+            "ExecStartPost=/usr/bin/python3 -m observatory.tools.rebuild", // 4
+          ].join("\n"),
+          "web/src/server.ts": "",
+          "deploy/sky.toml": "",
+          "scripts/sync-sky.sh": "",
+          "sim/src/observatory/tools/rebuild.py": "",
+        },
+        { profile: SIM },
+      ),
+    ),
+  ).toEqual([
+    unit("deploy/sky.toml", manifest, 2),
+    unit("scripts/sync-sky.sh", manifest, 3),
+    unit("sim/src/observatory/tools/rebuild.py", manifest, 4),
+    unit("web/src/server.ts", manifest, 2),
   ]);
 });
