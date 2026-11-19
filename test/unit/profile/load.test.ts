@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, it } from "vitest";
+import * as build from "../../../src/build.js";
 import {
   DEFAULT_PROFILE,
   loadProfile,
@@ -104,6 +105,12 @@ it.each<[object, string]>([
   );
   expect(error.message).toBe(message);
   expect(error.field).toBe(message.slice(0, message.indexOf(": ")));
+});
+
+it("is exported by ./build", () => {
+  expect(build.loadProfile).toBe(loadProfile);
+  expect(build.loadRules).toBe(loadRules);
+  expect(build.profileHash).toBe(profileHash);
 });
 
 it("rejects a forbidden rule whose path does not compile", () => {

@@ -45,6 +45,8 @@ it("reads key = value, key: value and Key=value, splitting at the first = or :, 
         'Environment="SKY=clear"',
         "  # an indented comment",
         "Description = Sync the sky # not a comment",
+        "; name = hidden",
+        "# version: 2",
       ].join("\n"),
     ),
   ).toStrictEqual([

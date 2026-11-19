@@ -175,6 +175,20 @@ it("keeps the first value of a duplicate key, and never writes through a value",
   });
 });
 
+it("never steps into an array that [[...]] did not make", () => {
+  // through a static array, a header would reach a number or an inline table
+  expect(
+    parseTomlSubset(["arr = [1]", "[arr.y]", "z = 1"].join("\n")),
+  ).toStrictEqual({ arr: [1] });
+  expect(
+    parseTomlSubset(
+      ["tbl = [{ x = 1 }]", "[tbl.y]", "z = 1", "[[tbl.w]]", "q = 2"].join(
+        "\n",
+      ),
+    ),
+  ).toStrictEqual({ tbl: [{ x: 1 }] });
+});
+
 it("nulls a value it cannot read, and reads on from the next line", () => {
   const t = parseTomlSubset(
     [
