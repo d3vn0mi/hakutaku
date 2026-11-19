@@ -110,6 +110,8 @@ it("stores sources deflated", () => {
 it("leaves no -wal or -shm file and records the content hash in run", () => {
   const path = miniStore(emptyContent());
   expect(existsSync(`${path}-wal`) || existsSync(`${path}-shm`)).toBe(false);
+  // the header's write and read versions: 1 in rollback-journal mode, 2 in WAL mode
+  expect([...readFileSync(path).subarray(18, 20)]).toEqual([1, 1]);
   const db = new DatabaseSync(path, { readOnly: true });
   expect(db.prepare("SELECT content_hash FROM run").get()?.content_hash).toBe(
     contentHash(db),
