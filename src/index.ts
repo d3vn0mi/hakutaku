@@ -20,4 +20,20 @@ export {
   toToken,
   viewOf,
 } from "./model/index.js";
+export type {
+  Attempt,
+  BuildFacts,
+  Coverage,
+  GateResult,
+  NotBuilt,
+  Store,
+  StoreMeta,
+} from "./store/index.js";
+export {
+  createStoreCache,
+  openStore,
+  readAttempt,
+  readBuildFacts,
+  SCHEMA_VERSION,
+} from "./store/index.js";
 export { HAKUTAKU_VERSION } from "./version.js";

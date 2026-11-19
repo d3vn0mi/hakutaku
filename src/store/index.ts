@@ -1,4 +1,13 @@
+export { createStoreCache } from "./cache.js";
+export {
+  besideStore,
+  readAttempt,
+  readBuildFacts,
+  writeAttempt,
+  writeBuildFacts,
+} from "./files.js";
 export { contentHash } from "./hash.js";
+export { openStore } from "./read.js";
 export { CONTENT_TABLES, DDL, SCHEMA_VERSION } from "./schema.js";
 export type {
   Attempt,
