@@ -20,6 +20,21 @@ const PACKAGE_AST_GREP = fileURLToPath(
   new URL("../../ast-grep/", import.meta.url),
 );
 
+// The extensions dependency-cruiser's resolver tries, in order; hakutaku's own TypeScript
+// resolver (src/extract/resolve/ts.ts) tries the same list.
+export const RESOLVE_EXTENSIONS: readonly string[] = Object.freeze([
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".d.ts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".json",
+]);
+
 // `metadataOnly` lists the paths kept out of every engine's input, which stay in the
 // snapshot for their metadata.
 export function writeEngineConfigs(
@@ -94,18 +109,7 @@ function depcruise(rules: Rules | null, skipped: readonly string[]): unknown {
       enhancedResolveOptions: {
         exportsFields: ["exports"],
         conditionNames: ["import", "require", "node", "default", "types"],
-        extensions: [
-          ".ts",
-          ".tsx",
-          ".mts",
-          ".cts",
-          ".d.ts",
-          ".js",
-          ".jsx",
-          ".mjs",
-          ".cjs",
-          ".json",
-        ],
+        extensions: [...RESOLVE_EXTENSIONS],
       },
       ...(skipped.length === 0
         ? {}
