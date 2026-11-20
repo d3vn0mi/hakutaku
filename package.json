@@ -42,9 +42,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "biome check .",
     "test": "vitest run test/unit",
+    "test:oracle": "vitest run test/oracle",
     "check:tree": "vitest run test/repo/tree.test.ts",
     "check:secrets": "vitest run test/repo/secrets.test.ts",
-    "ci:local": "npm run build && npm run typecheck && npm run lint && npm test && npm run check:secrets && npm run check:tree"
+    "ci:local": "npm run build && npm run typecheck && npm run lint && npm test && npm run test:oracle && npm run check:secrets && npm run check:tree"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.5",
