@@ -601,6 +601,77 @@ describe("refresh", () => {
     expect(spawnMap.mock.calls.map(([e]) => e.id)).toEqual(["tiny", "vega"]);
   });
 
+  it("starts a new 10-minute window with each build it queues", async () => {
+    let now = 0;
+    const finishes: Array<() => void> = [];
+    const spawnMap = vi.fn((_entry: RegistryEntry) => ({
+      done: new Promise<void>((resolve) => {
+        finishes.push(resolve);
+      }),
+    }));
+    const refresh = refreshOf(
+      createRegistryHost(
+        { repos: ["tiny"], allowRefresh: true },
+        fake({ now: () => now, spawnMap }),
+      ),
+    );
+    expect(refresh("tiny")).toMatchObject({ state: "queued" });
+    finishes[0]?.();
+    await Promise.resolve();
+    now = 700_000;
+    expect(refresh("tiny")).toMatchObject({
+      state: "queued",
+      retryAfterSeconds: 600,
+    });
+    now = 760_000;
+    expect(refresh("tiny")).toMatchObject({
+      state: "building",
+      retryAfterSeconds: 540,
+    });
+    finishes[1]?.();
+    await Promise.resolve();
+    now = 820_000;
+    expect(refresh("tiny")).toMatchObject({
+      state: "rate_limited",
+      retryAfterSeconds: 480,
+    });
+    now = 1_299_999;
+    expect(refresh("tiny")).toMatchObject({
+      state: "rate_limited",
+      retryAfterSeconds: 1,
+    });
+    now = 1_300_000;
+    expect(refresh("tiny")).toMatchObject({ state: "queued" });
+    expect(spawnMap).toHaveBeenCalledTimes(3);
+  });
+
+  it("ends the build of a child that cannot start, without an unhandled error", async () => {
+    const actual =
+      await vi.importActual<typeof import("node:child_process")>(
+        "node:child_process",
+      );
+    // A working directory that does not exist: the spawn fails after it returns, with ENOENT.
+    vi.mocked(spawn).mockImplementationOnce(((
+      command: string,
+      args: readonly string[],
+      options: SpawnOptions,
+    ) =>
+      actual.spawn(command, args, {
+        ...options,
+        cwd: join(root, "missing"),
+      })) as typeof spawn);
+    const refresh = refreshOf(
+      registryHost({ repos: ["tiny"], allowRefresh: true }),
+    );
+    expect(refresh("tiny")).toMatchObject({ state: "queued" });
+    let state = refresh("tiny").state;
+    for (let i = 0; i < 100 && state === "building"; i++) {
+      await sleep(20);
+      state = refresh("tiny").state;
+    }
+    expect(state).toBe("rate_limited");
+  });
+
   it("registryHost reads the registry, and its refresh runs a detached child", async () => {
     const h = registryHost({ repos: ["tiny"], allowRefresh: true });
     expect(h.repos(null)).toEqual([
