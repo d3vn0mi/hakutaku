@@ -70,6 +70,7 @@ const TSCONFIG = (
     resolveJsonModule: true,
     allowImportingTsExtensions: true,
     noEmit: true,
+    noResolve: true,
     skipLibCheck: true,
     esModuleInterop: true,
     types: [],

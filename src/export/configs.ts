@@ -57,6 +57,10 @@ export function writeEngineConfigs(
 }
 
 // Bundler resolution over the snapshot, with the profile's aliases resolved from it.
+// noResolve keeps TypeScript's program to the files include lists: an import still binds to a
+// listed file, but never adds a file the list leaves out. Without it, one import of an excluded
+// file, such as a 50 MB minified bundle, puts that file in scip-typescript's program, and its
+// parse alone runs past the build's memory cap.
 function tsconfig(profile: Profile, skipped: readonly string[]): unknown {
   return {
     compilerOptions: {
@@ -69,6 +73,7 @@ function tsconfig(profile: Profile, skipped: readonly string[]): unknown {
       resolveJsonModule: true,
       allowImportingTsExtensions: true,
       noEmit: true,
+      noResolve: true,
       skipLibCheck: true,
       esModuleInterop: true,
       types: [],
