@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   unlinkSync,
@@ -134,6 +135,21 @@ it("skips grimp when the install has no Python", () => {
     ok: true,
     problems: [],
   });
+});
+
+it("runs grimp's version check isolated, with -I -S and python/ as its one path", () => {
+  const dir = fakeInstall();
+  const args = join(tmp(), "args");
+  const python = writeScript(
+    join(tmp(), "python3"),
+    `printf '%s\\n' "$@" > "${args}"; echo ${pin("grimp")}`,
+  );
+  installedDir({ python }, dir);
+  expect(verifyEngines(dir)).toEqual({ ok: true, problems: [] });
+  const argv = readFileSync(args, "utf8").split("\n").slice(0, -1);
+  expect(argv).toHaveLength(5);
+  expect(argv.slice(0, 3)).toEqual(["-I", "-S", "-c"]);
+  expect(argv[4]).toBe(join(dir, "python"));
 });
 
 it("reports grimp missing when the pinned interpreter is gone", () => {
