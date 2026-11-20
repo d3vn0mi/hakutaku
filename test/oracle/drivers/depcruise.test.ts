@@ -2,6 +2,7 @@
 // engines install --yes` once before this file. A repo made with makeRepo, exported with
 // exportRepo and a rules file, then depcruiseDriver.run over the export.
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -301,6 +302,60 @@ it("resolves odd file names to their own files, a name holding ? or # included",
   expect(
     facts.edges.map((e) => [e.specifier, e.to, e.external, e.typeOnly]),
   ).toEqual([...odd].sort().map((n) => [`./${n}`, `web/${n}.ts`, null, false]));
+}, 300_000);
+
+// doNotFollow matches a node_modules directory only, never a name that merely holds the word;
+// and a file a relative import reaches outside the snapshot is resolved but never opened,
+// which the unreadable file beside the snapshot proves (opening it would fail the run).
+it("cruises a file whose name holds node_modules, and never opens a file outside the snapshot", async () => {
+  const repo = await makeRepo({
+    commits: [
+      {
+        date: "2026-03-02T10:00:00Z",
+        files: {
+          "web/sky.ts": lines(
+            'import { clean } from "./no_node_modules";',
+            'import { kit } from "./node_modules/kit/index.js";',
+            'import { far } from "../../outside";',
+            "export const sky = [clean, kit, far];",
+          ),
+          "web/no_node_modules.ts": "export const clean = 1;\n",
+          "web/node_modules/kit/index.js": lines(
+            'const deeper = require("./deeper.js");',
+            "exports.kit = deeper;",
+          ),
+        },
+      },
+    ],
+  });
+  const ctx = await exportOf(repo);
+  const outside = join(ctx.exportDir, "outside.ts");
+  writeFileSync(
+    outside,
+    'import { s } from "./beyond";\nexport const far = s;\n',
+  );
+  chmodSync(outside, 0o000);
+  try {
+    const facts = await depcruiseDriver.run(ctx);
+    expect([...facts.modules]).toEqual([
+      "web/no_node_modules.ts",
+      "web/sky.ts",
+    ]);
+    expect(
+      facts.edges.map((e) => [e.from, e.specifier, e.to, e.external]),
+    ).toEqual([
+      ["web/sky.ts", "../../outside", null, null],
+      ["web/sky.ts", "./no_node_modules", "web/no_node_modules.ts", null],
+      [
+        "web/sky.ts",
+        "./node_modules/kit/index.js",
+        null,
+        { ecosystem: "npm", name: "kit" },
+      ],
+    ]);
+  } finally {
+    chmodSync(outside, 0o644);
+  }
 }, 300_000);
 
 it("fails with dependency-cruiser's own error when it exits non-zero", async () => {

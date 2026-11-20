@@ -9,8 +9,8 @@
 //   media type into mimeType), but leaves it on a scheme-only built-in such as node:test;
 // - it lists every target as a module too, and marks the ones it did not cruise (built-ins,
 //   names it could not resolve, data files, doNotFollow matches) followable: false;
-// - it resolves, and cruises, a relative import that leaves the snapshot, whose source then
-//   starts "../";
+// - it resolves a relative import that leaves the snapshot, whose source then starts "../",
+//   and would open and cruise it, but depcruise.json's doNotFollow keeps it followable: false;
 // - it reads ? in a request as a query, so ./orbit?2 resolves to orbit.ts beside orbit?2.ts;
 // - it reports each cycle once, with its modules in cycle.
 import { readFileSync, rmSync, writeFileSync } from "node:fs";

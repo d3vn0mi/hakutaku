@@ -102,7 +102,10 @@ function depcruise(rules: Rules | null, skipped: readonly string[]): unknown {
     ],
     options: {
       tsPreCompilationDeps: true,
-      doNotFollow: { path: "node_modules" },
+      // a node_modules directory, not a name holding the word (web/no_node_modules.ts is
+      // cruised); and a file a relative import reaches outside the snapshot ("../" from
+      // baseDir), which is resolved but never opened
+      doNotFollow: { path: ["(^|/)node_modules(/|$)", "^\\.\\./"] },
       moduleSystems: ["es6", "cjs", "tsd", "amd"],
       combinedDependencies: false,
       cache: false,

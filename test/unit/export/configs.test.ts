@@ -103,7 +103,7 @@ it("writes tsconfig.json with bundler resolution and the profile's aliases", () 
 
 const OPTIONS = {
   tsPreCompilationDeps: true,
-  doNotFollow: { path: "node_modules" },
+  doNotFollow: { path: ["(^|/)node_modules(/|$)", "^\\.\\./"] },
   moduleSystems: ["es6", "cjs", "tsd", "amd"],
   combinedDependencies: false,
   cache: false,
