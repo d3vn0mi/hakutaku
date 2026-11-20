@@ -1,4 +1,4 @@
-// M5, in process: repos, targets and globs from outside the store never reach anything but the
+// In process: repos, targets and globs from outside the store never reach anything but the
 // store.
 import { expect, it } from "vitest";
 import {

@@ -19,7 +19,7 @@ import {
 } from "../../../src/tools/limits.js";
 
 describe("limits", () => {
-  it("pins the spec's numbers", () => {
+  it("pins the documented limits", () => {
     expect([
       DEFAULT_MAX_RESULT_CHARS,
       MAX_TEXT_CHARS,

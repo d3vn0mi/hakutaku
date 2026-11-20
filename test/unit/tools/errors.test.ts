@@ -22,7 +22,7 @@ describe("errors", () => {
   it("echo cuts model input to 120 characters", () => {
     expect(echo("x".repeat(500))).toBe(`${"x".repeat(119)}…`);
   });
-  it("lists exactly the spec's error codes", () => {
+  it("lists exactly the documented error codes", () => {
     expect([...ERROR_CODES]).toEqual([
       "unknown_repo",
       "not_built",
