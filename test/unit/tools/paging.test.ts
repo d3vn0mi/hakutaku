@@ -128,6 +128,23 @@ describe("pageList", () => {
     expect(pages.at(-1)).not.toHaveProperty("nextOffset");
     expect(pages.at(-1)?.note).toMatch(/; this is the last page$/);
   });
+  it("a page holds the longest run that fits", () => {
+    const a = list(500, 400);
+    const pages = all(a, flat, 500, 40000);
+    expect(pages.length).toBeGreaterThan(2);
+    for (const p of pages.filter((q) => q.hasMore)) {
+      const o = p.offset ?? 0;
+      const r = p.returned ?? 0;
+      // The same page with one more item, its fields as pageList words them.
+      const longer = pageList(a, flat, {
+        offset: o,
+        limit: r + 1,
+        maxChars: 1e9,
+      }) as List & Page;
+      expect(longer.returned).toBe(r + 1);
+      expect(measure(longer)).toBeGreaterThan(40000);
+    }
+  });
   it("limit caps a page even when more would fit", () => {
     expect(
       pageList(list(30, 10), flat, { limit: 20, maxChars: 40000 }),
@@ -356,6 +373,50 @@ describe("pageText", () => {
     expect(ws[0].note).toBe(
       `characters 1-${ws[0].returned} of ${lines.join("\n").length}; call again with offset ${ws[0].nextOffset} for the next window`,
     );
+  });
+  it("returns a snippet that fits unchanged on a first call", () => {
+    const a = {
+      builtCommit: "0123456789ab",
+      stale: false,
+      lines: ["one", "two"],
+      untrusted: true as const,
+    };
+    expect(pageText(a, { maxChars: 40000 })).toBe(a);
+  });
+  it("a window holds the longest text that fits", () => {
+    const lines = Array.from(
+      { length: 120 },
+      (_, i) => `${i}:${"s".repeat(300)}`,
+    );
+    const a = {
+      builtCommit: "0123456789ab",
+      stale: false,
+      lines,
+      untrusted: true as const,
+    };
+    const text = lines.join("\n");
+    const ws = windows(a, 8000);
+    expect(ws.length).toBeGreaterThan(2);
+    for (const w of ws.filter((x) => x.hasMore)) {
+      const o = w.offset ?? 0;
+      const r = (w.returned ?? 0) + 1;
+      const hasMore = o + r < text.length;
+      const f = hasMore
+        ? {
+            offset: o,
+            returned: r,
+            total: text.length,
+            hasMore,
+            nextOffset: o + r,
+          }
+        : { offset: o, returned: r, total: text.length, hasMore };
+      // The same window with one more character.
+      const longer = withPageFields(
+        { ...a, lines: text.slice(o, o + r).split("\n") },
+        { ...f, note: pageNote("characters", f) },
+      );
+      expect(measure(longer)).toBeGreaterThan(8000);
+    }
   });
   it("a window never splits a surrogate pair", () => {
     const a = {
