@@ -39,20 +39,33 @@ it("lists every registered command in --help", async () => {
   for (const cmd of COMMANDS) expect(c.out.join("")).toContain(cmd.name);
 });
 
-// Registers a command for the length of one test, so the dispatcher is exercised
-// while the real list is still empty.
+// Makes `command` the only registered one for the length of one test, so the dispatcher is
+// exercised whatever the real list holds.
 async function withCommand<T>(
   command: Command,
   body: () => Promise<T>,
 ): Promise<T> {
   const list = COMMANDS as Command[];
-  list.push(command);
+  const real = list.splice(0, list.length, command);
   try {
     return await body();
   } finally {
-    list.splice(list.indexOf(command), 1);
+    list.splice(0, list.length, ...real);
   }
 }
+
+it("restores the real list after a test command", async () => {
+  const before = [...COMMANDS];
+  const telescope: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async () => 0,
+  };
+  await withCommand(telescope, async () => {
+    expect(COMMANDS).toEqual([telescope]);
+  });
+  expect(COMMANDS).toEqual(before);
+});
 
 it("exits 2 with the usage on stderr when no command is given", async () => {
   const c = capture();
