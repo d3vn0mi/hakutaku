@@ -1,0 +1,540 @@
+# hakutaku's ast-grep rules for TypeScript (.ts, .mts, .cts). Each rule's id is
+# ts-<role>-<what>, its role def, call or import; README.md lists them.
+#
+# A positive relational rule copies the node it reaches into every match's output, so rules
+# reach only small nodes or a definition's own wrapper. Any wider context, such as "at module
+# level" or "under an export keyword", is checked as a double negation,
+# `not: { regex: "^", not: <rule> }`, which matches exactly when <rule> does and copies
+# nothing. Without it, a class with n members would print its body n times.
+id: ts-def-function
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: function_declaration
+    - kind: generator_function_declaration
+  has: { field: name, pattern: $NAME }
+---
+# export default function () {}: an anonymous default, named default.
+id: ts-def-default-function
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: function_expression
+    - kind: generator_function
+  not: { regex: "^", not: { inside: { kind: export_statement, field: value } } }
+---
+id: ts-def-class
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: class_declaration
+    - kind: abstract_class_declaration
+  has: { field: name, pattern: $NAME }
+---
+# export default class {}: an anonymous default, named default.
+id: ts-def-default-class
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: class
+  not: { regex: "^", not: { inside: { kind: export_statement, field: value } } }
+---
+# const Sky = class { ... }
+id: ts-def-class-expression
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: variable_declarator
+  has: { field: name, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not: { regex: "^", not: { has: { field: value, kind: class } } }
+    - regex: "^"
+      not:
+        {
+          regex: "^",
+          not:
+            {
+              inside: { kind: lexical_declaration, has: { regex: "^const$" } },
+            },
+        }
+---
+# Methods, getters, setters, constructors and static methods, and fields holding a function.
+# $ACCESS is the member's accessibility keyword, when it has one.
+id: ts-def-method
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: method_definition
+      not: { inside: { kind: object } }
+    - kind: public_field_definition
+      not:
+        regex: "^"
+        not:
+          has:
+            field: value
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: generator_function
+  has:
+    field: name
+    pattern: $NAME
+    any:
+      - kind: property_identifier
+      - kind: private_property_identifier
+  all:
+    - any:
+        - has: { kind: accessibility_modifier, pattern: $ACCESS }
+        - regex: "^"
+---
+# A class's method overloads and abstract methods; an interface's or a type literal's members
+# are not definitions.
+id: ts-def-method-signature
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: method_signature
+      not:
+        inside:
+          any:
+            - kind: interface_body
+            - kind: object_type
+    - kind: abstract_method_signature
+  has:
+    field: name
+    pattern: $NAME
+    any:
+      - kind: property_identifier
+      - kind: private_property_identifier
+  all:
+    - any:
+        - has: { kind: accessibility_modifier, pattern: $ACCESS }
+        - regex: "^"
+---
+# Function overloads and ambient declarations.
+id: ts-def-function-signature
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: function_signature
+  has: { field: name, pattern: $NAME }
+---
+# A module-level const holding an arrow or function expression.
+id: ts-def-const-function
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: variable_declarator
+  has: { field: name, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          has:
+            field: value
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: generator_function
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            kind: lexical_declaration
+            has: { regex: "^const$" }
+            inside:
+              any:
+                - kind: program
+                - kind: export_statement
+                  inside: { kind: program }
+---
+# A module-level const holding anything else.
+id: ts-def-constant
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: variable_declarator
+  has: { field: name, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not: { regex: "^", not: { has: { field: value, regex: "^" } } }
+    - regex: "^"
+      not:
+        has:
+          field: value
+          any:
+            - kind: arrow_function
+            - kind: function_expression
+            - kind: generator_function
+            - kind: class
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            kind: lexical_declaration
+            has: { regex: "^const$" }
+            inside:
+              any:
+                - kind: program
+                - kind: export_statement
+                  inside: { kind: program }
+---
+# module.exports.X = function () {} and exports.X = () => {}, at module level.
+id: ts-def-exports-function
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: assignment_expression
+  has:
+    field: left
+    kind: member_expression
+    all:
+      - has: { field: property, kind: property_identifier, pattern: $NAME }
+      - has:
+          field: object
+          any:
+            - { kind: identifier, regex: "^exports$" }
+            - { kind: member_expression, regex: "^module\\.exports$" }
+  all:
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          has:
+            field: right
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: generator_function
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          { inside: { kind: expression_statement, inside: { kind: program } } }
+---
+# Type aliases, interfaces and enums; their members are not definitions.
+id: ts-def-type
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: type_alias_declaration
+    - kind: interface_declaration
+    - kind: enum_declaration
+  has: { field: name, pattern: $NAME }
+---
+# Not a definition: each name the file exports, $NAME, which marks its module-level
+# definition exported. A name under an export keyword, a name in a local export { ... }
+# clause, and export default x or export = x.
+id: ts-def-export
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: export_specifier
+      has: { field: name, pattern: $NAME }
+      not:
+        {
+          inside:
+            {
+              stopBy: end,
+              kind: export_statement,
+              has: { field: source, regex: "^" },
+            },
+        }
+    - kind: identifier
+      pattern: $NAME
+      inside: { kind: export_statement }
+    - any:
+        - kind: identifier
+        - kind: type_identifier
+      pattern: $NAME
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: name
+            any:
+              - kind: function_declaration
+              - kind: generator_function_declaration
+              - kind: class_declaration
+              - kind: abstract_class_declaration
+              - kind: interface_declaration
+              - kind: type_alias_declaration
+              - kind: enum_declaration
+              - kind: function_signature
+            inside:
+              any:
+                - kind: export_statement
+                - kind: ambient_declaration
+                  inside: { kind: export_statement }
+    - kind: identifier
+      pattern: $NAME
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: name
+            kind: variable_declarator
+            inside:
+              kind: lexical_declaration
+              inside:
+                any:
+                  - kind: export_statement
+                  - kind: ambient_declaration
+                    inside: { kind: export_statement }
+---
+# A call: the callee's name, $NAME, and for a member callee the object, $RECV, when it is a
+# plain name or property path (a call chain's object would repeat the chain in every match).
+id: ts-call-call
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: identifier
+      pattern: $NAME
+      not:
+        {
+          regex: "^",
+          not: { inside: { field: function, kind: call_expression } },
+        }
+    - pattern: $NAME
+      all:
+        - any:
+            - kind: property_identifier
+            - kind: private_property_identifier
+        - any:
+            - follows:
+                stopBy: end
+                pattern: $RECV
+                any:
+                  - kind: identifier
+                  - kind: this
+                  - kind: super
+                  - { kind: member_expression, regex: "^[\\w$#.?]+$" }
+            - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: property
+            kind: member_expression
+            inside: { field: function, kind: call_expression }
+---
+id: ts-call-new
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: identifier
+      pattern: $NAME
+      not:
+        {
+          regex: "^",
+          not: { inside: { field: constructor, kind: new_expression } },
+        }
+    - kind: property_identifier
+      pattern: $NAME
+      any:
+        - follows:
+            stopBy: end
+            pattern: $RECV
+            any:
+              - kind: identifier
+              - kind: this
+              - { kind: member_expression, regex: "^[\\w$#.?]+$" }
+        - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: property
+            kind: member_expression
+            inside: { field: constructor, kind: new_expression }
+---
+id: ts-import-static
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: import_statement
+  has: { field: source, pattern: $SPEC }
+  all:
+    - has: { kind: import_clause }
+    - regex: "^"
+      not:
+        any:
+          - has: { regex: "^type$", not: { kind: import_clause } }
+          - has:
+              kind: import_clause
+              not:
+                {
+                  has:
+                    { any: [{ kind: identifier }, { kind: namespace_import }] },
+                }
+              has:
+                kind: named_imports
+                has: { kind: import_specifier }
+                not:
+                  has:
+                    kind: import_specifier
+                    not: { has: { regex: "^type$", not: { kind: identifier } } }
+---
+# import type ..., or an import every one of whose bindings is marked type.
+id: ts-import-type-only
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: import_statement
+  has: { field: source, pattern: $SPEC }
+  any:
+    - has: { regex: "^type$", not: { kind: import_clause } }
+    - has:
+        kind: import_clause
+        not:
+          { has: { any: [{ kind: identifier }, { kind: namespace_import }] } }
+        has:
+          kind: named_imports
+          has: { kind: import_specifier }
+          not:
+            has:
+              kind: import_specifier
+              not: { has: { regex: "^type$", not: { kind: identifier } } }
+---
+id: ts-import-side-effect
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: import_statement
+  has: { field: source, pattern: $SPEC }
+  not:
+    has:
+      any:
+        - kind: import_clause
+        - kind: import_require_clause
+---
+id: ts-import-re-export
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: export_statement
+  has: { field: source, pattern: $SPEC }
+---
+id: ts-import-dynamic
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: call_expression
+  all:
+    - has: { field: function, kind: import }
+    - has:
+        field: arguments
+        has:
+          nthChild: 1
+          pattern: $SPEC
+          any:
+            - kind: string
+            - kind: template_string
+              not: { has: { kind: template_substitution } }
+---
+id: ts-import-require
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: call_expression
+      all:
+        - has: { field: function, kind: identifier, regex: "^require$" }
+        - has:
+            field: arguments
+            has:
+              nthChild: 1
+              pattern: $SPEC
+              any:
+                - kind: string
+                - kind: template_string
+                  not: { has: { kind: template_substitution } }
+    - kind: import_statement
+      has:
+        { kind: import_require_clause, has: { field: source, pattern: $SPEC } }
+---
+# import(x) or require(x) whose argument is neither a string nor a template without
+# substitutions.
+id: ts-import-computed
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: call_expression
+  all:
+    - has:
+        field: function
+        any:
+          - kind: import
+          - { kind: identifier, regex: "^require$" }
+    - has: { field: arguments, has: { nthChild: 1, regex: "^" } }
+    - regex: "^"
+      not:
+        has:
+          field: arguments
+          has:
+            nthChild: 1
+            any:
+              - kind: string
+              - kind: template_string
+                not: { has: { kind: template_substitution } }
+---
+# One imported binding, $NAMES, as the source module names it: a named import's or a
+# re-export's name.
+id: ts-import-name
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: import_specifier
+      has: { field: name, pattern: $NAMES }
+    - kind: export_specifier
+      has: { field: name, pattern: $NAMES }
+      not:
+        regex: "^"
+        not:
+          {
+            inside:
+              {
+                stopBy: end,
+                kind: export_statement,
+                has: { field: source, regex: "^" },
+              },
+          }
+---
+# A default import's binding: the name default.
+id: ts-import-default
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  kind: identifier
+  not: { regex: "^", not: { inside: { kind: import_clause } } }
+---
+# A namespace binding, the name *: import * as x, export * as x from, and export * from,
+# whose match is the statement itself.
+id: ts-import-namespace
+language: TypeScript
+files: ["**/*.ts", "**/*.mts", "**/*.cts"]
+rule:
+  any:
+    - kind: namespace_import
+    - kind: namespace_export
+    - kind: export_statement
+      has: { field: source, kind: string }
+      not:
+        has:
+          any:
+            - kind: export_clause
+            - kind: namespace_export

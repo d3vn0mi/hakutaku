@@ -1,0 +1,475 @@
+# hakutaku's ast-grep rules for JavaScript (.js, .jsx, .mjs, .cjs): typescript.yml's rules
+# less TypeScript's own syntax, plus JSX elements as calls. Each rule's id is
+# js-<role>-<what>, its role def, call or import; README.md lists them.
+#
+# A positive relational rule copies the node it reaches into every match's output, so rules
+# reach only small nodes or a definition's own wrapper. Any wider context, such as "at module
+# level" or "under an export keyword", is checked as a double negation,
+# `not: { regex: "^", not: <rule> }`, which matches exactly when <rule> does and copies
+# nothing. Without it, a class with n members would print its body n times.
+id: js-def-function
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  any:
+    - kind: function_declaration
+    - kind: generator_function_declaration
+  has: { field: name, pattern: $NAME }
+---
+# export default function () {}: an anonymous default, named default.
+id: js-def-default-function
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  any:
+    - kind: function_expression
+    - kind: generator_function
+  not: { regex: "^", not: { inside: { kind: export_statement, field: value } } }
+---
+id: js-def-class
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: class_declaration
+  has: { field: name, pattern: $NAME }
+---
+# export default class {}: an anonymous default, named default.
+id: js-def-default-class
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: class
+  not: { regex: "^", not: { inside: { kind: export_statement, field: value } } }
+---
+# const Sky = class { ... }
+id: js-def-class-expression
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: variable_declarator
+  has: { field: name, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not: { regex: "^", not: { has: { field: value, kind: class } } }
+    - regex: "^"
+      not:
+        {
+          regex: "^",
+          not:
+            {
+              inside: { kind: lexical_declaration, has: { regex: "^const$" } },
+            },
+        }
+---
+# Methods, getters, setters, constructors and static methods, and fields holding a function.
+id: js-def-method
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  any:
+    - kind: method_definition
+      not: { inside: { kind: object } }
+      has:
+        field: name
+        pattern: $NAME
+        any:
+          - kind: property_identifier
+          - kind: private_property_identifier
+    - kind: field_definition
+      has:
+        field: property
+        pattern: $NAME
+        any:
+          - kind: property_identifier
+          - kind: private_property_identifier
+      not:
+        regex: "^"
+        not:
+          has:
+            field: value
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: generator_function
+---
+# A module-level const holding an arrow or function expression.
+id: js-def-const-function
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: variable_declarator
+  has: { field: name, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          has:
+            field: value
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: generator_function
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            kind: lexical_declaration
+            has: { regex: "^const$" }
+            inside:
+              any:
+                - kind: program
+                - kind: export_statement
+                  inside: { kind: program }
+---
+# A module-level const holding anything else.
+id: js-def-constant
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: variable_declarator
+  has: { field: name, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not: { regex: "^", not: { has: { field: value, regex: "^" } } }
+    - regex: "^"
+      not:
+        has:
+          field: value
+          any:
+            - kind: arrow_function
+            - kind: function_expression
+            - kind: generator_function
+            - kind: class
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            kind: lexical_declaration
+            has: { regex: "^const$" }
+            inside:
+              any:
+                - kind: program
+                - kind: export_statement
+                  inside: { kind: program }
+---
+# module.exports.X = function () {} and exports.X = () => {}, at module level.
+id: js-def-exports-function
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: assignment_expression
+  has:
+    field: left
+    kind: member_expression
+    all:
+      - has: { field: property, kind: property_identifier, pattern: $NAME }
+      - has:
+          field: object
+          any:
+            - { kind: identifier, regex: "^exports$" }
+            - { kind: member_expression, regex: "^module\\.exports$" }
+  all:
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          has:
+            field: right
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: generator_function
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          { inside: { kind: expression_statement, inside: { kind: program } } }
+---
+# Not a definition: each name the file exports, $NAME, which marks its module-level
+# definition exported. A name under an export keyword, a name in a local export { ... }
+# clause, and export default x.
+id: js-def-export
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  any:
+    - kind: export_specifier
+      has: { field: name, pattern: $NAME }
+      not:
+        {
+          inside:
+            {
+              stopBy: end,
+              kind: export_statement,
+              has: { field: source, regex: "^" },
+            },
+        }
+    - kind: identifier
+      pattern: $NAME
+      inside: { kind: export_statement }
+    - kind: identifier
+      pattern: $NAME
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: name
+            any:
+              - kind: function_declaration
+              - kind: generator_function_declaration
+              - kind: class_declaration
+            inside: { kind: export_statement }
+    - kind: identifier
+      pattern: $NAME
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: name
+            kind: variable_declarator
+            inside:
+              kind: lexical_declaration
+              inside: { kind: export_statement }
+---
+# A call: the callee's name, $NAME, and for a member callee the object, $RECV, when it is a
+# plain name or property path (a call chain's object would repeat the chain in every match).
+id: js-call-call
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  any:
+    - kind: identifier
+      pattern: $NAME
+      not:
+        {
+          regex: "^",
+          not: { inside: { field: function, kind: call_expression } },
+        }
+    - pattern: $NAME
+      all:
+        - any:
+            - kind: property_identifier
+            - kind: private_property_identifier
+        - any:
+            - follows:
+                stopBy: end
+                pattern: $RECV
+                any:
+                  - kind: identifier
+                  - kind: this
+                  - kind: super
+                  - { kind: member_expression, regex: "^[\\w$#.?]+$" }
+            - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: property
+            kind: member_expression
+            inside: { field: function, kind: call_expression }
+---
+id: js-call-new
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  any:
+    - kind: identifier
+      pattern: $NAME
+      not:
+        {
+          regex: "^",
+          not: { inside: { field: constructor, kind: new_expression } },
+        }
+    - kind: property_identifier
+      pattern: $NAME
+      any:
+        - follows:
+            stopBy: end
+            pattern: $RECV
+            any:
+              - kind: identifier
+              - kind: this
+              - { kind: member_expression, regex: "^[\\w$#.?]+$" }
+        - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: property
+            kind: member_expression
+            inside: { field: constructor, kind: new_expression }
+---
+# A JSX element whose tag starts with an upper-case letter, a component: the tag is the
+# callee, $NAME, and a member tag's object its $RECV.
+id: js-call-jsx
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  any:
+    - kind: identifier
+      regex: "^\\p{Lu}"
+      pattern: $NAME
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: name
+            any:
+              - kind: jsx_opening_element
+              - kind: jsx_self_closing_element
+    - kind: property_identifier
+      pattern: $NAME
+      any:
+        - follows:
+            stopBy: end
+            pattern: $RECV
+            any:
+              - kind: identifier
+              - { kind: member_expression, regex: "^[\\w$.]+$" }
+        - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: property
+            kind: member_expression
+            regex: "^\\p{Lu}"
+            inside:
+              field: name
+              any:
+                - kind: jsx_opening_element
+                - kind: jsx_self_closing_element
+---
+id: js-import-static
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: import_statement
+  has: { field: source, pattern: $SPEC }
+  all:
+    - has: { kind: import_clause }
+---
+id: js-import-side-effect
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: import_statement
+  has: { field: source, pattern: $SPEC }
+  not: { has: { kind: import_clause } }
+---
+id: js-import-re-export
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: export_statement
+  has: { field: source, pattern: $SPEC }
+---
+id: js-import-dynamic
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: call_expression
+  all:
+    - has: { field: function, kind: import }
+    - has:
+        field: arguments
+        has:
+          nthChild: 1
+          pattern: $SPEC
+          any:
+            - kind: string
+            - kind: template_string
+              not: { has: { kind: template_substitution } }
+---
+id: js-import-require
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: call_expression
+  all:
+    - has: { field: function, kind: identifier, regex: "^require$" }
+    - has:
+        field: arguments
+        has:
+          nthChild: 1
+          pattern: $SPEC
+          any:
+            - kind: string
+            - kind: template_string
+              not: { has: { kind: template_substitution } }
+---
+# import(x) or require(x) whose argument is neither a string nor a template without
+# substitutions.
+id: js-import-computed
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: call_expression
+  all:
+    - has:
+        field: function
+        any:
+          - kind: import
+          - { kind: identifier, regex: "^require$" }
+    - has: { field: arguments, has: { nthChild: 1, regex: "^" } }
+    - regex: "^"
+      not:
+        has:
+          field: arguments
+          has:
+            nthChild: 1
+            any:
+              - kind: string
+              - kind: template_string
+                not: { has: { kind: template_substitution } }
+---
+# One imported binding, $NAMES, as the source module names it: a named import's or a
+# re-export's name.
+id: js-import-name
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  any:
+    - kind: import_specifier
+      has: { field: name, pattern: $NAMES }
+    - kind: export_specifier
+      has: { field: name, pattern: $NAMES }
+      not:
+        regex: "^"
+        not:
+          {
+            inside:
+              {
+                stopBy: end,
+                kind: export_statement,
+                has: { field: source, regex: "^" },
+              },
+          }
+---
+# A default import's binding: the name default.
+id: js-import-default
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  kind: identifier
+  not: { regex: "^", not: { inside: { kind: import_clause } } }
+---
+# A namespace binding, the name *: import * as x, export * as x from, and export * from,
+# whose match is the statement itself.
+id: js-import-namespace
+language: JavaScript
+files: ["**/*.js", "**/*.jsx", "**/*.mjs", "**/*.cjs"]
+rule:
+  any:
+    - kind: namespace_import
+    - kind: namespace_export
+    - kind: export_statement
+      has: { field: source, kind: string }
+      not:
+        has:
+          any:
+            - kind: export_clause
+            - kind: namespace_export

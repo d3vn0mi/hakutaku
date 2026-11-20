@@ -1,0 +1,64 @@
+# hakutaku's ast-grep rules for shell scripts (.sh, .bash). Each rule's id is
+# sh-<role>-<what>, its role def, call or import; README.md lists them.
+#
+# A positive relational rule copies the node it reaches into every match's output, so rules
+# reach only small nodes or a definition's own wrapper. Any wider context is checked as a
+# double negation, `not: { regex: "^", not: <rule> }`, which matches exactly when <rule> does
+# and copies nothing.
+id: sh-def-function
+language: Bash
+files: ["**/*.sh", "**/*.bash"]
+rule:
+  kind: function_definition
+  has: { field: name, pattern: $NAME }
+---
+# Every command, by its name, $NAME. The merge keeps those that name a function.
+id: sh-call-command
+language: Bash
+files: ["**/*.sh", "**/*.bash"]
+rule:
+  kind: word
+  pattern: $NAME
+  not:
+    regex: "^"
+    not:
+      { inside: { kind: command_name, inside: { field: name, kind: command } } }
+---
+# source x and . x: $SPEC is the first argument; the driver keeps it only when it is a plain
+# word or a quoted string without expansions.
+id: sh-import-source
+language: Bash
+files: ["**/*.sh", "**/*.bash"]
+rule:
+  kind: command
+  all:
+    - has: { field: name, regex: "^(source|\\.)$" }
+    - has: { field: argument, pattern: $SPEC }
+---
+# A script run by path: bash x and sh x, $SPEC the first argument that is not an option (never
+# with -c, whose argument is a command), and ./x or ../x, $SPEC the command's name. A has with
+# field: argument would test only the first argument, which may be an option.
+id: sh-import-exec
+language: Bash
+files: ["**/*.sh", "**/*.bash"]
+rule:
+  kind: command
+  any:
+    - all:
+        - has: { field: name, regex: "^(bash|sh)$" }
+        - has:
+            regex: "^[^-]"
+            pattern: $SPEC
+            any:
+              - kind: word
+              - kind: string
+              - kind: raw_string
+              - kind: concatenation
+              - kind: simple_expansion
+              - kind: expansion
+              - kind: command_substitution
+        - regex: "^"
+          not: { has: { kind: word, regex: "^-[A-Za-z]*c[A-Za-z]*$" } }
+    - has:
+        field: name
+        has: { kind: word, regex: "^\\.\\.?/", pattern: $SPEC }

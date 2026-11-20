@@ -1,0 +1,581 @@
+# hakutaku's ast-grep rules for TSX (.tsx): typescript.yml's rules, plus JSX elements as
+# calls. Each rule's id is tsx-<role>-<what>, its role def, call or import; README.md lists them.
+#
+# A positive relational rule copies the node it reaches into every match's output, so rules
+# reach only small nodes or a definition's own wrapper. Any wider context, such as "at module
+# level" or "under an export keyword", is checked as a double negation,
+# `not: { regex: "^", not: <rule> }`, which matches exactly when <rule> does and copies
+# nothing. Without it, a class with n members would print its body n times.
+id: tsx-def-function
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: function_declaration
+    - kind: generator_function_declaration
+  has: { field: name, pattern: $NAME }
+---
+# export default function () {}: an anonymous default, named default.
+id: tsx-def-default-function
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: function_expression
+    - kind: generator_function
+  not: { regex: "^", not: { inside: { kind: export_statement, field: value } } }
+---
+id: tsx-def-class
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: class_declaration
+    - kind: abstract_class_declaration
+  has: { field: name, pattern: $NAME }
+---
+# export default class {}: an anonymous default, named default.
+id: tsx-def-default-class
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: class
+  not: { regex: "^", not: { inside: { kind: export_statement, field: value } } }
+---
+# const Sky = class { ... }
+id: tsx-def-class-expression
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: variable_declarator
+  has: { field: name, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not: { regex: "^", not: { has: { field: value, kind: class } } }
+    - regex: "^"
+      not:
+        {
+          regex: "^",
+          not:
+            {
+              inside: { kind: lexical_declaration, has: { regex: "^const$" } },
+            },
+        }
+---
+# Methods, getters, setters, constructors and static methods, and fields holding a function.
+# $ACCESS is the member's accessibility keyword, when it has one.
+id: tsx-def-method
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: method_definition
+      not: { inside: { kind: object } }
+    - kind: public_field_definition
+      not:
+        regex: "^"
+        not:
+          has:
+            field: value
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: generator_function
+  has:
+    field: name
+    pattern: $NAME
+    any:
+      - kind: property_identifier
+      - kind: private_property_identifier
+  all:
+    - any:
+        - has: { kind: accessibility_modifier, pattern: $ACCESS }
+        - regex: "^"
+---
+# A class's method overloads and abstract methods; an interface's or a type literal's members
+# are not definitions.
+id: tsx-def-method-signature
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: method_signature
+      not:
+        inside:
+          any:
+            - kind: interface_body
+            - kind: object_type
+    - kind: abstract_method_signature
+  has:
+    field: name
+    pattern: $NAME
+    any:
+      - kind: property_identifier
+      - kind: private_property_identifier
+  all:
+    - any:
+        - has: { kind: accessibility_modifier, pattern: $ACCESS }
+        - regex: "^"
+---
+# Function overloads and ambient declarations.
+id: tsx-def-function-signature
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: function_signature
+  has: { field: name, pattern: $NAME }
+---
+# A module-level const holding an arrow or function expression.
+id: tsx-def-const-function
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: variable_declarator
+  has: { field: name, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          has:
+            field: value
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: generator_function
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            kind: lexical_declaration
+            has: { regex: "^const$" }
+            inside:
+              any:
+                - kind: program
+                - kind: export_statement
+                  inside: { kind: program }
+---
+# A module-level const holding anything else.
+id: tsx-def-constant
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: variable_declarator
+  has: { field: name, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not: { regex: "^", not: { has: { field: value, regex: "^" } } }
+    - regex: "^"
+      not:
+        has:
+          field: value
+          any:
+            - kind: arrow_function
+            - kind: function_expression
+            - kind: generator_function
+            - kind: class
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            kind: lexical_declaration
+            has: { regex: "^const$" }
+            inside:
+              any:
+                - kind: program
+                - kind: export_statement
+                  inside: { kind: program }
+---
+# module.exports.X = function () {} and exports.X = () => {}, at module level.
+id: tsx-def-exports-function
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: assignment_expression
+  has:
+    field: left
+    kind: member_expression
+    all:
+      - has: { field: property, kind: property_identifier, pattern: $NAME }
+      - has:
+          field: object
+          any:
+            - { kind: identifier, regex: "^exports$" }
+            - { kind: member_expression, regex: "^module\\.exports$" }
+  all:
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          has:
+            field: right
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+              - kind: generator_function
+    - regex: "^"
+      not:
+        regex: "^"
+        not:
+          { inside: { kind: expression_statement, inside: { kind: program } } }
+---
+# Type aliases, interfaces and enums; their members are not definitions.
+id: tsx-def-type
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: type_alias_declaration
+    - kind: interface_declaration
+    - kind: enum_declaration
+  has: { field: name, pattern: $NAME }
+---
+# Not a definition: each name the file exports, $NAME, which marks its module-level
+# definition exported. A name under an export keyword, a name in a local export { ... }
+# clause, and export default x or export = x.
+id: tsx-def-export
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: export_specifier
+      has: { field: name, pattern: $NAME }
+      not:
+        {
+          inside:
+            {
+              stopBy: end,
+              kind: export_statement,
+              has: { field: source, regex: "^" },
+            },
+        }
+    - kind: identifier
+      pattern: $NAME
+      inside: { kind: export_statement }
+    - any:
+        - kind: identifier
+        - kind: type_identifier
+      pattern: $NAME
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: name
+            any:
+              - kind: function_declaration
+              - kind: generator_function_declaration
+              - kind: class_declaration
+              - kind: abstract_class_declaration
+              - kind: interface_declaration
+              - kind: type_alias_declaration
+              - kind: enum_declaration
+              - kind: function_signature
+            inside:
+              any:
+                - kind: export_statement
+                - kind: ambient_declaration
+                  inside: { kind: export_statement }
+    - kind: identifier
+      pattern: $NAME
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: name
+            kind: variable_declarator
+            inside:
+              kind: lexical_declaration
+              inside:
+                any:
+                  - kind: export_statement
+                  - kind: ambient_declaration
+                    inside: { kind: export_statement }
+---
+# A call: the callee's name, $NAME, and for a member callee the object, $RECV, when it is a
+# plain name or property path (a call chain's object would repeat the chain in every match).
+id: tsx-call-call
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: identifier
+      pattern: $NAME
+      not:
+        {
+          regex: "^",
+          not: { inside: { field: function, kind: call_expression } },
+        }
+    - pattern: $NAME
+      all:
+        - any:
+            - kind: property_identifier
+            - kind: private_property_identifier
+        - any:
+            - follows:
+                stopBy: end
+                pattern: $RECV
+                any:
+                  - kind: identifier
+                  - kind: this
+                  - kind: super
+                  - { kind: member_expression, regex: "^[\\w$#.?]+$" }
+            - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: property
+            kind: member_expression
+            inside: { field: function, kind: call_expression }
+---
+id: tsx-call-new
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: identifier
+      pattern: $NAME
+      not:
+        {
+          regex: "^",
+          not: { inside: { field: constructor, kind: new_expression } },
+        }
+    - kind: property_identifier
+      pattern: $NAME
+      any:
+        - follows:
+            stopBy: end
+            pattern: $RECV
+            any:
+              - kind: identifier
+              - kind: this
+              - { kind: member_expression, regex: "^[\\w$#.?]+$" }
+        - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: property
+            kind: member_expression
+            inside: { field: constructor, kind: new_expression }
+---
+# A JSX element whose tag starts with an upper-case letter, a component: the tag is the
+# callee, $NAME, and a member tag's object its $RECV.
+id: tsx-call-jsx
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: identifier
+      regex: "^\\p{Lu}"
+      pattern: $NAME
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: name
+            any:
+              - kind: jsx_opening_element
+              - kind: jsx_self_closing_element
+    - kind: property_identifier
+      pattern: $NAME
+      any:
+        - follows:
+            stopBy: end
+            pattern: $RECV
+            any:
+              - kind: identifier
+              - { kind: member_expression, regex: "^[\\w$.]+$" }
+        - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: property
+            kind: member_expression
+            regex: "^\\p{Lu}"
+            inside:
+              field: name
+              any:
+                - kind: jsx_opening_element
+                - kind: jsx_self_closing_element
+---
+id: tsx-import-static
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: import_statement
+  has: { field: source, pattern: $SPEC }
+  all:
+    - has: { kind: import_clause }
+    - regex: "^"
+      not:
+        any:
+          - has: { regex: "^type$", not: { kind: import_clause } }
+          - has:
+              kind: import_clause
+              not:
+                {
+                  has:
+                    { any: [{ kind: identifier }, { kind: namespace_import }] },
+                }
+              has:
+                kind: named_imports
+                has: { kind: import_specifier }
+                not:
+                  has:
+                    kind: import_specifier
+                    not: { has: { regex: "^type$", not: { kind: identifier } } }
+---
+# import type ..., or an import every one of whose bindings is marked type.
+id: tsx-import-type-only
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: import_statement
+  has: { field: source, pattern: $SPEC }
+  any:
+    - has: { regex: "^type$", not: { kind: import_clause } }
+    - has:
+        kind: import_clause
+        not:
+          { has: { any: [{ kind: identifier }, { kind: namespace_import }] } }
+        has:
+          kind: named_imports
+          has: { kind: import_specifier }
+          not:
+            has:
+              kind: import_specifier
+              not: { has: { regex: "^type$", not: { kind: identifier } } }
+---
+id: tsx-import-side-effect
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: import_statement
+  has: { field: source, pattern: $SPEC }
+  not:
+    has:
+      any:
+        - kind: import_clause
+        - kind: import_require_clause
+---
+id: tsx-import-re-export
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: export_statement
+  has: { field: source, pattern: $SPEC }
+---
+id: tsx-import-dynamic
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: call_expression
+  all:
+    - has: { field: function, kind: import }
+    - has:
+        field: arguments
+        has:
+          nthChild: 1
+          pattern: $SPEC
+          any:
+            - kind: string
+            - kind: template_string
+              not: { has: { kind: template_substitution } }
+---
+id: tsx-import-require
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: call_expression
+      all:
+        - has: { field: function, kind: identifier, regex: "^require$" }
+        - has:
+            field: arguments
+            has:
+              nthChild: 1
+              pattern: $SPEC
+              any:
+                - kind: string
+                - kind: template_string
+                  not: { has: { kind: template_substitution } }
+    - kind: import_statement
+      has:
+        { kind: import_require_clause, has: { field: source, pattern: $SPEC } }
+---
+# import(x) or require(x) whose argument is neither a string nor a template without
+# substitutions.
+id: tsx-import-computed
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: call_expression
+  all:
+    - has:
+        field: function
+        any:
+          - kind: import
+          - { kind: identifier, regex: "^require$" }
+    - has: { field: arguments, has: { nthChild: 1, regex: "^" } }
+    - regex: "^"
+      not:
+        has:
+          field: arguments
+          has:
+            nthChild: 1
+            any:
+              - kind: string
+              - kind: template_string
+                not: { has: { kind: template_substitution } }
+---
+# One imported binding, $NAMES, as the source module names it: a named import's or a
+# re-export's name.
+id: tsx-import-name
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: import_specifier
+      has: { field: name, pattern: $NAMES }
+    - kind: export_specifier
+      has: { field: name, pattern: $NAMES }
+      not:
+        regex: "^"
+        not:
+          {
+            inside:
+              {
+                stopBy: end,
+                kind: export_statement,
+                has: { field: source, regex: "^" },
+              },
+          }
+---
+# A default import's binding: the name default.
+id: tsx-import-default
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  kind: identifier
+  not: { regex: "^", not: { inside: { kind: import_clause } } }
+---
+# A namespace binding, the name *: import * as x, export * as x from, and export * from,
+# whose match is the statement itself.
+id: tsx-import-namespace
+language: Tsx
+files: ["**/*.tsx"]
+rule:
+  any:
+    - kind: namespace_import
+    - kind: namespace_export
+    - kind: export_statement
+      has: { field: source, kind: string }
+      not:
+        has:
+          any:
+            - kind: export_clause
+            - kind: namespace_export

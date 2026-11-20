@@ -1,0 +1,198 @@
+# hakutaku's ast-grep rules for Python (.py, .pyi). Each rule's id is py-<role>-<what>, its
+# role def, call or import; README.md lists them.
+#
+# A positive relational rule copies the node it reaches into every match's output, so rules
+# reach only small nodes or a definition's own wrapper. Any wider context, such as "at module
+# level", is checked as a double negation, `not: { regex: "^", not: <rule> }`, which matches
+# exactly when <rule> does and copies nothing.
+#
+# A def, from its first decorator when it has one. The outline makes it a method directly in
+# a class body, and qualifies it outer.inner inside a function.
+id: py-def-function
+language: Python
+files: ["**/*.py", "**/*.pyi"]
+rule:
+  any:
+    - kind: decorated_definition
+      has:
+        field: definition
+        kind: function_definition
+        has: { field: name, pattern: $NAME }
+    - kind: function_definition
+      not: { inside: { kind: decorated_definition } }
+      has: { field: name, pattern: $NAME }
+---
+id: py-def-class
+language: Python
+files: ["**/*.py", "**/*.pyi"]
+rule:
+  any:
+    - kind: decorated_definition
+      has:
+        field: definition
+        kind: class_definition
+        has: { field: name, pattern: $NAME }
+    - kind: class_definition
+      not: { inside: { kind: decorated_definition } }
+      has: { field: name, pattern: $NAME }
+---
+# A module-level assignment of a value to an UPPER_CASE name.
+id: py-def-constant
+language: Python
+files: ["**/*.py", "**/*.pyi"]
+rule:
+  kind: assignment
+  has:
+    {
+      field: left,
+      kind: identifier,
+      regex: "^_*\\p{Lu}[\\p{Lu}\\p{Nd}_]*$",
+      pattern: $NAME,
+    }
+  all:
+    - regex: "^"
+      not: { regex: "^", not: { has: { field: right, regex: "^" } } }
+    - regex: "^"
+      not: { has: { field: right, kind: lambda } }
+    - regex: "^"
+      not:
+        {
+          regex: "^",
+          not:
+            {
+              inside: { kind: expression_statement, inside: { kind: module } },
+            },
+        }
+---
+# A module-level name = lambda ...
+id: py-def-lambda
+language: Python
+files: ["**/*.py", "**/*.pyi"]
+rule:
+  kind: assignment
+  has: { field: left, kind: identifier, pattern: $NAME }
+  all:
+    - regex: "^"
+      not: { regex: "^", not: { has: { field: right, kind: lambda } } }
+    - regex: "^"
+      not:
+        {
+          regex: "^",
+          not:
+            {
+              inside: { kind: expression_statement, inside: { kind: module } },
+            },
+        }
+---
+# A call: the callee's name, $NAME, and for an attribute callee the object, $RECV, when it is a
+# plain name or attribute path.
+id: py-call-call
+language: Python
+files: ["**/*.py", "**/*.pyi"]
+rule:
+  any:
+    - kind: identifier
+      pattern: $NAME
+      not: { regex: "^", not: { inside: { field: function, kind: call } } }
+    - kind: identifier
+      pattern: $NAME
+      any:
+        - follows:
+            stopBy: end
+            pattern: $RECV
+            any:
+              - kind: identifier
+              - { kind: attribute, regex: "^[\\w.]+$" }
+        - regex: "^"
+      not:
+        regex: "^"
+        not:
+          inside:
+            field: attribute
+            kind: attribute
+            inside: { field: function, kind: call }
+---
+# import a.b, c as d: one match per module, $SPEC; from x import y: the statement, $SPEC the
+# module as written, relative dots kept.
+id: py-import-static
+language: Python
+files: ["**/*.py", "**/*.pyi"]
+rule:
+  any:
+    - kind: dotted_name
+      pattern: $SPEC
+      not:
+        regex: "^"
+        not:
+          any:
+            - inside: { field: name, kind: import_statement }
+            - inside:
+                field: name
+                kind: aliased_import
+                inside: { kind: import_statement }
+    - kind: import_from_statement
+      has: { field: module_name, pattern: $SPEC }
+---
+# One name a from-import takes, $NAMES, as the module names it, or *.
+id: py-import-name
+language: Python
+files: ["**/*.py", "**/*.pyi"]
+rule:
+  any:
+    - kind: dotted_name
+      pattern: $NAMES
+      not:
+        regex: "^"
+        not:
+          any:
+            - inside: { field: name, kind: import_from_statement }
+            - inside:
+                field: name
+                kind: aliased_import
+                inside: { kind: import_from_statement }
+    - kind: wildcard_import
+      pattern: $NAMES
+---
+# __import__("x") and importlib.import_module("x"), with a plain string.
+id: py-import-dynamic
+language: Python
+files: ["**/*.py", "**/*.pyi"]
+rule:
+  kind: call
+  all:
+    - has:
+        field: function
+        any:
+          - { kind: identifier, regex: "^__import__$" }
+          - { kind: attribute, regex: "^importlib\\.import_module$" }
+    - has:
+        field: arguments
+        has:
+          nthChild: 1
+          kind: string
+          pattern: $SPEC
+          not: { has: { kind: interpolation } }
+          has: { kind: string_start, regex: '^[rRuU]?[''"]' }
+---
+# The same calls with any other first argument.
+id: py-import-computed
+language: Python
+files: ["**/*.py", "**/*.pyi"]
+rule:
+  kind: call
+  all:
+    - has:
+        field: function
+        any:
+          - { kind: identifier, regex: "^__import__$" }
+          - { kind: attribute, regex: "^importlib\\.import_module$" }
+    - has: { field: arguments, has: { nthChild: 1, regex: "^" } }
+    - regex: "^"
+      not:
+        has:
+          field: arguments
+          has:
+            nthChild: 1
+            kind: string
+            not: { has: { kind: interpolation } }
+            has: { kind: string_start, regex: '^[rRuU]?[''"]' }
