@@ -55,23 +55,29 @@ function withExtensions(candidate: string): string[] {
 // then with .ts, .tsx, .mts and .cts in place of .js, .jsx, .mjs, .cjs or .d.ts. Only the first
 // and the last such directory are tried: the first is a package's build directory (dist/lib/x.js),
 // the last one below a package named lib (packages/lib/dist/x.js), and trying every one would
-// cost a path of n segments n times its length.
+// cost a path of n segments n times its length. For the same reason, the tsconfigs are read
+// once for each list (which must not change between calls) and looked up by the path's own
+// directories, and one output directory maps from its first MAX_ROOTS different rootDirs only,
+// so that a repo of many tsconfigs costs no path more than a few candidates.
 export function sourceForBuilt(
   path: string,
   tsconfigs: ReadonlyArray<{ dir: string; outDir?: string; rootDir?: string }>,
   exists: (p: string) => boolean,
 ): string | null {
   if (exists(path)) return path;
-  const candidates: string[] = [];
-  for (const t of tsconfigs) {
-    if (t.outDir === undefined || t.rootDir === undefined) continue;
-    const out = repoDir(t.dir, t.outDir);
-    const root = repoDir(t.dir, t.rootDir);
-    if (out === null || root === null) continue;
-    if (out === "") candidates.push(posix.join(root, path));
-    else if (path.startsWith(`${out}/`))
-      candidates.push(posix.join(root, path.slice(out.length + 1)));
+  const { byOut, lengths } = mappingOf(tsconfigs);
+  const found: Array<{ order: number; candidate: string }> = [];
+  const add = (out: string, rest: string): void => {
+    for (const { order, root } of byOut.get(out) ?? []) {
+      found.push({ order, candidate: posix.join(root, rest) });
+    }
+  };
+  add("", path);
+  for (let i = path.indexOf("/"); i > 0; i = path.indexOf("/", i + 1)) {
+    if (lengths.has(i)) add(path.slice(0, i), path.slice(i + 1));
   }
+  found.sort((a, b) => a.order - b.order);
+  const candidates = found.map((f) => f.candidate);
   const segments = path.split("/");
   const built: number[] = [];
   for (let i = 0; i < segments.length - 1; i++) {
@@ -87,6 +93,40 @@ export function sourceForBuilt(
     for (const c of withExtensions(candidate)) if (exists(c)) return c;
   }
   return null;
+}
+
+// The rootDirs one output directory maps from, at most: tsc builds of one outDir from more
+// would overwrite each other's files.
+const MAX_ROOTS = 8;
+
+interface Mapping {
+  // each output directory ("" for the repo top) -> its rootDirs, by the first tsconfig to map each
+  byOut: Map<string, Array<{ order: number; root: string }>>;
+  // the lengths of the output directories other than the repo top
+  lengths: Set<number>;
+}
+
+const mappings = new WeakMap<object, Mapping>();
+
+function mappingOf(
+  tsconfigs: ReadonlyArray<{ dir: string; outDir?: string; rootDir?: string }>,
+): Mapping {
+  let mapping = mappings.get(tsconfigs);
+  if (mapping !== undefined) return mapping;
+  mapping = { byOut: new Map(), lengths: new Set() };
+  tsconfigs.forEach((t, order) => {
+    if (t.outDir === undefined || t.rootDir === undefined) return;
+    const out = repoDir(t.dir, t.outDir);
+    const root = repoDir(t.dir, t.rootDir);
+    if (out === null || root === null) return;
+    const roots = mapping.byOut.get(out) ?? [];
+    if (roots.length >= MAX_ROOTS || roots.some((r) => r.root === root)) return;
+    roots.push({ order, root });
+    mapping.byOut.set(out, roots);
+    if (out !== "") mapping.lengths.add(out.length);
+  });
+  mappings.set(tsconfigs, mapping);
+  return mapping;
 }
 
 // outDir and rootDir of each of the profile's tsconfigs that is tracked and reads as JSONC,

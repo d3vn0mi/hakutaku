@@ -112,3 +112,80 @@ it("skips a tsconfig without both outDir and rootDir, or whose rootDir leaves th
     ),
   ).toBeNull();
 });
+
+it("tries the tsconfigs in their order, whichever output directory each maps", () => {
+  const tsconfigs = [
+    { dir: "web", outDir: "dist", rootDir: "a" },
+    { dir: "x", outDir: "..", rootDir: "../r" },
+    { dir: "web", outDir: "dist", rootDir: "b" },
+  ];
+  expect(
+    sourceForBuilt(
+      "web/dist/s.js",
+      tsconfigs,
+      among("web/b/s.ts", "r/web/dist/s.ts"),
+    ),
+  ).toBe("r/web/dist/s.ts");
+  expect(
+    sourceForBuilt(
+      "web/dist/s.js",
+      tsconfigs,
+      among("web/b/s.ts", "web/a/s.ts"),
+    ),
+  ).toBe("web/a/s.ts");
+  // the first tsconfig maps web/dist, the second the repo top
+  expect(
+    sourceForBuilt(
+      "web/dist/s.js",
+      tsconfigs,
+      among("r/web/dist/s.ts", "web/a/s.ts"),
+    ),
+  ).toBe("web/a/s.ts");
+});
+
+it("maps one output directory from its first 8 different root directories only", () => {
+  // t<i>/tsconfig.json each build out/ from r<i>/
+  const tsconfigs = Array.from({ length: 10 }, (_, i) => ({
+    dir: `t${i}`,
+    outDir: "../out",
+    rootDir: `../r${i}`,
+  }));
+  expect(sourceForBuilt("out/x.js", tsconfigs, among("r7/x.ts"))).toBe(
+    "r7/x.ts",
+  );
+  expect(sourceForBuilt("out/x.js", tsconfigs, among("r8/x.ts"))).toBeNull();
+  // a pair seen before takes no place: r7 is still the eighth
+  const repeated = [
+    { dir: "t0", outDir: "../out", rootDir: "../r0" },
+    { dir: ".", outDir: "out", rootDir: "r0" },
+    ...tsconfigs.slice(1),
+  ];
+  expect(sourceForBuilt("out/x.js", repeated, among("r7/x.ts"))).toBe(
+    "r7/x.ts",
+  );
+});
+
+it("maps a path in time that does not grow with the tsconfigs of other or shared output directories", () => {
+  // 500 tsconfigs build the repo top from r<i>/, and 500 more build u<i>/dist from u<i>/src;
+  // trying each for every path, which this once did, took about 20 s
+  const tsconfigs = [
+    ...Array.from({ length: 500 }, (_, i) => ({
+      dir: `t${i}`,
+      outDir: "..",
+      rootDir: `../r${i}`,
+    })),
+    ...Array.from({ length: 500 }, (_, i) => ({
+      dir: `u${i}`,
+      outDir: "dist",
+      rootDir: "src",
+    })),
+  ];
+  const started = performance.now();
+  for (let j = 0; j < 10_000; j++) {
+    sourceForBuilt(`p${j}/dist/x${j}.js`, tsconfigs, () => false);
+  }
+  expect(performance.now() - started).toBeLessThan(1000);
+  expect(sourceForBuilt("u7/dist/x.js", tsconfigs, among("u7/src/x.ts"))).toBe(
+    "u7/src/x.ts",
+  );
+}, 60_000);
