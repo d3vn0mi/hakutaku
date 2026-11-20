@@ -328,6 +328,8 @@ it("reads a single-file module's imports with ast, and joins the package's impor
       "from observatory import a, missing",
       "from .sky import nothing",
       "import astropy.units as u",
+      "def load():",
+      "    import skyfield",
     ),
   });
   expect(ctx.profile.python.singleFileModules).toStrictEqual([
@@ -348,8 +350,15 @@ it("reads a single-file module's imports with ast, and joins the package's impor
     hop("skyctl", "observatory", 4),
     hop("skyctl", "observatory.a", 3),
     hop("skyctl", "observatory.a", 4),
+    // an import inside a function counts too
+    hop("skyctl", "skyfield", 8),
   ]);
-  expect([...facts.external]).toStrictEqual(["__future__", "astropy", "json"]);
+  expect([...facts.external]).toStrictEqual([
+    "__future__",
+    "astropy",
+    "json",
+    "skyfield",
+  ]);
 }, 300_000);
 
 it("finds each chain through a module outside the layers, and skips a contract it cannot check, saying why", async () => {
@@ -485,4 +494,63 @@ it("leaves out a package Python finds elsewhere first, and builds an empty graph
     unreadable: [],
     warnings: [leftOut, unchecked],
   });
+});
+
+// Python's path holds the roots only after the driver and grimp have imported all they need, and
+// behind the standard library, so a package in a root named like a module grimp imports never
+// stands in for it.
+it("puts its roots on Python's path only after grimp is imported, behind the standard library", () => {
+  const root = mkdtempSync(join(tmpdir(), "hakutaku-oracle-grimp-order-"));
+  made.push(root);
+  const markers = markerDir();
+  const view = join(root, "view");
+  const write = (path: string, text: string) => {
+    mkdirSync(dirname(join(view, path)), { recursive: true });
+    writeFileSync(join(view, path), text);
+  };
+  // dataclasses: a module grimp imports, which Python has not loaded at start
+  write(
+    "dataclasses/__init__.py",
+    `open(${JSON.stringify(join(markers, "dataclasses"))}, "w").write("imported")\n`,
+  );
+  write("stars/__init__.py", "import dataclasses\n");
+  // csv: a standard-library module that neither the driver nor grimp has imported, which Python
+  // therefore looks for along its path
+  write("csv/__init__.py", "");
+  // the plant writes its marker when Python finds it ahead of the standard library
+  execFileSync(pinnedPython(), [
+    "-I",
+    "-S",
+    "-B",
+    "-c",
+    `import sys; sys.path.insert(0, ${JSON.stringify(view)})\nimport dataclasses`,
+  ]);
+  expect(readdirSync(markers)).toStrictEqual(["dataclasses"]);
+  rmSync(join(markers, "dataclasses"));
+  const input = join(root, "input.json");
+  writeFileSync(
+    input,
+    JSON.stringify({
+      enginesPython: join(resolve(defaultEnginesDir()), "python"),
+      roots: [view],
+      packages: ["csv", "stars"],
+      singleFileModules: [],
+      layers: [],
+    }),
+  );
+  const out = JSON.parse(
+    execFileSync(pinnedPython(), ["-I", "-S", "-B", DRIVER, input], {
+      cwd: root,
+      encoding: "utf8",
+    }),
+  );
+  expect(out.modules).toStrictEqual(["stars"]);
+  expect(out.external).toStrictEqual(["dataclasses"]);
+  expect(out.warnings).toStrictEqual([
+    expect.stringMatching(
+      /^left out the package csv: Python imports that name from \/.+\/csv\.py$/,
+    ),
+  ]);
+  expect(out.warnings[0]).not.toContain(view);
+  expect(readdirSync(markers)).toStrictEqual([]);
 });
