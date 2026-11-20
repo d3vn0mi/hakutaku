@@ -12,6 +12,7 @@ import { join, relative } from "node:path";
 import { afterAll, expect, it } from "vitest";
 import {
   type EngineRun,
+  type EngineRunResult,
   engineEnv,
   runEngine,
 } from "../../../src/extract/run.js";
@@ -121,6 +122,60 @@ it("runs in its cwd at nice 19, and reports stdout and the exit code", async () 
     stderrTail: "",
   });
 });
+
+// An engine that starts a process of its own, which inherits its stdout and stderr and sleeps
+// for a minute, writes that process's pid to a file, and then runs then. The test stops the
+// process by that pid when it ends, whatever happened.
+async function withGrandchild(
+  then: string,
+  check: (r: () => Promise<EngineRunResult>) => Promise<void>,
+  patch: Partial<EngineRun> = {},
+): Promise<void> {
+  const pidFile = join(tmp(), "grandchild.pid");
+  const script = `
+const { spawn } = require("node:child_process");
+const g = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { stdio: "inherit" });
+require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(g.pid));
+${then}`;
+  try {
+    await check(() => runEngine(run(script, { timeoutMs: 500, ...patch })));
+  } finally {
+    try {
+      process.kill(Number(readFileSync(pidFile, "utf8")), "SIGKILL");
+    } catch {
+      // never started, or already gone
+    }
+  }
+}
+
+it("ends a run at its timeout though a process the engine started still holds its output", () =>
+  withGrandchild("setTimeout(() => {}, 60000);", async (go) => {
+    const r = await go();
+    expect(r.timedOut).toBe(true);
+    expect(r.signal).toBe("SIGKILL");
+    expect(r.wallMs).toBeLessThan(5000);
+  }));
+
+it("ends a run at its timeout when the engine has exited but a process it started holds its output", () =>
+  withGrandchild('console.log("orbit"); g.unref();', async (go) => {
+    const r = await go();
+    expect(r.timedOut).toBe(true);
+    expect(r.exitCode).toBe(0);
+    expect(r.wallMs).toBeLessThan(5000);
+  }));
+
+it("fails a run over 64 MiB at once though a process the engine started still holds its output", () =>
+  withGrandchild(
+    `process.stdout.write(Buffer.alloc(${MIB_64 + 1}, "a")); setTimeout(() => {}, 60000);`,
+    async (go) => {
+      const started = performance.now();
+      await expect(go()).rejects.toThrow(
+        "ast-grep: stdout passed 64 MiB; the run was stopped",
+      );
+      expect(performance.now() - started).toBeLessThan(5000);
+    },
+    { timeoutMs: 30_000 },
+  ));
 
 it("keeps a stdout of exactly 64 MiB", async () => {
   const r = await runEngine(

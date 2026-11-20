@@ -80,8 +80,19 @@ export function runEngine(run: EngineRun): Promise<EngineRunResult> {
     let peakRssBytes: number | null = null;
     let cpuMs: number | null = null;
     let settled = false;
+    let stopped = false;
+    let exited = false;
+    // A process the engine started can hold its stdout and stderr open after the engine has
+    // gone, which would keep close from coming. Once a stopped engine has exited, its pipes
+    // are closed on this side, so a stop always ends the run.
+    const release = (): void => {
+      child.stdout?.destroy();
+      child.stderr?.destroy();
+    };
     const stop = (): void => {
+      stopped = true;
       child.kill("SIGKILL");
+      if (exited) release();
     };
 
     child.stdout?.on("data", (chunk: Buffer) => {
@@ -154,7 +165,11 @@ export function runEngine(run: EngineRun): Promise<EngineRunResult> {
       clearInterval(poll);
     };
     // Once the engine is reaped its pid may name another process, so sampling stops here.
-    child.once("exit", () => clearInterval(poll));
+    child.once("exit", () => {
+      exited = true;
+      clearInterval(poll);
+      if (stopped) release();
+    });
     // Without a pid the spawn failed. Otherwise the error is a failed kill, and close still comes.
     child.once("error", (error: NodeJS.ErrnoException) => {
       if (pid !== undefined || settled) return;
