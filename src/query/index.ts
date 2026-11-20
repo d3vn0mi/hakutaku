@@ -16,6 +16,7 @@ export { queryFind } from "./find.js";
 export { queryImpact } from "./impact.js";
 export { MATCH_LEVELS, type MatchLevel, matchLevel } from "./match.js";
 export { queryOverview } from "./overview.js";
+export { queryPath } from "./path.js";
 export { queryReferences } from "./references.js";
 export {
   KIND_NAME,
@@ -23,6 +24,7 @@ export {
   resolveTarget,
   wrongKind,
 } from "./resolve.js";
+export { cycleSeverityOf, queryRules } from "./rules.js";
 export { locationText, readSource, sourceLines } from "./source.js";
 export {
   type ComponentInfo,
