@@ -299,7 +299,7 @@ function listsStore(): Store {
     ["<module>", "module", 1, 1, 0],
     ["f1", "function", 2, 1, 1],
     ["f2", "function", 3, 1, 4],
-    ["f3", "function", 4, 1, 4],
+    ["e3", "function", 4, 1, 4],
     ["b", "constant", 5, 1, 2],
     ["a", "constant", 5, 10, 2],
     ["f6", "function", 6, 1, 0],
@@ -324,14 +324,15 @@ function listsStore(): Store {
     signature: null,
     producer: "ast-grep",
   }));
-  c.def_metrics = defs.flatMap(([, kind, , , used], i) =>
+  // b is used by 2 files, only 1 of them through a compiler-bound use
+  c.def_metrics = defs.flatMap(([qualname, kind, , , used], i) =>
     kind === "module"
       ? []
       : [
           {
             def_id: i + 1,
             used_by_files: used,
-            used_by_files_bound: used,
+            used_by_files_bound: qualname === "b" ? 1 : used,
             mentioned_by_tests: 0,
           },
         ],
@@ -404,10 +405,25 @@ describe("the lists of an answer", () => {
   it("keeps 8 definitions by users, line and qualname, without the module row", () => {
     expect(hub.definitions.total).toBe(9);
     expect(hub.definitions.top.map((d) => d.id)).toEqual(
-      ["f2", "f3", "a", "b", "f1", "f6", "f7", "f8"].map(
+      ["f2", "e3", "a", "b", "f1", "f6", "f7", "f8"].map(
         (q) => `x:a/h.ts#${q}`,
       ),
     );
+  });
+
+  it("labels a definition scoped when one counted file has no bound use", () => {
+    const def = (target: string) =>
+      asDef(queryExplain(ls, { repo: "x", target }, X_CTX));
+    expect(def("a/h.ts#b")).toMatchObject({
+      usedByFiles: 2,
+      label: "scoped",
+      note: "includes files that use the name inside files importing its module, without a compiler binding; code_callers labels each use",
+    });
+    expect(def("a/h.ts#a")).toMatchObject({
+      usedByFiles: 2,
+      label: "bound",
+      note: "every counted file has a compiler-bound use; code_callers lists each use with its line",
+    });
   });
 
   it("explains test support as a test file", () =>

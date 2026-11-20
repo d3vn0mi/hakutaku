@@ -560,4 +560,9 @@ describe("the repo answer's caps and orders", () => {
       entryPoints: [6, 5, 4, 3, 2, 1].map((k) => `y:c00/e${k}.ts`),
       view: "#c00~",
     }));
+
+  it("leaves tests out of a component's core files", () =>
+    expect(
+      asComponent(queryOverview(ys, { repo: "y", component: "a" }, Y_CTX)),
+    ).toMatchObject({ id: "y:a/", files: 0, tests: 1, core: [] }));
 });
