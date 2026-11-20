@@ -140,6 +140,25 @@ The road to 0.1:
         few milliseconds, and no network connection was opened.
 - [ ] **Engine and store.** Export, sandboxed extract, the store, metrics, launch manifests, the
       profile generator, redaction, gates, the synthetic sample and its oracle, `hakutaku map`.
+      In progress, 12 of 30 steps done:
+  - [x] **The store.** One SQLite file per build, with a full-text index and a content hash, written
+        deterministically. Its reader, its cache and the metric algorithms.
+  - [x] **Redaction.** The rules that replace secret-shaped text, and the denylist that keeps files
+        such as `.env` and private keys out of every snapshot.
+  - [x] **The registry.** Which repositories are mapped, a build lock, and whether each map is still
+        current. Branches and tags are read from `.git` as data, without running git.
+  - [x] **Layout profiles.** Files are classified as code, tests, config or docs and grouped into
+        components. Entry points are read as data from launch manifests: `package.json`,
+        Dockerfiles, Procfiles, systemd units, CI workflows, Python packaging and Next.js routes.
+        A generator writes a starting profile from a snapshot.
+  - [ ] **Export.** A hardened read of a git checkout into a snapshot.
+  - [ ] **The engines and the sandbox.** Pinned engines, their install, and extract inside the
+        sandbox.
+  - [ ] **Merge and gates.** Engine output merged into one store, metrics stored, quality gates,
+        `hakutaku extract`.
+  - [ ] **Proof.** The synthetic sample and its golden answers, build acceptance, and the
+        hostile-repository cases.
+  - [ ] **The commands** `map`, `list`, `profile` and `doctor`, and deep Python detail.
 - [ ] **Tools and MCP server.** The 13 tools, with labels, paging and errors. `hakutaku query`. The
       golden tests.
 - [ ] **Viewer.** Lenses, depth levels, search and filters, the source view, accessibility and the
