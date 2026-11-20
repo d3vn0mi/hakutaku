@@ -3,7 +3,7 @@ import {
   computeFreshness,
   type RefResult,
 } from "../../../src/registry/index.js";
-import type { Attempt } from "../../../src/store/index.js";
+import type { Attempt, NotBuilt } from "../../../src/store/index.js";
 
 const A = "a".repeat(40),
   B = "b".repeat(40);
@@ -13,92 +13,148 @@ const att = (result: Attempt["result"], reason?: string): Attempt => ({
   result,
   reason,
 });
+const notBuilt = (reason: string): NotBuilt => ({ code: "not_built", reason });
+const NONE = notBuilt("not built yet");
 const REFTABLE = "reftable ref storage is not read";
+const UNREAD: RefResult = { commit: null, reason: REFTABLE };
 
 it.each<
   [
-    string | null,
+    string | NotBuilt,
     RefResult,
     Attempt | null,
+    string,
     ReturnType<typeof computeFreshness>,
   ]
 >([
-  [A, { commit: A }, att("built"), { headCommit: A, stale: false }],
+  [A, { commit: A }, att("built"), "main", { headCommit: A, stale: false }],
   [
     A,
     { commit: B },
     att("built"),
-    { headCommit: B, stale: true, reason: "ref moved to bbbbbbbbbbbb" },
+    "main",
+    {
+      headCommit: B,
+      stale: true,
+      reason: "main is at bbbbbbbbbbbb, the store at aaaaaaaaaaaa",
+    },
   ],
   [
     A,
-    { commit: null, reason: REFTABLE },
+    UNREAD,
     null,
+    "main",
     { headCommit: null, stale: "unknown", reason: REFTABLE },
   ],
   [
     A,
     { commit: A },
     att("gates-failed", "denylist: 1 denylisted path: sim/.env"),
+    "main",
     {
       headCommit: A,
       stale: true,
-      reason: "last build gates-failed: denylist: 1 denylisted path: sim/.env",
+      reason:
+        "the last build failed its gates: denylist: 1 denylisted path: sim/.env",
     },
   ],
   [
-    null,
+    NONE,
     { commit: A },
     null,
-    { headCommit: A, stale: true, reason: "not built yet" },
+    "main",
+    { headCommit: A, stale: true, reason: "not built: not built yet" },
   ],
-  // rule 1, a failed build, with and without its reason, and before an unreadable head
+  // a failed build, with and without its reason, and a failed attempt before an unreadable head
   [
     A,
     { commit: A },
     att("failed", "ast-grep exited 2"),
+    "main",
     {
       headCommit: A,
       stale: true,
-      reason: "last build failed: ast-grep exited 2",
+      reason: "the last build failed: ast-grep exited 2",
     },
   ],
   [
     A,
     { commit: A },
     att("failed"),
-    { headCommit: A, stale: true, reason: "last build failed" },
+    "main",
+    { headCommit: A, stale: true, reason: "the last build failed" },
   ],
   [
     A,
-    { commit: null, reason: REFTABLE },
+    { commit: B },
+    att("gates-failed"),
+    "main",
+    { headCommit: B, stale: true, reason: "the last build failed its gates" },
+  ],
+  [
+    A,
+    UNREAD,
     att("failed", "ast-grep exited 2"),
+    "main",
     {
       headCommit: null,
       stale: true,
-      reason: "last build failed: ast-grep exited 2",
+      reason: "the last build failed: ast-grep exited 2",
     },
   ],
-  // rule 2 before rule 3, rule 3 before rule 4, and a skipped build is no failure
+  // a failed attempt before a store that is not built: a first build whose gates failed leaves
+  // an entry and no store, and a build still running reads as failed until it ends
   [
-    null,
-    { commit: null, reason: REFTABLE },
-    null,
-    { headCommit: null, stale: "unknown", reason: REFTABLE },
+    NONE,
+    { commit: A },
+    att("gates-failed", "unresolved imports grew"),
+    "main",
+    {
+      headCommit: A,
+      stale: true,
+      reason: "the last build failed its gates: unresolved imports grew",
+    },
   ],
   [
+    NONE,
+    UNREAD,
+    att("failed", "interrupted or still running (pid 7): running ast-grep"),
+    "main",
+    {
+      headCommit: null,
+      stale: true,
+      reason:
+        "the last build failed: interrupted or still running (pid 7): running ast-grep",
+    },
+  ],
+  // a store that is not built, before an unreadable head, with the store's own reason
+  [
+    NONE,
+    UNREAD,
     null,
+    "main",
+    { headCommit: null, stale: true, reason: "not built: not built yet" },
+  ],
+  [
+    notBuilt("store unreadable"),
     { commit: B },
     att("built"),
-    { headCommit: B, stale: true, reason: "not built yet" },
+    "main",
+    { headCommit: B, stale: true, reason: "not built: store unreadable" },
   ],
+  // a skipped build is no failure, and the reason names the ref as the entry gives it
   [
     A,
     { commit: B },
     att("skipped"),
-    { headCommit: B, stale: true, reason: "ref moved to bbbbbbbbbbbb" },
+    "origin/main",
+    {
+      headCommit: B,
+      stale: true,
+      reason: "origin/main is at bbbbbbbbbbbb, the store at aaaaaaaaaaaa",
+    },
   ],
-  [A, { commit: A }, att("skipped"), { headCommit: A, stale: false }],
-])("computeFreshness(%s, %j, %j)", (built, head, attempt, want) =>
-  expect(computeFreshness(built, head, attempt)).toStrictEqual(want),
+  [A, { commit: A }, att("skipped"), "HEAD", { headCommit: A, stale: false }],
+])("computeFreshness(%j, %j, %j, %s)", (built, head, attempt, ref, want) =>
+  expect(computeFreshness(built, head, attempt, ref)).toStrictEqual(want),
 );

@@ -5,6 +5,13 @@ export {
   storePathFor,
 } from "./dirs.js";
 export { computeFreshness } from "./freshness.js";
+export {
+  createRegistryHost,
+  mapArgv,
+  type RegistryHostDeps,
+  registryHost,
+  UnknownRepoError,
+} from "./host.js";
 export { withBuildLock } from "./lock.js";
 export { createRefReader } from "./refs.js";
 export { findEntry, loadRegistry, saveEntry } from "./registry.js";
