@@ -397,6 +397,87 @@ it("refuses a path holding .., and writes nothing outside snapshot/", async () =
   expect(filesOnDisk(join(out, "snapshot"))).toEqual(["web/src/a.ts"]);
 });
 
+it("refuses a path holding a .git component, so no git directory is planted in snapshot/", async () => {
+  // A crafted tree: a .git tree under web/ whose config names a core.fsmonitor command, and a
+  // .git blob at the top that points git elsewhere. git refuses both on checkout.
+  const repo = await repoWith({ "web/src/a.ts": "export {};\n" });
+  const NUL = String.fromCharCode(0);
+  const blob = (text: string): string => {
+    const file = join(tmp(), "blob");
+    writeFileSync(file, text);
+    return git(repo, "hash-object", "-w", file);
+  };
+  // mktree, or the tree object written by hand when a newer git's mktree refuses the name.
+  const tree = (entries: Array<[string, string, string]>): string => {
+    const sorted = [...entries].sort((a, b) =>
+      Buffer.compare(
+        Buffer.from(a[0] === "040000" ? `${a[2]}/` : a[2]),
+        Buffer.from(b[0] === "040000" ? `${b[2]}/` : b[2]),
+      ),
+    );
+    try {
+      return gitInput(
+        repo,
+        sorted
+          .map(
+            ([m, s, n]) =>
+              `${m} ${m === "040000" ? "tree" : "blob"} ${s}${TAB}${n}${NUL}`,
+          )
+          .join(""),
+        "mktree",
+        "-z",
+      );
+    } catch {
+      const file = join(tmp(), "tree");
+      writeFileSync(
+        file,
+        Buffer.concat(
+          sorted.map(([m, s, n]) =>
+            Buffer.concat([
+              Buffer.from(`${m === "040000" ? "40000" : m} ${n}${NUL}`),
+              Buffer.from(s, "hex"),
+            ]),
+          ),
+        ),
+      );
+      return git(repo, "hash-object", "-t", "tree", "-w", "--literally", file);
+    }
+  };
+  const empty = tree([["100644", blob(""), "keep"]]);
+  const dotGit = tree([
+    ["100644", blob("[core]\n\tfsmonitor = false\n"), "config"],
+    ["100644", blob("ref: refs/heads/main\n"), "HEAD"],
+    ["040000", empty, "objects"],
+    ["040000", empty, "refs"],
+  ]);
+  const src = rev(repo, "HEAD:web/src");
+  const web = tree([
+    ["040000", dotGit, ".GIT"],
+    ["040000", dotGit, ".git"],
+    ["040000", src, "src"],
+  ]);
+  const root = tree([
+    ["100644", blob("gitdir: /nonexistent\n"), ".git"],
+    ["040000", web, "web"],
+  ]);
+  const commit = git(repo, "commit-tree", root, "-m", "a crafted tree");
+  const out = join(tmp(), "out");
+  await exportRepo({ repo, ref: commit, out });
+  const manifest = readJson<ExportManifest>(join(out, "export.json"));
+  const inside = ["HEAD", "config", "objects/keep", "refs/keep"];
+  expect(manifest.refused).toEqual([
+    { path: ".git", reason: "dotgit" },
+    ...inside.map((p) => ({ path: `web/.GIT/${p}`, reason: "dotgit" })),
+    ...inside.map((p) => ({ path: `web/.git/${p}`, reason: "dotgit" })),
+  ]);
+  expect(manifest.tree.map((e) => e.path)).toEqual(["web/src/a.ts"]);
+  expect(onDisk(join(out, "snapshot"))).toEqual([
+    ["web", "dir", 0o555],
+    ["web/src", "dir", 0o555],
+    ["web/src/a.ts", "file", 0o444],
+  ]);
+});
+
 it("refuses a second path that a case-insensitive file system cannot hold beside the first", async () => {
   const precomposed = `${String.fromCharCode(0xe9)}toile.ts`;
   const decomposed = `e${String.fromCharCode(0x301)}toile.ts`;

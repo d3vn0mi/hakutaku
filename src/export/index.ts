@@ -78,7 +78,8 @@ export interface ExportManifest {
   submodules: Array<{ path: string; commit: string }>;
   refused: Array<{
     path: string;
-    reason: "dotdot" | "absolute" | "control-char" | "collision"; // collision: an addition
+    // collision and dotgit: additions
+    reason: "dotdot" | "absolute" | "control-char" | "dotgit" | "collision";
   }>;
   // (addition) kept in snapshot/ and tree, out of every engine's input; in path order
   metadataOnly: Array<{

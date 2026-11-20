@@ -61,6 +61,32 @@ it.each<[string, string | null]>([
   (p, want) => expect(refuseReason(p)).toBe(want),
 );
 
+// A component git itself refuses to check out: .git in any case, or with a code point that
+// HFS+ ignores inside it. Built from codes, so this file holds none raw.
+const ZWNJ = String.fromCharCode(0x200c);
+const BOM = String.fromCharCode(0xfeff);
+it.each<[string, string | null]>([
+  [".git", "dotgit"],
+  [".git/config", "dotgit"],
+  ["web/.GIT/HEAD", "dotgit"],
+  ["web/src/.Git", "dotgit"],
+  [`a/.g${ZWNJ}it/x`, "dotgit"],
+  [`${BOM}.git/hooks/post-checkout`, "dotgit"],
+  ["../.git/x", "dotdot"],
+  ["/.git", "absolute"],
+  [`.git/a${BEL}b`, "control-char"],
+  [".github/workflows/ci.yml", null],
+  [".gitignore", null],
+  [".gitmodules", null],
+  ["x.git", null],
+  ["a.git/b", null],
+  ["web/.git.ts", null],
+  ["git/x", null],
+])(
+  "refuseReason(%j) is %s: a .git component, after the other three",
+  (p, want) => expect(refuseReason(p)).toBe(want),
+);
+
 // A number is a file of that many bytes; a string is the text.
 const bytesOf = (content: number | string): Uint8Array =>
   typeof content === "number"
