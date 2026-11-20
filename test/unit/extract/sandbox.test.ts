@@ -7,7 +7,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
 import {
@@ -52,6 +52,23 @@ const inner = [
 const BWRAP_PROBE = "bwrap --unshare-all --die-with-parent --ro-bind / / true";
 const SYSTEMD_RUN_PROBE =
   "systemd-run --user --wait --quiet --collect -p PrivateNetwork=yes true";
+// The probe that takes systemd-run as the sandbox: a check inside the service that it sees no
+// network interface but loopback. No element holds a space, so the log line splits back.
+const ONLY_LOOPBACK =
+  'process.exit(Object.keys(require("node:os").networkInterfaces()).every((n)=>n==="lo")?0:1)';
+const SYSTEMD_RUN_ISOLATION_PROBE = [
+  "systemd-run",
+  "--user",
+  "--wait",
+  "--quiet",
+  "--collect",
+  "-p",
+  "PrivateNetwork=yes",
+  "--",
+  process.execPath,
+  "-e",
+  ONLY_LOOPBACK,
+];
 
 // The [source, destination] pair after each occurrence of flag.
 const pairsAfter = (a: string[], flag: string): string[][] =>
@@ -265,8 +282,36 @@ it("falls back to systemd-run when bubblewrap fails, probing each once", async (
   const s = await freshSandbox();
   expect(await s.detectSandbox("linux")).toBe("systemd-run");
   expect(await s.detectSandbox("linux")).toBe("systemd-run");
-  expect(logged(log)).toEqual([BWRAP_PROBE, SYSTEMD_RUN_PROBE]);
+  expect(logged(log)).toEqual([
+    BWRAP_PROBE,
+    SYSTEMD_RUN_ISOLATION_PROBE.join(" "),
+  ]);
 });
+
+// A systemd-run stand-in whose service shares the host's network, as a user manager that cannot
+// make a network namespace runs it: it runs what follows "--" right here, and exits 0 otherwise.
+function hostNetworkSystemdRun(): void {
+  const bin = tmp();
+  const file = join(bin, "systemd-run");
+  writeFileSync(
+    file,
+    '#!/bin/sh\nwhile [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done\n[ "$#" -gt 0 ] || exit 0\nshift\nexec "$@"\n',
+  );
+  chmodSync(file, 0o755);
+  vi.stubEnv("PATH", bin);
+}
+const hostHasNetwork = Object.keys(networkInterfaces()).some(
+  (name) => name !== "lo",
+);
+
+it.runIf(hostHasNetwork)(
+  "does not take systemd-run as the sandbox when its service sees the host's network",
+  async () => {
+    hostNetworkSystemdRun();
+    const s = await freshSandbox();
+    expect(await s.detectSandbox("linux")).toBeNull();
+  },
+);
 
 it.each<[string, Partial<Record<"bwrap" | "systemd-run", number>>]>([
   ["both fail", { bwrap: 1, "systemd-run": 1 }],
@@ -319,7 +364,10 @@ it("runs systemd-run alone when it is the sandbox", async () => {
     argv: s.systemdRunArgv(paths, inner),
     warnings: [],
   });
-  expect(logged(log)).toEqual([BWRAP_PROBE, SYSTEMD_RUN_PROBE]);
+  expect(logged(log)).toEqual([
+    BWRAP_PROBE,
+    SYSTEMD_RUN_ISOLATION_PROBE.join(" "),
+  ]);
 });
 
 // The live runs below need the real tools, so they run only where each works.
@@ -329,6 +377,25 @@ const works = (argv: string[]): boolean =>
     .status === 0;
 const bwrapWorks = works(BWRAP_PROBE.split(" "));
 const systemdRunWorks = works(SYSTEMD_RUN_PROBE.split(" "));
+const systemdRunIsolates = works(SYSTEMD_RUN_ISOLATION_PROBE);
+
+// The isolation probe's check, on its own: it passes in a fresh network namespace and fails in the
+// host's, so a probe that passes proves the service had no network.
+it.runIf(bwrapWorks && hostHasNetwork)(
+  "checks for loopback only: true in a new network namespace, false in the host's",
+  () => {
+    const check = [process.execPath, "-e", ONLY_LOOPBACK];
+    const inNamespace = spawnSync(
+      "bwrap",
+      ["--unshare-all", "--die-with-parent", "--ro-bind", "/", "/", ...check],
+      { stdio: "ignore", timeout: 30_000 },
+    );
+    expect(inNamespace.status).toBe(0);
+    const [node = "", ...args] = check;
+    const onHost = spawnSync(node, args, { stdio: "ignore", timeout: 30_000 });
+    expect(onHost.status).toBe(1);
+  },
+);
 
 // A sandbox's directories under the OS temp directory, a file in the export, and a directory
 // outside every bind.
@@ -423,7 +490,7 @@ it.runIf(bwrapWorks && systemdRunWorks)(
   },
 );
 
-it.runIf(systemdRunWorks)(
+it.runIf(systemdRunIsolates)(
   "runs a command under systemd-run with no network, nice 19 and the memory cap",
   () => {
     const { p } = liveLayout();

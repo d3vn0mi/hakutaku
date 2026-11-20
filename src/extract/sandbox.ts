@@ -1,7 +1,8 @@
 // The extraction sandbox. On Linux, extract re-runs itself inside bubblewrap or, where
-// bubblewrap does not work, inside a systemd-run --user service. detectSandbox finds which works,
-// once per process; the argv builders write each command. Every path in a command is absolute:
-// the user manager's PATH may lack the running Node, and systemd-run -p takes no %h.
+// bubblewrap does not work, inside a systemd-run --user service shown to have no network.
+// detectSandbox finds which works, once per process; the argv builders write each command. Every
+// path in a command is absolute: the user manager's PATH may lack the running Node, and
+// systemd-run -p takes no %h.
 import { spawn } from "node:child_process";
 import { isAbsolute, resolve } from "node:path";
 
@@ -29,6 +30,8 @@ const BWRAP_PROBE = [
   "/",
   "true",
 ];
+// Whether systemd-run starts a user service at all: enough for the scope that caps bubblewrap's
+// memory.
 const SYSTEMD_RUN_PROBE = [
   "systemd-run",
   "--user",
@@ -39,10 +42,30 @@ const SYSTEMD_RUN_PROBE = [
   "PrivateNetwork=yes",
   "true",
 ];
+// Whether systemd-run can be the sandbox: a check inside the service that it sees no network
+// interface but loopback. A user manager that cannot make a network namespace (unprivileged user
+// namespaces refused) may still run the service, in the host's network, and exit 0, so
+// systemd-run's own exit code proves nothing about the network.
+const ONLY_LOOPBACK =
+  'process.exit(Object.keys(require("node:os").networkInterfaces()).every((n)=>n==="lo")?0:1)';
+const SYSTEMD_RUN_ISOLATION_PROBE = [
+  "systemd-run",
+  "--user",
+  "--wait",
+  "--quiet",
+  "--collect",
+  "-p",
+  "PrivateNetwork=yes",
+  "--",
+  process.execPath,
+  "-e",
+  ONLY_LOOPBACK,
+];
 const PROBE_TIMEOUT_MS = 30_000;
 
 let bwrapProbe: Promise<boolean> | undefined;
 let systemdRunProbe: Promise<boolean> | undefined;
+let systemdRunIsolationProbe: Promise<boolean> | undefined;
 
 function bwrapWorks(): Promise<boolean> {
   bwrapProbe ??= probe(BWRAP_PROBE);
@@ -54,14 +77,19 @@ function systemdRunWorks(): Promise<boolean> {
   return systemdRunProbe;
 }
 
-// The sandbox this machine has: bubblewrap, else systemd-run, each probed at most once per
-// process, and only on Linux.
+function systemdRunIsolates(): Promise<boolean> {
+  systemdRunIsolationProbe ??= probe(SYSTEMD_RUN_ISOLATION_PROBE);
+  return systemdRunIsolationProbe;
+}
+
+// The sandbox this machine has: bubblewrap, else a systemd-run service with no network, each
+// probed at most once per process, and only on Linux.
 export async function detectSandbox(
   platform: NodeJS.Platform = process.platform,
 ): Promise<Sandbox | null> {
   if (platform !== "linux") return null;
   if (await bwrapWorks()) return "bubblewrap";
-  if (await systemdRunWorks()) return "systemd-run";
+  if (await systemdRunIsolates()) return "systemd-run";
   return null;
 }
 
