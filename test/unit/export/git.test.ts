@@ -182,9 +182,13 @@ it("refuses every transport for a promisor fetch, whatever the repo's protocol c
   for (const [protocol, url] of remotes) {
     git(clone, "remote", "set-url", "origin", url);
     git(clone, "config", `protocol.${protocol}.allow`, "always");
+    // git names the blob it could not read or, where the refused transport ends cat-file first
+    // (seen with git 2.56), the transport; either way no fetch ran, which the canary shows.
     await expect(
       withPath(bin, () => readBlobs(clone, [missingBlob], async () => {})),
-    ).rejects.toThrow(missingBlob);
+    ).rejects.toThrow(
+      new RegExp(`${missingBlob}|transport '${protocol}' not allowed`),
+    );
     expect(existsSync(canary)).toBe(false);
   }
 });
