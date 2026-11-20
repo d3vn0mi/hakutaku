@@ -71,7 +71,9 @@ it("reads the cycle severity in one place, and warn when the store gives none", 
 // The rules store. Cycle 1 is the set {a.ts, b.ts, e.ts}, closed by the chain a.ts -> b.ts ->
 // a.ts; cycle 2 is {c.ts, d.ts, z.ts}, closed by c.ts -> z.ts -> d.ts -> c.ts; cycle 3 is x.ts,
 // which imports itself. The rule findings tie in every way the order breaks, and two of them
-// come from a#.ts and a$.ts, whose paths and IDs sort the other way round.
+// come from a#.ts and a$.ts, and three others go to them, whose paths and IDs sort the other way
+// round. The rows are in the writer's order, (rule, from path, to path), so the row id, which
+// follows the paths, can never stand in for the ID, rule or to comparisons.
 const R_CTX: QueryCtx = Object.freeze({
   repo: "r",
   builtCommit: "fedcba987654",
@@ -154,9 +156,9 @@ function rulesStore(cycleSeverity: Severity = "warn"): Store {
     string,
     [string, string, number][],
   ][] = [
-    ["a-rule", "warn", "b.ts", "a.ts", [["b.ts", "a.ts", 1]]],
-    ["a-rule", "warn", "b.ts", "c.ts", [["b.ts", "c.ts", 2]]],
-    ["b-rule", "warn", "b.ts", "a.ts", [["b.ts", "a.ts", 1]]],
+    ["a-rule", "warn", "b.ts", "a#.ts", [["b.ts", "a#.ts", 1]]],
+    ["a-rule", "warn", "b.ts", "a$.ts", [["b.ts", "a$.ts", 2]]],
+    ["b-rule", "warn", "b.ts", "a$.ts", [["b.ts", "a$.ts", 1]]],
     [
       "b-rule",
       "error",
@@ -256,9 +258,9 @@ it("orders by severity, cycles first, then id, then a violation's rule and to", 
     ["warn", "cycle", "r:a.ts", "", ""],
     ["warn", "cycle", "r:c.ts", "", ""],
     ["warn", "cycle", "r:x.ts", "", ""],
-    ["warn", "violation", "r:b.ts", "a-rule", "r:a.ts"],
-    ["warn", "violation", "r:b.ts", "a-rule", "r:c.ts"],
-    ["warn", "violation", "r:b.ts", "b-rule", "r:a.ts"],
+    ["warn", "violation", "r:b.ts", "a-rule", "r:a$.ts"],
+    ["warn", "violation", "r:b.ts", "a-rule", "r:a%23.ts"],
+    ["warn", "violation", "r:b.ts", "b-rule", "r:a$.ts"],
     ["info", "violation", "r:a$.ts", "d-rule", "r:b.ts"],
     ["info", "violation", "r:a%23.ts", "d-rule", "r:b.ts"],
     ["info", "violation", "r:a.ts", "c-rule", "r:b.ts"],

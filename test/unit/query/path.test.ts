@@ -463,3 +463,101 @@ it("takes each callee once, by its strongest call and that call's first line, in
     answer(p({ from: "t.ts#T", to: "s.ts#F", via: "calls" }, cs, C_CTX)),
   ).toMatchObject({ found: false, hops: [] });
 });
+
+// The callee-order store. Each of s.ts#F and s.ts#E calls two definitions that both call t.ts#T,
+// so the order callees are expanded in decides which one the path goes through. F calls b.ts#A
+// (line 2) before a.ts#Z (line 3); both start on line 1, so only the file path puts Z first. E
+// calls a.ts#A (line 7, starting on line 5) before a.ts#Z (line 8, starting on line 1); they
+// share a file, so only the start line puts Z first. Z calls T bound, and each A calls it scoped.
+function calleeOrderStore(): Store {
+  const c = emptyContent("c");
+  const paths = ["a.ts", "b.ts", "s.ts", "t.ts"];
+  const file = (path: string) => paths.indexOf(path) + 1;
+  c.files = paths.map((path, i) => ({
+    id: i + 1,
+    path,
+    lang: "typescript",
+    kind: "code",
+    component_id: null,
+    lines: 9,
+    bytes: 90,
+    blob_sha: "c".repeat(40),
+    mode: "100644",
+    link_target: null,
+    entry: 0,
+    has_source: 0,
+  }));
+  // file, qualname, start line, end line
+  const defs: [string, string, number, number][] = [
+    ["a.ts", "Z", 1, 3],
+    ["a.ts", "A", 5, 7],
+    ["b.ts", "A", 1, 3],
+    ["s.ts", "F", 1, 4],
+    ["s.ts", "E", 6, 9],
+    ["t.ts", "T", 1, 2],
+  ];
+  c.definitions = defs.map(([path, qualname, start, end], i) => ({
+    id: i + 1,
+    file_id: file(path),
+    qualname,
+    ordinal: 1,
+    name: qualname,
+    kind: "function",
+    start_line: start,
+    start_col: 1,
+    end_line: end,
+    end_col: 2,
+    exported: 1,
+    parent_id: null,
+    scip_symbol: null,
+    signature: null,
+    producer: "ast-grep",
+  }));
+  // file, line, enclosing definition, callee name, callee definition, label
+  const sites: [string, number, number, string, number, "bound" | "scoped"][] =
+    [
+      ["a.ts", 2, 1, "T", 6, "bound"],
+      ["a.ts", 6, 2, "T", 6, "scoped"],
+      ["b.ts", 2, 3, "T", 6, "scoped"],
+      ["s.ts", 2, 4, "A", 3, "bound"],
+      ["s.ts", 3, 4, "Z", 1, "bound"],
+      ["s.ts", 7, 5, "A", 2, "bound"],
+      ["s.ts", 8, 5, "Z", 1, "bound"],
+    ];
+  c.call_sites = sites.map(([path, line, enclosing, callee], i) => ({
+    id: i + 1,
+    file_id: file(path),
+    line,
+    col: 3,
+    enclosing_def_id: enclosing,
+    callee_name: callee,
+    receiver_text: null,
+    producer: "ast-grep",
+  }));
+  c.call_targets = sites.map(([, , , , def_id, label], i) => ({
+    site_id: i + 1,
+    def_id,
+    label,
+    collision: 0,
+  }));
+  const store = openStore(miniStore(c));
+  if ("code" in store)
+    throw new Error(`the callee-order store: ${store.reason}`);
+  return store;
+}
+
+it("expands callees by file path, then start line, before qualname and call order", () => {
+  const cs = calleeOrderStore();
+  expect(
+    answer(p({ from: "s.ts#F", to: "t.ts#T", via: "calls" }, cs, C_CTX)).hops,
+  ).toEqual([
+    { from: "c:s.ts#F", to: "c:a.ts#Z", kind: "bound", line: 3 },
+    { from: "c:a.ts#Z", to: "c:t.ts#T", kind: "bound", line: 2 },
+  ]);
+  expect(
+    answer(p({ from: "s.ts#E", to: "t.ts#T", via: "calls" }, cs, C_CTX)).hops,
+  ).toEqual([
+    { from: "c:s.ts#E", to: "c:a.ts#Z", kind: "bound", line: 8 },
+    { from: "c:a.ts#Z", to: "c:t.ts#T", kind: "bound", line: 2 },
+  ]);
+});
