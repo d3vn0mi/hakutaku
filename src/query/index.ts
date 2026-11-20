@@ -1,5 +1,7 @@
 export { fail, ok, type QueryCtx, type QueryOut } from "./ctx.js";
+export { queryExplain } from "./explain.js";
 export { MATCH_LEVELS, type MatchLevel, matchLevel } from "./match.js";
+export { queryOverview } from "./overview.js";
 export {
   KIND_NAME,
   type Resolved,
@@ -16,3 +18,10 @@ export {
   type StoreIndex,
   storeIndex,
 } from "./store-index.js";
+export {
+  type CompilerTier,
+  compilerTier,
+  displayLang,
+  explainLabel,
+  LANG_DISPLAY,
+} from "./tiers.js";
