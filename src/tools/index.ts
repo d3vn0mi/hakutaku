@@ -14,6 +14,7 @@ export type {
   RefreshState,
   RepoEntry,
 } from "./host.js";
+export { LABEL_WORDING } from "./labels.js";
 export {
   CORE_SHARE,
   codePoints,
@@ -32,6 +33,8 @@ export {
   measure,
   REFRESH_INTERVAL_SECONDS,
 } from "./limits.js";
+export type { ToolSpec } from "./specs.js";
+export { TOOL_SPECS } from "./specs.js";
 export type {
   CallersAnswer,
   CallersArgs,
@@ -73,3 +76,4 @@ export type {
   ToolName,
 } from "./types.js";
 export { TOOL_NAMES } from "./types.js";
+export { checkArgs } from "./validate.js";
