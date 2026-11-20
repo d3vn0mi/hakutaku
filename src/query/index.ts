@@ -13,6 +13,7 @@ export { fail, ok, type QueryCtx, type QueryOut } from "./ctx.js";
 export { queryDeps } from "./deps.js";
 export { queryExplain } from "./explain.js";
 export { queryFind } from "./find.js";
+export { matchGlob } from "./glob.js";
 export { queryImpact } from "./impact.js";
 export { MATCH_LEVELS, type MatchLevel, matchLevel } from "./match.js";
 export { queryOverview } from "./overview.js";
@@ -25,6 +26,8 @@ export {
   wrongKind,
 } from "./resolve.js";
 export { cycleSeverityOf, queryRules } from "./rules.js";
+export { querySearchText } from "./search-text.js";
+export { querySnippet } from "./snippet.js";
 export { locationText, readSource, sourceLines } from "./source.js";
 export {
   type ComponentInfo,
