@@ -490,6 +490,11 @@ function cookJs(body: string): string {
       case "u": {
         if (body[i + 1] === "{") {
           const close = body.indexOf("}", i);
+          if (close < 0) {
+            // no closing brace, which tree-sitter still parses as a string: the rest stays
+            // as written (a loop index of -1 would cook the string again forever)
+            return out + body.slice(i - 1);
+          }
           out += codePoint(body.slice(i + 2, close));
           i = close;
         } else {

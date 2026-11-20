@@ -422,6 +422,41 @@ it("ends an import's lines at the last line its match covers", () => {
   expect(facts.imports[0]?.endLine).toBe(2);
 });
 
+it("keeps a code-point escape with no closing brace as written, and ends", () => {
+  // tree-sitter still gives a string node for "\u{41", which JavaScript would refuse:
+  // require("\u{41") and import { "x\u{42" as y } from "./sky"
+  const f = "web/orbit.ts";
+  const facts = astGrepFacts([
+    m("ts-import-require", f, P(1, 1), P(1, 17), {
+      SPEC: ['"\\u{41"', P(1, 9)],
+    }),
+    m("ts-import-static", f, P(2, 1), P(2, 35), {
+      SPEC: ['"./sky"', P(2, 28)],
+    }),
+    m("ts-import-name", f, P(2, 10), P(2, 20), {
+      NAMES: ['"x\\u{42"', P(2, 10)],
+    }),
+  ]);
+  expect(facts.imports).toEqual([
+    {
+      file: f,
+      at: P(1, 9),
+      endLine: 1,
+      specifier: "\\u{41",
+      kind: "require",
+      names: [],
+    },
+    {
+      file: f,
+      at: P(2, 28),
+      endLine: 2,
+      specifier: "./sky",
+      kind: "static",
+      names: ["x\\u{42"],
+    },
+  ]);
+});
+
 it("applies only when the tree holds a regular file the rules scan, outside the metadata-only files", () => {
   const ctx = (
     tree: Array<[string, string]>,
