@@ -1,3 +1,4 @@
+export { LIST_ADAPTERS } from "./adapters.js";
 export type {
   Candidate,
   ErrorCode,
@@ -35,6 +36,8 @@ export {
 } from "./limits.js";
 export type { ListAdapter } from "./paging.js";
 export { pageList, pageNote, pageText, withPageFields } from "./paging.js";
+export { reposAnswer } from "./repos.js";
+export { runTool } from "./run.js";
 export type { ToolSpec } from "./specs.js";
 export { TOOL_SPECS } from "./specs.js";
 export type {
