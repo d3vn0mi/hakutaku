@@ -140,7 +140,7 @@ The road to 0.1:
         few milliseconds, and no network connection was opened.
 - [ ] **Engine and store.** Export, sandboxed extract, the store, metrics, launch manifests, the
       profile generator, redaction, gates, the synthetic sample and its oracle, `hakutaku map`.
-      In progress, 12 of 30 steps done:
+      In progress, 18 of 30 steps done:
   - [x] **The store.** One SQLite file per build, with a full-text index and a content hash, written
         deterministically. Its reader, its cache and the metric algorithms.
   - [x] **Redaction.** The rules that replace secret-shaped text, and the denylist that keeps files
@@ -151,9 +151,16 @@ The road to 0.1:
         components. Entry points are read as data from launch manifests: `package.json`,
         Dockerfiles, Procfiles, systemd units, CI workflows, Python packaging and Next.js routes.
         A generator writes a starting profile from a snapshot.
-  - [ ] **Export.** A hardened read of a git checkout into a snapshot.
+  - [x] **Export.** A hardened read of one commit into a snapshot directory, with the last 26 weeks
+        of history. git runs with every transport refused and a throwaway home; paths holding `..`,
+        `.git` or control characters are refused; the repository's own engine configs are removed,
+        and hakutaku generates its own.
   - [ ] **The engines and the sandbox.** Pinned engines, their install, and extract inside the
-        sandbox.
+        sandbox. Done so far: the engines are pinned in a hash-checked lock and installed from it,
+        and the sandbox is built. On Linux it runs extract inside bubblewrap (or a systemd-run service
+        where bubblewrap does not work), each engine in a fresh environment under a timeout, with a
+        memory cap wherever systemd-run is available. The ast-grep and dependency-cruiser drivers are
+        written; scip-typescript and grimp are next.
   - [ ] **Merge and gates.** Engine output merged into one store, metrics stored, quality gates,
         `hakutaku extract`.
   - [ ] **Proof.** The synthetic sample and its golden answers, build acceptance, and the
