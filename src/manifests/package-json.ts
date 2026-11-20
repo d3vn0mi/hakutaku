@@ -1,4 +1,4 @@
-// package.json (§5.7): each bin, and each script whose command names a repo file. Read as
+// package.json: each bin, and each script whose command names a repo file. Read as
 // data; no script runs.
 import { posix } from "node:path";
 import { parseJsonc } from "../profile/index.js";

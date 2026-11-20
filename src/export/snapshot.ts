@@ -1,4 +1,4 @@
-// The snapshot (interfaces section 3.6, §9.2). Each tree entry, in path order, is refused,
+// The snapshot. Each tree entry, in path order, is refused,
 // denied, removed as an engine config, recorded as a link (never created) or a submodule
 // (never followed), or kept as a regular file under snapshot/: created exclusively, read-only,
 // with every directory read-only once the last file is written.

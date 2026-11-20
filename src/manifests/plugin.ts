@@ -1,4 +1,4 @@
-// Plugin manifests (§5.7): each launch manifest the profile declares, { glob, pointer }. In each
+// Plugin manifests: each launch manifest the profile declares, { glob, pointer }. In each
 // tracked file the glob matches, the string the JSON Pointer (RFC 6901) names is a path from
 // that file's directory, through sourceForBuilt. Kind plugin, named by the manifest's path; the
 // line is that of the member or element the pointer names.

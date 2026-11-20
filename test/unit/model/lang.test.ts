@@ -13,7 +13,7 @@ it("maps the four main languages", () => {
   expect(LANG_BY_EXT[".sh"]).toBe("shell");
   expect(LANG_BY_EXT[".bash"]).toBe("shell");
 });
-// Beyond the plan's list: the other code languages, and nothing else.
+// Further cases: the other code languages, and nothing else.
 it("maps the other code languages, and no data format, doc or inherited key", () => {
   expect(LANG_BY_EXT[".go"]).toBe("go");
   expect(LANG_BY_EXT[".rs"]).toBe("rust");

@@ -1,4 +1,4 @@
-// Containers and processes (§5.7), read as data.
+// Containers and processes, read as data.
 // - Dockerfile and Dockerfile.*: CMD and ENTRYPOINT, in exec form (a JSON array of strings) or
 //   shell form, matched by suffix, since a path in an image is a deployed one: kind container,
 //   named by the command (an exec form's words joined by spaces).

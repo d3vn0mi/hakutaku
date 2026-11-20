@@ -1,4 +1,4 @@
-// Loads and checks a layout profile (§8.3) and a rules file. Both are JSON.
+// Loads and checks a layout profile and a rules file. Both are JSON.
 //
 // A problem throws a ProfileError naming its field, as "profile.<path>: <problem>" or
 // "rules.<path>: <problem>". The first problem met is the one named: at each object, a key its

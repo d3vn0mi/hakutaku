@@ -1,4 +1,4 @@
-// The engine runner (interfaces section 3.5): one engine run, in an environment built from
+// The engine runner: one engine run, in an environment built from
 // scratch, at nice 19 and under a wall-clock timeout, with its peak memory and CPU time read
 // from /proc on Linux.
 import { type ChildProcess, spawn } from "node:child_process";
@@ -23,7 +23,7 @@ export interface EngineRun {
   env: Record<string, string>; // from scratch: engineEnv's
   timeoutMs: number; // 600000 at quick and standard, 3600000 at deep
   stdoutFile?: string; // otherwise stdout is captured, up to 64 MiB
-  onSpawn?: (pid: number) => void; // (addition) called right after the spawn
+  onSpawn?: (pid: number) => void; // called right after the spawn
 }
 
 export interface EngineRunResult {

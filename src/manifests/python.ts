@@ -1,4 +1,4 @@
-// Python launch manifests (§5.7): pyproject.toml's [project.scripts], [project.gui-scripts],
+// Python launch manifests: pyproject.toml's [project.scripts], [project.gui-scripts],
 // [project.entry-points.*] and [tool.poetry.scripts] (string values), and setup.cfg's
 // [options.entry_points] console_scripts and gui_scripts. Each "module:function" maps to the
 // module's file, through the module index, and the qualname "function"; a value without ":"

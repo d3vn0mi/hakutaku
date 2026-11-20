@@ -1,4 +1,4 @@
-// systemd units (§5.7): every *.service's ExecStart, ExecStartPre, ExecStartPost, ExecReload
+// systemd units: every *.service's ExecStart, ExecStartPre, ExecStartPost, ExecReload
 // and ExecStop in [Service], read as data. Each command has its -@:+! prefixes stripped. Every
 // token of it then names the unique longest tracked path it ends with on a segment boundary,
 // so %h/... and absolute deploy prefixes do not matter and a wrapper (env, flock) hides

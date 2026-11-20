@@ -1,4 +1,4 @@
-// Secondary signals (§5.7), each recorded with the file itself as its manifest and its path as
+// Secondary signals, each recorded with the file itself as its manifest and its path as
 // its name, except a route's:
 // - executable: git mode 100755 and a first line starting "#!", at line 1;
 // - main-guard: each __main__.py at line 1, and each `if __name__ == "__main__":` line of a .py

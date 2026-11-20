@@ -1,6 +1,6 @@
 // hakutaku engines install|list|verify [--engines-dir <path>] [--deep] [--yes]
 // install fetches the pinned engines into the engines directory, after asking; list prints one
-// row per engine; verify prints each problem. Exit codes (interfaces section 3.9): 0 done, 1
+// row per engine; verify prints each problem. Exit codes: 0 done, 1
 // failed or not confirmed (the message on stderr), 2 a usage error.
 import { parseArgs } from "node:util";
 import {
@@ -13,7 +13,7 @@ import {
 import { confirm } from "../prompt.js";
 import type { CliIO, Command } from "./index.js";
 
-// The question of the spec's first run (section 3.2), asked before anything is fetched.
+// The first-run question, asked before anything is fetched.
 export const ENGINES_QUESTION =
   "hakutaku needs scip-typescript, dependency-cruiser and ast-grep (npm) and grimp (PyPI). Install the pinned versions now? [y/N]";
 

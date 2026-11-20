@@ -1,4 +1,4 @@
-// The layout profile (§8.3) and the rules file.
+// The layout profile and the rules file.
 import type { Severity } from "../model/index.js";
 
 export interface Profile {

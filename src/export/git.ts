@@ -1,4 +1,4 @@
-// The hardened git reader (interfaces section 3.6): with history.ts, the whole of export's
+// The hardened git reader: with history.ts, the whole of export's
 // contact with git, and nothing else in hakutaku runs git.
 //
 // Every call runs git with exactly GIT_ENV, a fresh empty HOME (removed afterwards) and this

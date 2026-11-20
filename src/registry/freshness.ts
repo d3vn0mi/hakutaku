@@ -1,4 +1,4 @@
-// computeFreshness: the stale rules (§5.9) as one pure function, shared by every reader of a
+// computeFreshness: the stale rules as one pure function, shared by every reader of a
 // repo's freshness. The first rule that applies wins:
 //   1. the last attempt failed, or failed its gates: true, with that attempt's result and reason;
 //   2. the head cannot be read: "unknown", with the ref reader's reason;

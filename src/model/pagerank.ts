@@ -1,4 +1,4 @@
-// PageRank over import edges (§5.6), and the rank order it gives.
+// PageRank over import edges, and the rank order it gives.
 //
 // Nodes are the indexes 0..n−1 of a list sorted by comparePaths, so "ties by path" is "ties
 // by index". An edge runs from the importer to the imported file, so the most depended-on

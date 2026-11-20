@@ -1,4 +1,4 @@
-// Export (interfaces section 3.6): one commit of a git checkout, read through the hardened
+// Export: one commit of a git checkout, read through the hardened
 // git calls of git.ts and history.ts, written as one export directory, the whole contract
 // between export and extract:
 //
@@ -81,7 +81,7 @@ export interface ExportManifest {
     // collision and dotgit: additions
     reason: "dotdot" | "absolute" | "control-char" | "dotgit" | "collision";
   }>;
-  // (addition) kept in snapshot/ and tree, out of every engine's input; in path order
+  // Kept in snapshot/ and tree, out of every engine's input; in path order
   metadataOnly: Array<{
     path: string;
     reason: "size" | "minified" | "generated";

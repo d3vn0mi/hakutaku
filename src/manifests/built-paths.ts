@@ -1,4 +1,4 @@
-// Built paths (§5.7): a path to a built file, such as ./dist/index.js, maps back to its source.
+// Built paths: a path to a built file, such as ./dist/index.js, maps back to its source.
 import { posix } from "node:path";
 import { parseJsonc } from "../profile/index.js";
 import type { ManifestInput } from "./types.js";

@@ -1,4 +1,4 @@
-// The core set (§5.6): the files that carry at least a share of what the code depends on.
+// The core set: the files that carry at least a share of what the code depends on.
 import { rankOrder } from "./pagerank.js";
 
 /** The shortest run of nodes in rankOrder whose scores add up to at least `share` of their

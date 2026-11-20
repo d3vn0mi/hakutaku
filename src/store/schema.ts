@@ -20,7 +20,7 @@ export const DDL = `CREATE TABLE meta (                       -- one row
   detail TEXT NOT NULL,                   -- Detail
   no_source INTEGER NOT NULL,             -- 0 | 1
   engines TEXT NOT NULL,                  -- JSON Record<EngineName, version> of the engines that ran
-  engine_lock_hash TEXT NOT NULL,         -- (addition) the lock's hash (interfaces §3.5)
+  engine_lock_hash TEXT NOT NULL,         -- the engine lock's hash
   profile_hash TEXT NOT NULL,             -- sha256 hex of the profile copy's bytes
   rules_hash TEXT NOT NULL,               -- sha256 hex of the rules copy's bytes; "" when there is none
   coverage TEXT NOT NULL,                 -- JSON Coverage
@@ -29,7 +29,7 @@ export const DDL = `CREATE TABLE meta (                       -- one row
 CREATE TABLE run (                        -- one row; outside the content hash
   ref TEXT NOT NULL,
   content_hash TEXT NOT NULL,             -- sha256 hex, below
-  built_at TEXT NOT NULL                  -- (addition) ISO 8601 UTC
+  built_at TEXT NOT NULL                  -- ISO 8601 UTC
 );
 CREATE TABLE components (
   id INTEGER PRIMARY KEY,
@@ -50,7 +50,7 @@ CREATE TABLE files (
   bytes INTEGER NOT NULL,
   blob_sha TEXT NOT NULL,                 -- for a submodule, its commit
   mode TEXT NOT NULL,                     -- GitMode
-  link_target TEXT,                       -- (addition) mode 120000 only: the link text, never followed
+  link_target TEXT,                       -- mode 120000 only: the link text, never followed
   entry INTEGER NOT NULL,                 -- 1 when an entry_points row of a kind other than dev-script names it
   has_source INTEGER NOT NULL             -- 1 when sources holds its body
 );
@@ -62,7 +62,7 @@ CREATE TABLE definitions (
   id INTEGER PRIMARY KEY,
   file_id INTEGER NOT NULL REFERENCES files(id),
   qualname TEXT NOT NULL,                 -- 'Orbit.position'; '<module>' for module scope
-  ordinal INTEGER NOT NULL,               -- 1, or n >= 2 for the nth repeat in file order (§5.4)
+  ordinal INTEGER NOT NULL,               -- 1, or n >= 2 for the nth repeat in file order
   name TEXT NOT NULL,                     -- the last segment of qualname
   kind TEXT NOT NULL,                     -- DefKind | 'module'
   start_line INTEGER NOT NULL, start_col INTEGER NOT NULL,   -- the enclosing range
@@ -137,8 +137,8 @@ CREATE TABLE file_metrics (               -- code, test and test-support files
   hotspot REAL,                           -- 0..1, two decimals; NULL off production
   cycle_id INTEGER,                       -- NULL when it is in no cycle
   core INTEGER NOT NULL,                  -- 1 when it is in the core set
-  last_change INTEGER                     -- (addition) committer time, Unix seconds, of the newest History commit that
-                                          -- touched the file; NULL when none did. It feeds §7.6's 7/30/90-day filter
+  last_change INTEGER                     -- committer time, Unix seconds, of the newest History commit that
+                                          -- touched the file; NULL when none did. It feeds the 7/30/90-day churn filter
 );
 CREATE TABLE def_metrics (
   def_id INTEGER PRIMARY KEY REFERENCES definitions(id),
@@ -179,7 +179,7 @@ CREATE TABLE renames (
 CREATE VIRTUAL TABLE text_index USING fts5(
   text, file_id UNINDEXED, line UNINDEXED, tokenize = ${TRIGRAM}
 );                                        -- one row per non-empty line of every stored source, redacted
-CREATE INDEX call_targets_def ON call_targets(def_id);   -- (addition) lookup indexes for M7. §12 leaves indexes to the
+CREATE INDEX call_targets_def ON call_targets(def_id);   -- lookup indexes for the queries; the schema leaves indexes to the
 CREATE INDEX refs_def ON refs(def_id);                   -- builder, and the content hash reads rows, never indexes
 CREATE INDEX imports_dst ON imports(dst_file_id);
 CREATE INDEX call_sites_callee ON call_sites(callee_name);

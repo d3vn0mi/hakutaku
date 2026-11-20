@@ -1,4 +1,4 @@
-// The outline (§5.3): every definition hakutaku's ast-grep rules find, nested by range. It
+// The outline: every definition hakutaku's ast-grep rules find, nested by range. It
 // mints every definition ID at every detail level, so it never depends on another engine.
 import {
   comparePaths,
@@ -18,7 +18,7 @@ export interface RawMatch {
   start: Pos;
   end: Pos;
   vars: Record<string, { text: string; start: Pos; end: Pos }>;
-  // (addition) For a definition rule, the text of the line holding $NAME, or of the match's
+  // For a definition rule, the text of the line holding $NAME, or of the match's
   // first line when it has none, decoded as the store decodes text and without its line end;
   // "" for the other rules. It gives a definition its signature.
   nameLine: string;

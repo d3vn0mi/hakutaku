@@ -1,4 +1,4 @@
-// The skip key (§5.9): everything a store's content follows from. A build whose key matches the
+// The skip key: everything a store's content follows from. A build whose key matches the
 // current store's meta would write the same content, so it is skipped. The ref is not in the key.
 import { readLock } from "../engines/index.js";
 import type { ExportManifest } from "../export/index.js";

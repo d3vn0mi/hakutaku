@@ -1,4 +1,4 @@
-// The extraction sandbox (§9.3). On Linux, extract re-runs itself inside bubblewrap or, where
+// The extraction sandbox. On Linux, extract re-runs itself inside bubblewrap or, where
 // bubblewrap does not work, inside a systemd-run --user service. detectSandbox finds which works,
 // once per process; the argv builders write each command. Every path in a command is absolute:
 // the user manager's PATH may lack the running Node, and systemd-run -p takes no %h.
@@ -17,7 +17,7 @@ export interface SandboxPaths {
   memoryMax: string; // systemd's MemoryMax, such as "3G"
 }
 
-// (addition) The warning a bubblewrap build records when nothing caps its memory.
+// The warning a bubblewrap build records when nothing caps its memory.
 export const NO_MEMORY_CAP = "no memory cap: systemd-run is unavailable";
 
 const BWRAP_PROBE = [
@@ -65,7 +65,7 @@ export async function detectSandbox(
   return null;
 }
 
-// (addition) The command that runs inner in a sandbox detectSandbox found, and the warnings it
+// The command that runs inner in a sandbox detectSandbox found, and the warnings it
 // brings. bubblewrap caps no memory, so it runs inside a systemd-run scope that does whenever
 // systemd-run works too.
 export async function sandboxCommand(

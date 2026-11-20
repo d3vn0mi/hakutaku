@@ -1,5 +1,5 @@
-// createRefReader: the commit a ref names, read from a checkout's ref files with no git process
-// (spec §5.9). It finds the git directory and the common directory, tries git's candidates for
+// createRefReader: the commit a ref names, read from a checkout's ref files with no git process.
+// It finds the git directory and the common directory, tries git's candidates for
 // the name in git's order, a loose file before packed-refs at each, and follows symbolic refs.
 // What it cannot resolve that way answers a reason instead: a loose tag, a reftable store, a
 // revision expression, a missing ref or a file system error. It never throws.

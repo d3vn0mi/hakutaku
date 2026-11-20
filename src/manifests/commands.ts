@@ -1,4 +1,4 @@
-// Command paths (§5.7): which repo files a command launches. Commands are read as data; none
+// Command paths: which repo files a command launches. Commands are read as data; none
 // runs.
 //
 // - A command line splits into commands at &&, ||, ;, | and line ends outside quotes. Words

@@ -1,4 +1,4 @@
-// The launch-manifest readers (§5.7): every entry point a snapshot's manifests declare. Every
+// The launch-manifest readers: every entry point a snapshot's manifests declare. Every
 // manifest is parsed as data and never run; one that cannot be read in its format gives no
 // fact, and no reader throws on a repo's content.
 import { comparePaths } from "../model/index.js";
@@ -17,7 +17,7 @@ export { sourceForBuilt } from "./built-paths.js";
 export { pythonModuleIndex } from "./python-modules.js";
 export type { EntryFact, ManifestInput } from "./types.js";
 
-// The store's key for an entry point (interfaces §3.2's entry_points primary key), in order.
+// The store's key for an entry point (the entry_points table's primary key), in order.
 function compareKeys(a: EntryFact, b: EntryFact): number {
   return (
     comparePaths(a.file, b.file) ||
@@ -34,7 +34,7 @@ function compareQualnames(a: EntryFact, b: EntryFact): number {
   return comparePaths(a.qualname, b.qualname);
 }
 
-// Every reader's facts, without those naming a test file (§5.1), sorted by (file, kind,
+// Every reader's facts, without those naming a test file, sorted by (file, kind,
 // manifest, line, name) with comparePaths, and one per key: the store keys entry_points by
 // those five, so two facts that differ only in qualname keep the first in qualname order (no
 // qualname first).

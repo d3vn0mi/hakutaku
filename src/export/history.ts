@@ -1,4 +1,4 @@
-// The history export keeps (interfaces section 3.6): the commits whose committer time is in
+// The history export keeps: the commits whose committer time is in
 // the 26 weeks up to the built commit's, newest first, with the files each one touched.
 import { comparePaths } from "../model/index.js";
 import { BadAnswer, checkOid, collect, runGit } from "./git.js";
@@ -24,7 +24,7 @@ type HistoryCommit = History["commits"][number];
 // some other date. "@<n> +0000" is git's raw date form, which it reads exactly for every n.
 const rawDate = (seconds: number): string => `@${seconds} +0000`;
 
-// Interfaces section 3.6's log call, with three additions: --root, so that a repo's
+// The log call, with three details: --root, so that a repo's
 // log.showRoot=false cannot hide the files of a root commit (a shallow clone's edge is
 // one); the raw date form; and "--" after the commit, so git never looks for a file of
 // that name in the work tree.

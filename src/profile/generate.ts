@@ -1,4 +1,4 @@
-// The profile generator (§8.3): a layout profile read from a snapshot's files, as data. Nothing
+// The profile generator: a layout profile read from a snapshot's files, as data. Nothing
 // in the snapshot runs, and nothing outside it is read: the walk follows no symbolic link, and
 // opens no file that is not regular, so a FIFO never blocks it.
 //
@@ -49,7 +49,7 @@ import { parseTomlSubset } from "./formats/toml.js";
 import { DEFAULT_PROFILE } from "./load.js";
 import type { Profile } from "./types.js";
 
-// interfaces §3.7's answer, plus warnings (an addition): each extends into node_modules.
+// The generator's answer, plus warnings: each extends into node_modules.
 export interface GenerateResult {
   profile: Profile;
   conflicts: string[];
@@ -70,7 +70,7 @@ const HEAD_BYTES = 8000;
 const CONDITIONS = ["types", "import", "node", "default", "require"] as const;
 // A name Python can import, as str.isidentifier() reads one (src/manifests/python-modules.ts).
 const IDENTIFIER = /^[\p{XID_Start}_]\p{XID_Continue}*$/u;
-// The files that make their directory a package root (§5.1).
+// The files that make their directory a package root.
 const PACKAGE_MANIFESTS: ReadonlySet<string> = new Set([
   "package.json",
   "pyproject.toml",

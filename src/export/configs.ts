@@ -1,4 +1,4 @@
-// The engines' configs, generated beside the snapshot (interfaces section 3.6), so that no
+// The engines' configs, generated beside the snapshot, so that no
 // config from the analysed repo is ever read: tsconfig.json for scip-typescript, in the
 // snapshot's parent directory; depcruise.json, which dependency-cruiser always gets with
 // --config; and sgconfig.yml, with hakutaku's own ast-grep rules copied beside it. Every path

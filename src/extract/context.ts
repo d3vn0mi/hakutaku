@@ -1,5 +1,4 @@
-// What a build hands each engine driver, and the shape every driver has (interfaces
-// section 3.5).
+// What a build hands each engine driver, and the shape every driver has.
 import type { ExportManifest } from "../export/index.js";
 import type { Detail, EngineName } from "../model/index.js";
 import type { Profile, Rules } from "../profile/index.js";

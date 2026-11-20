@@ -1,4 +1,4 @@
-// CI (§5.7): every run: line of .github/workflows/*.yml and *.yaml and of .gitlab-ci.yml, read
+// CI: every run: line of .github/workflows/*.yml and *.yaml and of .gitlab-ci.yml, read
 // line by line without a YAML parser, its commands from the repo top. An inline value is one
 // command line, unquoted; a | or > block is a command line per line, each with its own line
 // number; a run: with nothing after it (a mapping, such as defaults.run) is no command. Kind

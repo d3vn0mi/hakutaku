@@ -100,7 +100,7 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
     ctx.enginesDir,
     readLock().lock.engines["ast-grep"].bin,
   );
-  // T5: metadata-only files stay out of the engine's input. Only files the rules scan need a
+  // Metadata-only files stay out of the engine's input. Only files the rules scan need a
   // glob, which keeps the command short.
   const metadataOnly = new Set(ctx.manifest.metadataOnly.map((m) => m.path));
   const globs = [...metadataOnly]

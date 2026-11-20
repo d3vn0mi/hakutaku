@@ -1,4 +1,4 @@
-// Hotspots (§5.6): what the code depends on most, crossed with what changes most.
+// Hotspots: what the code depends on most, crossed with what changes most.
 
 /** √(score ÷ max score × churn ÷ max churn) for each node, divided by the largest such
  *  value so that the top hotspot is 1, and rounded to two decimals with

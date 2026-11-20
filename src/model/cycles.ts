@@ -1,4 +1,4 @@
-// Import cycles (§5.6): Tarjan's strongly connected components, and each cycle's shortest
+// Import cycles: Tarjan's strongly connected components, and each cycle's shortest
 // closing chain.
 //
 // Nodes are indexes into a list sorted by comparePaths. Tarjan's algorithm runs as a loop

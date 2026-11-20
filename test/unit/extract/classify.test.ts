@@ -157,7 +157,7 @@ it("lets profile roots win", () => {
   ]);
 });
 
-// Beyond the plan's list: the lists themselves, and the order of the rules.
+// Further cases: the lists themselves, and the order of the rules.
 it("lists the default test patterns, and the config and doc extensions and names, frozen", () => {
   expect(TEST_PATTERNS).toEqual([
     "*.test.*",
@@ -318,7 +318,7 @@ it("classifies an empty file, a file without an extension and a dotfile by name 
   expect(classifyFile("web/.nvmrc", text, P)).toEqual(config);
 });
 
-// Beyond the plan's list: test support.
+// Further cases: test support.
 it("leaves a file that imports itself, and a cycle only tests reach, as code", () => {
   const kinds = new Map<string, FileKind>([
     ["t.test.ts", "test"],
@@ -413,7 +413,7 @@ it("marks a chain of 100,000 files listed deepest first, in linear time", () => 
   );
 });
 
-// Beyond the plan's list: components.
+// Further cases: components.
 it("takes the nearest package root or top-level Python package, and a package root when a directory is both", () => {
   const plan = computeComponents(
     files(

@@ -1,4 +1,4 @@
-// What a build does to the files beside its store (interfaces section 3.2): the atomic swap that
+// What a build does to the files beside its store: the atomic swap that
 // keeps the previous store, the removal of what dead builds left, and the provisional attempt
 // that explains a build that dies.
 import {

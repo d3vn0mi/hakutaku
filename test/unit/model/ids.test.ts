@@ -3,7 +3,7 @@ import { expect, it } from "vitest";
 import { formatId, parseId } from "../../../src/model/ids.js";
 import { def, dir, ext, file, R } from "./refs.js";
 
-it("writes every form of §5.4", () => {
+it("writes every id form", () => {
   expect(formatId(file("web/src/orbits/kepler.ts"))).toBe(
     "observatory:web/src/orbits/kepler.ts",
   );
@@ -38,7 +38,7 @@ it("keeps the viewer's codec browser-safe", () => {
     );
 });
 
-// Beyond the plan's forms: the root component, and IDs formatId never writes, so that
+// Further forms: the root component, and IDs formatId never writes, so that
 // one ID names one node.
 it("names the root component ./", () => {
   expect(formatId(dir("./"))).toBe("observatory:./");

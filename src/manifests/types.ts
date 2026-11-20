@@ -1,4 +1,4 @@
-// What the launch-manifest readers (§5.7) read, and the facts they produce.
+// What the launch-manifest readers read, and the facts they produce.
 import type { EntryKind, GitMode } from "../model/index.js";
 import type { Profile } from "../profile/index.js";
 

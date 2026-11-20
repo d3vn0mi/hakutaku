@@ -1,7 +1,7 @@
 // hakutaku export <repo> --ref <ref> --out <dir> [--id <id>] [--profile <file>]
 //                 [--rules <file>] [--max-files <n>]
 // Writes one commit's export directory and prints the ExportResult as one JSON line. Exit
-// codes (interfaces section 3.9): 0 done, 1 failed (the message on stderr), 2 a usage error.
+// codes: 0 done, 1 failed (the message on stderr), 2 a usage error.
 import { parseArgs } from "node:util";
 import { defaultRepoId, exportRepo } from "../../export/index.js";
 import { REPO_ID_RE } from "../../model/index.js";

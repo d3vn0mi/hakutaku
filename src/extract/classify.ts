@@ -1,4 +1,4 @@
-// File classification (§5.1): each tracked file's kind and language, the test-support
+// File classification: each tracked file's kind and language, the test-support
 // fixpoint, and the components that group the files on the map.
 //
 // Extensions and names compare in their exact case, as the engines read them: on a
@@ -14,7 +14,7 @@ import {
 } from "../model/index.js";
 import type { Profile } from "../profile/index.js";
 
-// §5.1's default test patterns, as globs over repo paths (src/model/glob.ts), the form of a
+// The default test patterns, as globs over repo paths (src/model/glob.ts), the form of a
 // profile's tests.extraPatterns. A directory pattern matches that directory at any depth.
 export const TEST_PATTERNS: readonly string[] = Object.freeze([
   "*.test.*",
@@ -122,7 +122,7 @@ export function classifyFile(
   return { kind: "other", lang: null };
 }
 
-// §5.1's fixpoint: a code file with at least one importer, all of whose importers are test or
+// The test-support fixpoint: a code file with at least one importer, all of whose importers are test or
 // test-support, becomes test-support, until nothing changes; an entry never changes. It starts
 // from the kinds it is given and never assumes a file is support, so files that import each
 // other stay code even when only tests reach them, and an importer with no kind counts as
@@ -177,7 +177,7 @@ function* ancestors(path: string): Generator<string> {
     yield path.slice(0, i + 1);
 }
 
-// Each code, test and test-support file's component (§5.1), in this order:
+// Each code, test and test-support file's component, in this order:
 // - the deepest of its directories that a profile root (a glob over directories) matches;
 // - else its nearest directory below the repo top that is a package root (packageRoots holds
 //   directory paths ending in "/") or a top-level Python package (a directory directly under

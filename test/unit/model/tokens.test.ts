@@ -3,7 +3,7 @@ import { fromToken, toToken, viewOf } from "../../../src/model/tokens.js";
 import type { NodeRef } from "../../../src/model/types.js";
 import { def, dir, ext, file, R } from "./refs.js";
 
-// every pair in §5.5's tables
+// every pair in the link-token tables
 it.each<[NodeRef, string]>([
   [file("web/src/orbits/kepler.ts"), "web~src~orbits~kepler.ts"],
   [
