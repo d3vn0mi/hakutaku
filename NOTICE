@@ -25,6 +25,13 @@ Licence: MIT
 Copyright: Copyright (c) 2016-2026 Sander Verweij
 Use: TypeScript and JavaScript imports; it runs TypeScript (Microsoft)
 
+### typescript
+Package: npm:typescript
+Version: 6.0.3
+Licence: Apache-2.0
+Copyright: not stated in the licence file
+Use: the TypeScript compiler that dependency-cruiser and scip-typescript run; it is not an engine of its own
+
 ### ast-grep
 Package: npm:@ast-grep/cli
 Version: 0.51.1

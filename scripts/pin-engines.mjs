@@ -3,7 +3,12 @@
 // goes to the network, and it is not shipped in the package.
 //
 //   node scripts/pin-engines.mjs --scip-typescript <v> --dependency-cruiser <v> --ast-grep <v>
-//                                --grimp <v> [--scip-python <v>]
+//                                --grimp <v> --typescript <v> [--scip-python <v>]
+//
+// typescript is no engine: dependency-cruiser parses TypeScript with the typescript it can
+// import from its own place in the tree, and only in the range its src/meta.cjs states.
+// Without one it skips every TypeScript file without a word, so the lock pins one beside the
+// engines, at the top of the tree, outside devDependencies.
 //
 // What it refuses:
 // - a version published less than 14 days ago (npm's time, PyPI's upload_time of every wheel
@@ -11,6 +16,8 @@
 // - a package anywhere in the npm tree whose engines.node does not admit hakutaku's Node floor
 //   (package.json's engines.node) or the Node running this script;
 // - a resolved package that is not on registry.npmjs.org or has no sha512 integrity;
+// - a typescript that dependency-cruiser would not load, or that is not the newest release it
+//   accepts that is at least 14 days old;
 // - grimp with dependencies of its own, since the install runs pip with --no-deps.
 //
 // The npm tree is resolved with --before 14 days ago, so no dependency is newer than that
@@ -109,6 +116,7 @@ function options() {
       "dependency-cruiser": { type: "string" },
       "ast-grep": { type: "string" },
       grimp: { type: "string" },
+      typescript: { type: "string" },
       "scip-python": { type: "string" },
     },
     strict: true,
@@ -119,6 +127,7 @@ function options() {
     "dependency-cruiser",
     "ast-grep",
     "grimp",
+    "typescript",
   ]) {
     if (values[name] === undefined) die(`--${name} <version> is required`);
   }
@@ -322,6 +331,46 @@ function checkTree(packageLock, dir) {
     die("the npm lock holds a home-directory path");
   }
   console.log(`engines.node admits Node ${nodes.join(" and ")} everywhere`);
+  return semver;
+}
+
+// dependency-cruiser imports "typescript" from its own place, so the one it parses with sits at
+// the top of the tree; a dev package there would be missing from the base install
+// (--omit=dev). time is npm's publish times of typescript.
+function checkTypescript(packageLock, dir, semver, pin, time, cutoff) {
+  const entry = packageLock.packages["node_modules/typescript"];
+  if (entry === undefined || entry.dev === true) {
+    die("the lock has no typescript at the top of the tree outside dev");
+  }
+  if (entry.version !== pin) {
+    die(`the lock's top-level typescript is ${entry.version}, not ${pin}`);
+  }
+  const require = createRequire(join(dir, "package.json"));
+  const range = require(
+    join(dir, "node_modules", "dependency-cruiser", "src", "meta.cjs"),
+  ).supportedTranspilers?.typescript;
+  if (typeof range !== "string" || semver.validRange(range) === null) {
+    die("dependency-cruiser states no typescript range in src/meta.cjs");
+  }
+  if (!semver.satisfies(pin, range)) {
+    die(`dependency-cruiser loads typescript ${range}, not ${pin}`);
+  }
+  const newest = Object.keys(time)
+    .filter(
+      (v) =>
+        semver.valid(v) !== null &&
+        semver.prerelease(v) === null &&
+        semver.satisfies(v, range) &&
+        Date.parse(time[v]) <= cutoff,
+    )
+    .sort(semver.compare)
+    .at(-1);
+  if (newest !== pin) {
+    die(
+      `typescript ${pin} is not the newest release dependency-cruiser loads (${range}) that is at least 14 days old: ${newest}`,
+    );
+  }
+  console.log(`dependency-cruiser loads typescript ${pin} (${range})`);
 }
 
 function npmBin(dir, pkg, binName) {
@@ -372,19 +421,29 @@ async function main() {
         cutoff,
       );
     }
+    const typescriptTime = JSON.parse(
+      npm(work, ["view", "typescript", "time", "--json"], flags),
+    );
+    checkSoaked(
+      `typescript@${versions.typescript}`,
+      typescriptTime[versions.typescript],
+      cutoff,
+    );
     const pip = await pinGrimp(versions.grimp, cutoff);
 
-    const sorted = (list) =>
+    const sorted = (pairs) =>
       Object.fromEntries(
-        list
-          .map((e) => [e.pkg, versions[e.engine]])
-          .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+        pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
       );
+    const pinOf = (e) => [e.pkg, versions[e.engine]];
     const packageJson = {
       name: "hakutaku-engines",
       private: true,
-      dependencies: sorted(engines.filter((e) => !e.dev)),
-      devDependencies: sorted(engines.filter((e) => e.dev)),
+      dependencies: sorted([
+        ...engines.filter((e) => !e.dev).map(pinOf),
+        ["typescript", versions.typescript],
+      ]),
+      devDependencies: sorted(engines.filter((e) => e.dev).map(pinOf)),
     };
     const dir = join(work, "npm");
     mkdirSync(dir);
@@ -408,7 +467,15 @@ async function main() {
     const packageLock = JSON.parse(
       readFileSync(join(dir, "package-lock.json"), "utf8"),
     );
-    checkTree(packageLock, dir);
+    const semver = checkTree(packageLock, dir);
+    checkTypescript(
+      packageLock,
+      dir,
+      semver,
+      versions.typescript,
+      typescriptTime,
+      cutoff,
+    );
 
     const found = new Map([
       ["grimp", { version: versions.grimp, minDetail: "quick", bin: "python" }],

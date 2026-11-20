@@ -68,7 +68,7 @@ it("runs grimp from python/, ast-grep's platform binary, and every other bin ins
   }
 });
 
-it("holds scip-python alone in devDependencies, and every other npm engine at its pin", () => {
+it("holds scip-python alone in devDependencies, and every other npm engine and typescript at its pin", () => {
   const { lock } = readLock();
   const { packageJson } = lock.npm;
   expect(packageJson.name).toBe("hakutaku-engines");
@@ -80,7 +80,27 @@ it("holds scip-python alone in devDependencies, and every other npm engine at it
     "@ast-grep/cli": lock.engines["ast-grep"].version,
     "@sourcegraph/scip-typescript": lock.engines["scip-typescript"].version,
     "dependency-cruiser": lock.engines["dependency-cruiser"].version,
+    typescript: "6.0.3",
   });
+});
+
+// dependency-cruiser imports "typescript" from its own place in the tree and loads only
+// >=2.0.0 <7.0.0 (17.x's src/meta.cjs); without one it skips every TypeScript file. A dev
+// package at the top would be missing from the base install, which runs npm ci --omit=dev.
+it("puts a typescript that dependency-cruiser loads at the top of the tree, in the base install", () => {
+  const packages = (
+    readLock().lock.npm.packageLock as {
+      packages: Record<string, { version?: string; dev?: boolean }>;
+    }
+  ).packages;
+  const top = packages["node_modules/typescript"];
+  expect(top?.dev).toBeUndefined();
+  const [major] = (top?.version ?? "").split(".").map(Number);
+  expect(major).toBeGreaterThanOrEqual(2);
+  expect(major).toBeLessThan(7);
+  expect(top?.version).toBe(
+    readLock().lock.npm.packageJson.dependencies.typescript,
+  );
 });
 
 it("resolves every npm package from the public registry, with a sha512 integrity", () => {
