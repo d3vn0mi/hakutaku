@@ -381,6 +381,64 @@ it("drops from a pattern export's target an extension TypeScript adds itself, so
   });
 });
 
+it("finds a pattern export's file wherever it lies among many, as a scan of every path would", async () => {
+  // files whose order by name and order by ending differ, endings that one file alone has,
+  // and endings that only files just before or after the package's src/ have; each export's
+  // answer is checked against a plain scan
+  const files: Record<string, string> = {};
+  for (let i = 0; i < 300; i++) {
+    files[`lib/core/src/f${(i * 37) % 300}.e${(i * 7) % 23}`] = "";
+  }
+  for (let e = 40; e < 45; e++) files[`lib/core/src/r${e * 13}.e${e}`] = "";
+  for (let e = 20; e < 40; e++) {
+    files[`lib/core/a${e}.e${e}`] = "";
+    files[`lib/core/t${e}.e${e}`] = "";
+    files[`lib/other/g${e}.e${e}`] = "";
+  }
+  const exports: Record<string, string> = {};
+  for (let e = 0; e < 50; e++) exports[`./x${e}/*`] = `./src/*.e${e}`;
+  files["lib/core/package.json"] = json({ name: "@obs/core", exports });
+  const g = await generateProfile(snapshot(files));
+  const expected: Record<string, string[]> = {};
+  for (let e = 0; e < 50; e++) {
+    const hit = Object.keys(files).some(
+      (p) =>
+        p.startsWith("lib/core/src/") &&
+        p.endsWith(`.e${e}`) &&
+        p.length > "lib/core/src/".length + `.e${e}`.length,
+    );
+    if (hit) expected[`@obs/core/x${e}/*`] = [`lib/core/src/*.e${e}`];
+  }
+  expect(Object.keys(expected)).toHaveLength(28);
+  expect(g.profile.typescript.aliases).toEqual(expected);
+});
+
+it("answers 3 × 35,000 pattern exports over 16,000 files without a scan per export", async () => {
+  // each "./k<i>/*" names a suffix no file has, and every file lies under each of the three
+  // packages, so a scan of the files under a package for each export, which this once did,
+  // took about 50 s; the index takes about 1 s
+  const files: Record<string, string> = {};
+  for (let i = 0; i < 16_000; i++) files[`sky/deep/f${i}`] = "";
+  const hostile = (): Record<string, string> => {
+    const exports: Record<string, string> = {};
+    for (let i = 0; i < 35_000; i++) exports[`./k${i}/*`] = `./*.q${i}`;
+    return exports;
+  };
+  files["package.json"] = json({
+    name: "@obs/sky",
+    exports: { "./*": "./sky/deep/*", ...hostile() },
+  });
+  files["sky/package.json"] = json({ name: "@obs/a", exports: hostile() });
+  files["sky/deep/package.json"] = json({ name: "@obs/b", exports: hostile() });
+  const dir = snapshot(files);
+  const started = performance.now();
+  const g = await generateProfile(dir);
+  expect(performance.now() - started).toBeLessThan(4000);
+  expect(g.profile.typescript.aliases).toEqual({
+    "@obs/sky/*": ["sky/deep/*"],
+  });
+}, 120_000);
+
 it("reads exports given as a string, an array or the conditions of ., and none that mix keys", async () => {
   const g = await generateProfile(
     snapshot({
@@ -653,6 +711,17 @@ it("finds the components computeComponents finds, and counts each launch manifes
     components: ["sim/", "sim/src/observatory/", "tools/", "web/"],
     launchManifests: 3,
   });
+});
+
+it("classifies a file by its first bytes, so a binary .ts file makes no component", async () => {
+  const g = await generateProfile(
+    snapshot({
+      "blob/orbit.ts": "export const a = 1;\0\u0001",
+      "sim/x.ts": "",
+      "web/x.ts": "",
+    }),
+  );
+  expect(g.found.components).toEqual(["sim/", "web/"]);
 });
 
 it("reads a file's mode from its owner's execute bit, as git does", async () => {

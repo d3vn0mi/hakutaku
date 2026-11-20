@@ -159,6 +159,8 @@ export async function generateProfile(
     }
   }
 
+  // built on the first pattern export
+  let matcher: ((pattern: string) => boolean) | undefined;
   for (const path of sorted) {
     if (posix.basename(path) !== "package.json" || vendored(path)) continue;
     const manifest = readJsonc(path);
@@ -175,9 +177,8 @@ export async function generateProfile(
       if (!pattern || stars(built) !== 1) {
         return sourceForBuilt(built, tsconfigDirs, (p) => paths.has(p));
       }
-      const found = sourceForBuilt(built, tsconfigDirs, (p) =>
-        matches(sorted, p),
-      );
+      matcher ??= patternMatcher(sorted);
+      const found = sourceForBuilt(built, tsconfigDirs, matcher);
       return found === null ? null : withoutImpliedExtension(found);
     };
     if (manifest.exports !== undefined && manifest.exports !== null) {
@@ -381,18 +382,110 @@ function* under(sorted: readonly string[], prefix: string): Generator<string> {
   }
 }
 
-// Whether a sorted path matches `pattern`, whose one "*" stands for one or more characters, "/"
-// included, as in an exports pattern.
-function matches(sorted: readonly string[], pattern: string): boolean {
-  const star = pattern.indexOf("*");
-  const prefix = pattern.slice(0, star);
-  const suffix = pattern.slice(star + 1);
-  for (const path of under(sorted, prefix)) {
-    if (path.length > prefix.length + suffix.length && path.endsWith(suffix)) {
-      return true;
+// Whether a sorted path matches a pattern whose one "*" stands for one or more characters, "/"
+// included, as in an exports pattern. A scan of the paths under each pattern's prefix would cost
+// a package.json of many pattern exports the tree's size for each one, so the paths are indexed
+// once: the paths starting with the prefix are a run of `sorted`, and those ending with the
+// suffix a run of the reversed paths in order. levels[k] holds each path's rank among the
+// reversed paths, in runs of 2^k paths of `sorted`, each run in order, so a pattern takes
+// O(log² n) steps to find a path in both runs, plus one step for each path in both that is too
+// short for its "*" to match a character. Such a path is the prefix and the suffix overlapping or
+// touching, one for each length, so there are at most one more of them than the shorter of the
+// two has characters.
+function patternMatcher(
+  sorted: readonly string[],
+): (pattern: string) => boolean {
+  const n = sorted.length;
+  const reversed = sorted.map(reverse);
+  const byEnd = Array.from({ length: n }, (_, i) => i).sort((a, b) =>
+    comparePaths(reversed[a] ?? "", reversed[b] ?? ""),
+  );
+  const ends = byEnd.map((i) => reversed[i] ?? "");
+  const levels: Int32Array[] = [new Int32Array(n)];
+  byEnd.forEach((i, rank) => {
+    (levels[0] as Int32Array)[i] = rank;
+  });
+  for (let width = 1; width < n; width *= 2) {
+    const prev = levels[levels.length - 1] as Int32Array;
+    const next = new Int32Array(n);
+    for (let lo = 0; lo < n; lo += 2 * width) {
+      const mid = Math.min(lo + width, n);
+      const hi = Math.min(lo + 2 * width, n);
+      let i = lo;
+      let j = mid;
+      for (let k = lo; k < hi; k++) {
+        next[k] =
+          j >= hi || (i < mid && (prev[i] ?? 0) < (prev[j] ?? 0))
+            ? (prev[i++] ?? 0)
+            : (prev[j++] ?? 0);
+      }
     }
+    levels.push(next);
   }
-  return false;
+  return (pattern) => {
+    const star = pattern.indexOf("*");
+    const prefix = pattern.slice(0, star);
+    const suffix = pattern.slice(star + 1);
+    const shortest = prefix.length + suffix.length + 1;
+    const [a, b] = runOf(sorted, prefix);
+    const [c, d] = runOf(ends, reverse(suffix));
+    // [a, b) split into aligned runs of 2^k paths, each searched for a rank in [c, d)
+    for (let pos = a; pos < b; ) {
+      let k = 0;
+      while (
+        k + 1 < levels.length &&
+        pos % (2 << k) === 0 &&
+        pos + (2 << k) <= b
+      ) {
+        k++;
+      }
+      const level = levels[k] as Int32Array;
+      const end = pos + (1 << k);
+      for (let i = lowerBound(level, pos, end, c); i < end; i++) {
+        const rank = level[i] ?? d;
+        if (rank >= d) break;
+        if ((sorted[byEnd[rank] ?? 0] ?? "").length >= shortest) return true;
+      }
+      pos = end;
+    }
+    return false;
+  };
+}
+
+// A string with its UTF-16 code units in reverse order, so that "ends with" reads as "starts with".
+const reverse = (s: string): string => s.split("").reverse().join("");
+
+// The run of a sorted list whose strings start with `prefix`, as [start, end).
+function runOf(list: readonly string[], prefix: string): [number, number] {
+  const search = (inRun: boolean): number => {
+    let lo = 0;
+    let hi = list.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      const s = list[mid] ?? "";
+      if (s < prefix || (inRun && s.startsWith(prefix))) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  };
+  return [search(false), search(true)];
+}
+
+// The first index in [lo, hi) of an ordered run whose value is at least `value`.
+function lowerBound(
+  run: Int32Array,
+  lo: number,
+  hi: number,
+  value: number,
+): number {
+  let l = lo;
+  let h = hi;
+  while (l < h) {
+    const mid = (l + h) >>> 1;
+    if ((run[mid] ?? 0) < value) l = mid + 1;
+    else h = mid;
+  }
+  return l;
 }
 
 const stars = (s: string): number => s.split("*").length - 1;
