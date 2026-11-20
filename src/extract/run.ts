@@ -23,6 +23,7 @@ export interface EngineRun {
   env: Record<string, string>; // from scratch: engineEnv's
   timeoutMs: number; // 600000 at quick and standard, 3600000 at deep
   stdoutFile?: string; // otherwise stdout is captured, up to 64 MiB
+  stderrMark?: string; // a text looked for in the whole of stderr, not only its tail
   onSpawn?: (pid: number) => void; // called right after the spawn
 }
 
@@ -35,6 +36,7 @@ export interface EngineRunResult {
   peakRssBytes: number | null;
   stdout: string;
   stderrTail: string; // the last 4 KiB
+  stderrMarked: boolean; // whether stderrMark appeared anywhere in stderr
 }
 
 const STDOUT_CAP = 64 * 1024 * 1024;
@@ -75,6 +77,11 @@ export function runEngine(run: EngineRun): Promise<EngineRunResult> {
     let stdoutBytes = 0;
     let tail = Buffer.alloc(0);
     let cut = false;
+    const mark =
+      run.stderrMark === undefined || run.stderrMark === ""
+        ? null
+        : Buffer.from(run.stderrMark);
+    let marked = false;
     let timedOut = false;
     let failure: Error | null = null;
     let peakRssBytes: number | null = null;
@@ -110,6 +117,9 @@ export function runEngine(run: EngineRun): Promise<EngineRunResult> {
     });
     child.stderr?.on("data", (chunk: Buffer) => {
       const joined = Buffer.concat([tail, chunk]);
+      // The tail holds the last bytes before this chunk, so a mark split between two chunks
+      // is found too, as long as it is shorter than the tail.
+      if (mark !== null && !marked) marked = joined.includes(mark);
       if (joined.length > STDERR_TAIL) {
         cut = true;
         tail = Buffer.from(joined.subarray(joined.length - STDERR_TAIL));
@@ -196,6 +206,7 @@ export function runEngine(run: EngineRun): Promise<EngineRunResult> {
         peakRssBytes,
         stdout: Buffer.concat(stdout).toString("utf8"),
         stderrTail: tailText(tail, cut),
+        stderrMarked: marked,
       });
     });
   });

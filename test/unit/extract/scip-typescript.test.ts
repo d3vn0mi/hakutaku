@@ -138,6 +138,13 @@ it.each<[string, string, RegExp]>([
     "fs.writeFileSync(output, Buffer.alloc(0)); console.error(\"unexpected error indexing project root '/x'\", new Error('boom'));",
     /^scip-typescript failed: unexpected error indexing project root '\/x' Error: boom/,
   ],
+  [
+    // the error's message and stack, and the errors of later files, can push the first line
+    // out of the last 4 KiB of stderr
+    "a file it could not index, its report cut from the stderr tail",
+    "fs.writeFileSync(output, Buffer.alloc(0)); console.error(\"unexpected error indexing project root '/x'\", 'Error: boom\\n' + '    at orbit (orbit.js:1:1)\\n'.repeat(200));",
+    /^scip-typescript failed: unexpected error indexing a file, reported before the last 4 KiB of stderr:\n.* {4}at orbit \(orbit\.js:1:1\)$/s,
+  ],
 ])("fails with %s, and deletes index.scip", async (_, body, error) => {
   const ctx = standIn(`fs.writeFileSync(output, "partial");\n${body}`);
   await expect(scipTypescriptDriver.run(ctx)).rejects.toThrow(error);

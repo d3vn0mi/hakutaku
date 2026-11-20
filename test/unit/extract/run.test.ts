@@ -86,6 +86,27 @@ it("keeps the last 4 KiB of stderr and writes stdout to a file when asked", asyn
   expect(readFileSync(file, "utf8")).toBe("orbit ".repeat(1000));
 });
 
+it("reports a mark seen anywhere in stderr, even one split between writes and cut from the tail", async () => {
+  // the mark comes in two writes 50 ms apart, then 6,000 bytes push it out of the tail
+  const marked = await runEngine(
+    run(
+      'process.stderr.write("sky: orbit fa"); setTimeout(() => process.stderr.write("iled here\\n" + "x".repeat(6000)), 50);',
+      { stderrMark: "orbit failed" },
+    ),
+  );
+  expect(marked.stderrTail).not.toContain("orbit failed");
+  expect(marked.stderrMarked).toBe(true);
+  const unmarked = await runEngine(
+    run('process.stderr.write("orbit fine\\n");', {
+      stderrMark: "orbit failed",
+    }),
+  );
+  expect(unmarked.stderrMarked).toBe(false);
+  // without a mark to look for, none is reported
+  const none = await runEngine(run('process.stderr.write("orbit failed");'));
+  expect(none.stderrMarked).toBe(false);
+});
+
 it("reports peak memory on Linux and calls onSpawn with the pid", async () => {
   const seen: number[] = [];
   // the engine fills 64 MiB and spins for 300 ms, then lives 300 ms more

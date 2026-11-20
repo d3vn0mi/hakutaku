@@ -80,6 +80,7 @@ async function runScipTypescript(ctx: ExtractContext): Promise<ScipFacts> {
       cwd: workDir,
       env: engineEnv(ctx, false),
       timeoutMs,
+      stderrMark: FILE_ERROR,
     });
     const failure = failureOf(result, timeoutMs);
     if (failure !== null) throw new Error(`scip-typescript failed: ${failure}`);
@@ -119,8 +120,12 @@ function failureOf(r: EngineRunResult, timeoutMs: number): string | null {
       ? `stopped by ${r.signal}`
       : `exit code ${r.exitCode}`;
   }
+  if (!r.stderrMarked) return null;
+  // The report's first line can be cut from the tail by its own stack and later reports.
   const at = tail.indexOf(FILE_ERROR);
-  return at === -1 ? null : tail.slice(at);
+  return at === -1
+    ? `${FILE_ERROR} a file, reported before the last 4 KiB of stderr:\n${tail}`
+    : tail.slice(at);
 }
 
 // The store's lines of a snapshot file: the file decoded as the store decodes text (each
