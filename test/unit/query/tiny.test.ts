@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { storeIndex } from "../../../src/query/index.js";
+import { resolveTarget, storeIndex } from "../../../src/query/index.js";
+import { openStore, type Store } from "../../../src/store/index.js";
+import type { ToolError } from "../../../src/tools/errors.js";
+import { miniStore } from "../../helpers/mini-store.js";
 import {
   openTiny,
   TINY_COMMIT,
@@ -259,6 +262,27 @@ describe("storeIndex", () => {
     expect(ix.importsOut.get(2)?.map((e) => e.id)).toEqual([1, 2, 3]);
     expect(ix.importsIn.get(9)?.map((e) => e.src)).toEqual([2, 8, 10]);
     expect(ix.importsIn.get(2)?.map((e) => e.id)).toEqual([5]);
+    // only rows that import a repo file: the external and unresolved rows have no key
+    expect([...ix.importsIn.keys()].sort((a, b) => a - b)).toEqual([
+      2, 3, 4, 5, 9, 10, 11, 14,
+    ]);
+  });
+
+  it("counts a test-support file as a test, never as production", () => {
+    const c = tinyContent();
+    const camera = c.files.find((f) => f.path === "lib/camera.ts");
+    if (camera === undefined) throw new Error("tiny has no lib/camera.ts");
+    camera.kind = "test-support";
+    const t = openStore(miniStore(c)) as Store;
+    expect(storeIndex(t).files.get(4)).toMatchObject({
+      kind: "test-support",
+      production: false,
+      test: true,
+    });
+    expect(
+      (resolveTarget(t, "tiny", "lib/Camera.ts", "target") as ToolError)
+        .candidates,
+    ).toEqual([{ id: "tiny:lib/camera.ts", kind: "test-file" }]);
   });
 
   it("formats each kind of ID, and refuses an id the store does not hold", () => {
