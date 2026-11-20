@@ -95,13 +95,14 @@ it("puts the hardening options before -C", () =>
     "ls-tree",
   ]));
 
-it("holds exactly the six fixed environment keys", () =>
+it("holds exactly the seven fixed environment keys", () =>
   expect(GIT_ENV).toEqual({
     GIT_CONFIG_NOSYSTEM: "1",
     GIT_CONFIG_GLOBAL: "/dev/null",
     GIT_TERMINAL_PROMPT: "0",
     GIT_NO_LAZY_FETCH: "1",
     GIT_OPTIONAL_LOCKS: "0",
+    GIT_ALLOW_PROTOCOL: "",
     LANG: "C",
   }));
 
@@ -137,6 +138,55 @@ it("never fetches a missing blob from a promisor remote", async () => {
     missingBlob,
   );
   expect(existsSync(canary)).toBe(false);
+});
+
+it("refuses every transport for a promisor fetch, whatever the repo's protocol config allows", async () => {
+  // git before 2.44 ignores GIT_NO_LAZY_FETCH; a fake git that drops it stands for one. The
+  // repo's own protocol.<name>.allow=always outranks -c protocol.allow=never, and an ext::
+  // remote runs any command, so only GIT_ALLOW_PROTOCOL keeps the fetch from starting.
+  const src = await makeRepo(one());
+  git(src, "config", "uploadpack.allowFilter", "true");
+  const dir = tmp();
+  const clone = join(dir, "clone");
+  git(
+    dir,
+    "clone",
+    "--quiet",
+    "--filter=blob:none",
+    "--no-checkout",
+    `file://${src}`,
+    clone,
+  );
+  const missingBlob = rev(src, "HEAD:web/src/orbits/orbit.ts");
+  const real = execFileSync("sh", ["-c", "command -v git"], {
+    encoding: "utf8",
+  }).trim();
+  const bin = fakeGit(
+    [
+      `const { spawnSync } = require("node:child_process");`,
+      `const env = { ...process.env };`,
+      `delete env.GIT_NO_LAZY_FETCH;`,
+      `const run = spawnSync(${JSON.stringify(real)}, process.argv.slice(2), { stdio: "inherit", env });`,
+      `process.exit(run.status === null ? 1 : run.status);`,
+    ].join("\n"),
+  );
+  const canary = join(dir, "canary");
+  const ssh = join(dir, "ssh.sh");
+  writeFileSync(ssh, `#!/bin/sh\necho fetched > '${canary}'\nexit 1\n`);
+  chmodSync(ssh, 0o755);
+  const remotes: Array<[string, string]> = [
+    ["ssh", "ssh://example.invalid/x.git"],
+    ["ext", `ext::${ssh}`],
+  ];
+  git(clone, "config", "core.sshCommand", ssh);
+  for (const [protocol, url] of remotes) {
+    git(clone, "remote", "set-url", "origin", url);
+    git(clone, "config", `protocol.${protocol}.allow`, "always");
+    await expect(
+      withPath(bin, () => readBlobs(clone, [missingBlob], async () => {})),
+    ).rejects.toThrow(missingBlob);
+    expect(existsSync(canary)).toBe(false);
+  }
 });
 
 it("resolves a branch, a tag and a full sha to the commit and its committer time", async () => {

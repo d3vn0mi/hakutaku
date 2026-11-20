@@ -18,12 +18,18 @@ export const GIT_ENV: Readonly<Record<string, string>> = Object.freeze({
   GIT_TERMINAL_PROMPT: "0",
   GIT_NO_LAZY_FETCH: "1",
   GIT_OPTIONAL_LOCKS: "0",
+  // An empty list: no transport at all. Unlike -c protocol.allow=never, which only sets the
+  // default, it outranks a repo's own protocol.<name>.allow=always, which would otherwise let
+  // a promisor fetch run an ext:: remote's command or core.sshCommand on a git that ignores
+  // GIT_NO_LAZY_FETCH (before 2.44).
+  GIT_ALLOW_PROTOCOL: "",
   LANG: "C",
 });
 
-// protocol.allow=never, with GIT_NO_LAZY_FETCH where git honours it, refuses a partial
-// clone's promisor fetch before any transport, or the repo's core.sshCommand, runs. The
-// repo's own .git/config still applies, so each option that shapes output is given here.
+// GIT_ALLOW_PROTOCOL, protocol.allow=never and GIT_NO_LAZY_FETCH (where git honours it) each
+// refuse a partial clone's promisor fetch before any transport, or the repo's core.sshCommand,
+// runs; only GIT_ALLOW_PROTOCOL also outranks the repo's own protocol config. The repo's own
+// .git/config still applies, so each option that shapes output is given here.
 const PREFIX: readonly string[] = Object.freeze([
   "--no-pager",
   "-c",
