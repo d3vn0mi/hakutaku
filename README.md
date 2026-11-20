@@ -167,7 +167,11 @@ The road to 0.1:
         hostile-repository cases.
   - [ ] **The commands** `map`, `list`, `profile` and `doctor`, and deep Python detail.
 - [ ] **Tools and MCP server.** The 13 tools, with labels, paging and errors. `hakutaku query`. The
-      golden tests.
+      golden tests. In progress, 11 of 16 steps done: the tool contract (types, limits, errors,
+      label wording, argument checks and paging), all 13 tools answering from a store, and the host
+      that serves the registered repositories, says whether each map is current, and rate-limits
+      refreshes. Next: the MCP server and `hakutaku query`, the golden answers, conformance and the
+      latency check.
 - [ ] **Viewer.** Lenses, depth levels, search and filters, the source view, accessibility and the
       performance budget.
 - [ ] **Release.** CI, the hostile-repository suite, and an npm release with provenance. A static map of
