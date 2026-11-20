@@ -131,7 +131,8 @@ function walk(
             line: link.line,
             col: link.col,
             label,
-            collision: link.collision,
+            // a collision marks a scoped site, so a path that weakens the site drops it
+            collision: link.collision && label === "scoped",
             fileId: link.fileId,
           });
         }

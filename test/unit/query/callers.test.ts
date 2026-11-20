@@ -758,3 +758,224 @@ describe("blind spots", () => {
     ]);
   });
 });
+
+const V_CTX: QueryCtx = Object.freeze({
+  repo: "v",
+  builtCommit: "fedcba987654",
+  stale: false,
+  snippets: true,
+});
+
+function walkStore(): Store {
+  const v = emptyContent("v");
+  const paths = [
+    "v/m.ts",
+    "v/n.ts",
+    "v/p.ts",
+    "v/q.ts",
+    "v/s.ts",
+    "v/t.ts",
+    "v/x.ts",
+    "v/y.ts",
+  ];
+  const file = (path: string) => paths.indexOf(path) + 1;
+  v.components = [
+    {
+      id: 1,
+      path: "v/",
+      kind: "folder",
+      parent_id: null,
+      files: paths.length,
+      tests: 0,
+      lines: 9 * paths.length,
+    },
+  ];
+  v.files = paths.map((path, i) => ({
+    id: i + 1,
+    path,
+    lang: "typescript",
+    kind: "code",
+    component_id: 1,
+    lines: 9,
+    bytes: 90,
+    blob_sha: "d".repeat(40),
+    mode: "100644",
+    link_target: null,
+    entry: 0,
+    has_source: 0,
+  }));
+  // path, name, start line, end line; in row order
+  const defs: [string, string, number, number][] = [
+    ["v/m.ts", "m", 1, 4],
+    ["v/m.ts", "m2", 5, 6],
+    ["v/n.ts", "n", 1, 3],
+    ["v/p.ts", "p", 1, 2],
+    ["v/q.ts", "p", 1, 2], // the calling file's own p
+    ["v/q.ts", "q", 3, 5],
+    ["v/s.ts", "s", 1, 2],
+    ["v/t.ts", "t", 1, 2],
+    ["v/x.ts", "x", 1, 3],
+    ["v/y.ts", "y", 1, 3],
+  ];
+  const def = (path: string, name: string) =>
+    defs.findIndex(([p, n]) => p === path && n === name) + 1;
+  v.definitions = defs.map(([path, name, line, end], i) => ({
+    id: i + 1,
+    file_id: file(path),
+    qualname: name,
+    ordinal: 1,
+    name,
+    kind: "function",
+    start_line: line,
+    start_col: 1,
+    end_line: end,
+    end_col: 2,
+    exported: 1,
+    parent_id: null,
+    scip_symbol: null,
+    signature: null,
+    producer: "ast-grep",
+  }));
+  v.imports = [
+    {
+      id: 1,
+      src_file_id: file("v/q.ts"),
+      dst_file_id: file("v/p.ts"),
+      dst_external_id: null,
+      kind: "static",
+      line: 1,
+      specifier: "./p",
+      resolved: 1,
+      producer: "dependency-cruiser",
+    },
+  ];
+  // path, line, enclosing name, callee; in row order
+  const sites: [string, number, string, string][] = [
+    ["v/m.ts", 2, "m", "s"],
+    ["v/m.ts", 3, "m", "s"],
+    ["v/m.ts", 6, "m2", "s"],
+    ["v/n.ts", 2, "n", "m"],
+    ["v/q.ts", 4, "q", "p"],
+    ["v/x.ts", 2, "x", "t"], // v/x.ts does not import v/t.ts
+    ["v/y.ts", 2, "y", "x"],
+  ];
+  const site = (path: string, line: number) =>
+    sites.findIndex(([p, l]) => p === path && l === line) + 1;
+  v.call_sites = sites.map(([path, line, enclosing, callee], i) => ({
+    id: i + 1,
+    file_id: file(path),
+    line,
+    col: 3,
+    enclosing_def_id: def(path, enclosing),
+    callee_name: callee,
+    receiver_text: null,
+    producer: "ast-grep",
+  }));
+  // site, definition, label, collision; in row order
+  const targets: [number, number, "bound" | "scoped", 0 | 1][] = [
+    [site("v/m.ts", 2), def("v/s.ts", "s"), "bound", 0],
+    [site("v/m.ts", 3), def("v/s.ts", "s"), "scoped", 0],
+    [site("v/m.ts", 6), def("v/s.ts", "s"), "bound", 0],
+    [site("v/n.ts", 2), def("v/m.ts", "m"), "bound", 0],
+    [site("v/y.ts", 2), def("v/x.ts", "x"), "scoped", 1],
+  ];
+  v.call_targets = targets.map(([site_id, def_id, label, collision]) => ({
+    site_id,
+    def_id,
+    label,
+    collision,
+  }));
+  const store = openStore(miniStore(v));
+  if ("code" in store) throw new Error(`the walk store: ${store.reason}`);
+  return store;
+}
+
+describe("the walk store", () => {
+  const ws = walkStore();
+  const v = (a: Args) => answer(c({ repo: "v", ...a }, ws, V_CTX));
+
+  it("walks on from a caller with its strongest label, though a weaker site comes last, and counts files once", () => {
+    const a = v({ symbol: "v/s.ts#s", depth: 2 });
+    expect(a.callers).toEqual([
+      {
+        id: "v:v/m.ts#m",
+        file: "v:v/m.ts",
+        test: false,
+        hop: 1,
+        sites: [
+          { line: 2, col: 3, label: "bound" },
+          { line: 3, col: 3, label: "scoped" },
+        ],
+      },
+      {
+        id: "v:v/m.ts#m2",
+        file: "v:v/m.ts",
+        test: false,
+        hop: 1,
+        sites: [{ line: 6, col: 3, label: "bound" }],
+      },
+      {
+        id: "v:v/n.ts#n",
+        file: "v:v/n.ts",
+        test: false,
+        hop: 2,
+        sites: [{ line: 2, col: 3, label: "bound" }],
+      },
+    ]);
+    expect(a.counts).toEqual({
+      files: 2,
+      callers: 3,
+      sites: 4,
+      bound: 3,
+      scoped: 1,
+      unscoped: 0,
+    });
+  });
+
+  it("counts the calling file's own definitions with the name toward a collision", () => {
+    expect(v({ symbol: "v/p.ts#p", scope: "transitive" }).callers).toEqual([
+      {
+        id: "v:v/q.ts#q",
+        file: "v:v/q.ts",
+        test: false,
+        hop: 1,
+        sites: [{ line: 4, col: 3, label: "scoped", collision: true }],
+      },
+    ]);
+  });
+
+  it("marks a collision only on a site labelled scoped", () => {
+    expect(v({ symbol: "v/x.ts#x" }).callers).toEqual([
+      {
+        id: "v:v/y.ts#y",
+        file: "v:v/y.ts",
+        test: false,
+        hop: 1,
+        sites: [{ line: 2, col: 3, label: "scoped", collision: true }],
+      },
+    ]);
+    // the scoped link y -> x is reached through the unscoped match x -> t, so its site is
+    // unscoped, and an unscoped site carries no collision
+    const a = v({
+      symbol: "v/t.ts#t",
+      labels: ["bound", "scoped", "unscoped"],
+      depth: 2,
+    });
+    expect(a.callers).toEqual([
+      {
+        id: "v:v/x.ts#x",
+        file: "v:v/x.ts",
+        test: false,
+        hop: 1,
+        sites: [{ line: 2, col: 3, label: "unscoped" }],
+      },
+      {
+        id: "v:v/y.ts#y",
+        file: "v:v/y.ts",
+        test: false,
+        hop: 2,
+        sites: [{ line: 2, col: 3, label: "unscoped" }],
+      },
+    ]);
+  });
+});
