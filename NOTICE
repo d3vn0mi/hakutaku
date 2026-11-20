@@ -7,6 +7,12 @@ the copyright line copied from that version's licence file.
 
 ## Bundled in the package
 
+### SCIP
+Version: vendored from https://github.com/scip-code/scip/blob/main/scip.proto at main, as fetched on 2026-11-13
+Licence: Apache-2.0
+Copyright: not stated in the licence file
+Use: the SCIP index format, created by Sourcegraph: src/extract/scip/scip.proto is its protobuf schema, and hakutaku's decoder of index.scip is written from that schema
+
 ## Installed with the package
 
 ## Run as separate programs

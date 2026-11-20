@@ -14,7 +14,7 @@
 // - it reads ? in a request as a query, so ./orbit?2 resolves to orbit.ts beside orbit?2.ts;
 // - it reports each cycle once, with its modules in cycle.
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, posix, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { readLock, resolveBin } from "../../engines/index.js";
 import { comparePaths, type Severity } from "../../model/index.js";
 import type { EngineDriver, ExtractContext } from "../context.js";
@@ -23,6 +23,7 @@ import {
   type External,
   externalOf,
   fileOrPackage,
+  hasTsconfigInput,
   inNodeModules,
   isRelative,
   isRepoPath,
@@ -59,24 +60,6 @@ const DEEP_TIMEOUT_MS = 3_600_000;
 // itself.
 const CYCLE_RULE = "hakutaku-cycle";
 
-const SCRIPT_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".mts",
-  ".cts",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".cjs",
-]);
-
-// Directories TypeScript's include wildcard never enters, besides those named with a dot.
-const UNLISTED_DIRECTORIES = new Set([
-  "node_modules",
-  "bower_components",
-  "jspm_packages",
-]);
-
 // The dependency types of an import that is gone at run time: import type and export type,
 // a type position's import("./x").T, and a triple-slash path or types reference.
 const TYPE_LEVEL = new Set([
@@ -93,31 +76,9 @@ export const depcruiseDriver: EngineDriver<DepcruiseFacts> = {
   minDetail: "quick",
   // A TS or JS file the generated tsconfig's include lists: with none, TypeScript's parse of
   // that tsconfig stops dependency-cruiser on TS18003 ("No inputs were found").
-  applies: (ctx) => {
-    const skipped = new Set(ctx.manifest.metadataOnly.map((m) => m.path));
-    return ctx.manifest.tree.some(
-      (e) =>
-        (e.mode === "100644" || e.mode === "100755") &&
-        !skipped.has(e.path) &&
-        listedByInclude(e.path),
-    );
-  },
+  applies: (ctx) => hasTsconfigInput(ctx.manifest),
   run: runDepcruise,
 };
-
-// Whether TypeScript's include, snapshot/**/*, lists a path with a TS or JS extension: its
-// wildcards enter no directory named with a leading dot, node_modules, bower_components or
-// jspm_packages, and take no file named with a leading dot or ending .min.js.
-function listedByInclude(path: string): boolean {
-  const directories = path.split("/");
-  const name = directories.pop() ?? "";
-  return (
-    SCRIPT_EXTENSIONS.has(posix.extname(name)) &&
-    !name.startsWith(".") &&
-    !name.endsWith(".min.js") &&
-    directories.every((d) => !d.startsWith(".") && !UNLISTED_DIRECTORIES.has(d))
-  );
-}
 
 async function runDepcruise(ctx: ExtractContext): Promise<DepcruiseFacts> {
   const exportDir = resolve(ctx.exportDir);

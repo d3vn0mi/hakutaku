@@ -5,6 +5,7 @@
 // one module alike. Nothing here reads a file: paths is the snapshot's list.
 import { posix } from "node:path";
 import { RESOLVE_EXTENSIONS } from "../../export/configs.js";
+import type { ExportManifest } from "../../export/index.js";
 import { NODE_BUILTINS } from "../../model/index.js";
 
 export interface External {
@@ -75,6 +76,53 @@ export function isRepoPath(path: string): boolean {
     path !== "" &&
     !path.startsWith("/") &&
     path.split("/").every((s) => s !== "" && s !== "." && s !== "..")
+  );
+}
+
+const SCRIPT_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".mts",
+  ".cts",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+]);
+
+// Directories TypeScript's include wildcard never enters, besides those named with a dot.
+const UNLISTED_DIRECTORIES = new Set([
+  "node_modules",
+  "bower_components",
+  "jspm_packages",
+]);
+
+// Whether TypeScript's include, snapshot/**/*, lists a path with a TS or JS extension: its
+// wildcards enter no directory named with a leading dot, node_modules, bower_components or
+// jspm_packages, and take no file named with a leading dot or ending .min.js.
+export function listedByInclude(path: string): boolean {
+  const directories = path.split("/");
+  const name = directories.pop() ?? "";
+  return (
+    SCRIPT_EXTENSIONS.has(posix.extname(name)) &&
+    !name.startsWith(".") &&
+    !name.endsWith(".min.js") &&
+    directories.every((d) => !d.startsWith(".") && !UNLISTED_DIRECTORIES.has(d))
+  );
+}
+
+// Whether the generated tsconfig lists a file of the tree as TypeScript's input: a regular TS
+// or JS file its include lists that is not metadata-only. With none, a TypeScript engine has
+// nothing to read, and dependency-cruiser and scip-typescript each stop with an error.
+export function hasTsconfigInput(
+  manifest: Pick<ExportManifest, "tree" | "metadataOnly">,
+): boolean {
+  const skipped = new Set(manifest.metadataOnly.map((m) => m.path));
+  return manifest.tree.some(
+    (e) =>
+      (e.mode === "100644" || e.mode === "100755") &&
+      !skipped.has(e.path) &&
+      listedByInclude(e.path),
   );
 }
 
