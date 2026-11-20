@@ -157,10 +157,10 @@ The road to 0.1:
         and hakutaku generates its own.
   - [ ] **The engines and the sandbox.** Pinned engines, their install, and extract inside the
         sandbox. Done so far: the engines are pinned in a hash-checked lock and installed from it,
-        and the sandbox is built. On Linux it runs extract inside bubblewrap (or a systemd-run service
-        where bubblewrap does not work), each engine in a fresh environment under a timeout, with a
-        memory cap wherever systemd-run is available. The ast-grep and dependency-cruiser drivers are
-        written; scip-typescript and grimp are next.
+        and the sandbox is built. On Linux it runs extract inside bubblewrap or, where bubblewrap does
+        not work, a systemd-run service checked to have no network. Each engine runs in a fresh
+        environment under a timeout, with a memory cap wherever systemd-run is available. The
+        ast-grep and dependency-cruiser drivers are written; scip-typescript and grimp are next.
   - [ ] **Merge and gates.** Engine output merged into one store, metrics stored, quality gates,
         `hakutaku extract`.
   - [ ] **Proof.** The synthetic sample and its golden answers, build acceptance, and the
