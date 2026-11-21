@@ -156,7 +156,10 @@ for (const c of CASES) {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, text);
     } else {
-      expect(text).toBe(readFileSync(file, "utf8"));
+      // the message names the golden file, relative to the repo, beside the diff
+      expect(text, `test/golden/${c.tool}/${c.name}.json`).toBe(
+        readFileSync(file, "utf8"),
+      );
     }
   });
 }
