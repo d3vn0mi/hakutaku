@@ -434,7 +434,11 @@ it("falls back to systemd-run when bubblewrap fails, probing each once", async (
 // must not read ($6) and that file through /proc ($7). "writes outside" keeps the host's file
 // system writable; "sockets open" leaves the probe's socket in reach, as a user manager that drops
 // the address-family filter does; "reads outside" leaves the probe's unbound directory in view;
-// "reads through proc" hides it, but shows it again where the check looks through /proc; and
+// "reads through proc" hides it, but shows it again where the check looks through /proc;
+// "writes its control group" hides it but leaves the service's control group writable, as a user
+// manager that drops ProtectControlGroups does, with a file of this test in place of its
+// cgroup.procs (bubblewrap's own control group namespace makes that group the root); "hides its
+// control group" shows an empty /proc, where the service cannot say which group is its own; and
 // "confined" hides it and covers the socket with a file that is none. HOME is a fresh directory.
 function standInSystemdRun(
   service:
@@ -443,6 +447,8 @@ function standInSystemdRun(
     | "sockets open"
     | "reads outside"
     | "reads through proc"
+    | "writes its control group"
+    | "hides its control group"
     | "confined",
 ): void {
   const bin = tmp();
@@ -456,12 +462,17 @@ function standInSystemdRun(
   const throughProc = '"${7%/*}"';
   const hideUnbound = `--tmpfs ${unbound}`;
   const boundOnly = `${bwrap} --unshare-all --die-with-parent --ro-bind / / --dev /dev --bind "$bound" "$bound"`;
+  const procs = join(bin, "cgroup.procs");
+  writeFileSync(procs, "");
   const run = {
     host: 'exec "$@"',
-    "writes outside": `exec ${bwrap} --unshare-net --die-with-parent --bind / / --dev /dev ${hideUnbound} ${noSocket} -- "$@"`,
+    // a control group namespace of its own, so that its group is the root, which is not its user's
+    "writes outside": `exec ${bwrap} --unshare-net --unshare-cgroup --die-with-parent --bind / / --dev /dev ${hideUnbound} ${noSocket} -- "$@"`,
     "sockets open": `exec ${boundOnly} ${hideUnbound} -- "$@"`,
     "reads outside": `exec ${boundOnly} ${noSocket} -- "$@"`,
     "reads through proc": `exec ${boundOnly} ${noSocket} --tmpfs /proc --ro-bind ${unbound} ${throughProc} ${hideUnbound} -- "$@"`,
+    "hides its control group": `exec ${boundOnly} ${hideUnbound} ${noSocket} --tmpfs /proc -- "$@"`,
+    "writes its control group": `exec ${boundOnly} ${hideUnbound} ${noSocket} --tmpfs /sys/fs/cgroup --bind "${procs}" /sys/fs/cgroup/cgroup.procs -- "$@"`,
     confined: `exec ${boundOnly} ${hideUnbound} ${noSocket} -- "$@"`,
   }[service];
   writeFileSync(
@@ -656,8 +667,20 @@ it("says systemd-run cannot confine a service's file system when its service rea
 
 // A file system shown read-only is no allowlist: the probe writes a file on this machine, in a
 // directory the service is not given, and starts a process there, then the service must read
-// that file neither directly nor through the process's working directory under /proc.
-it.for<["reads outside" | "reads through proc", number, string]>([
+// that file neither directly nor through the process's working directory under /proc. Nor may it
+// open its own control group's cgroup.procs for writing, which it never writes.
+it.for<
+  [
+    (
+      | "reads outside"
+      | "reads through proc"
+      | "writes its control group"
+      | "hides its control group"
+    ),
+    number,
+    string,
+  ]
+>([
   [
     "reads outside",
     13,
@@ -668,6 +691,10 @@ it.for<["reads outside" | "reads through proc", number, string]>([
     14,
     "reads a file through the working directory of a process on this machine",
   ],
+  // its own control group would let it lift its memory cap, and its user's other services' would
+  // let it stop them
+  ["writes its control group", 15, "can write its own control group"],
+  ["hides its control group", 15, "cannot find its own control group"],
 ])(
   "says systemd-run cannot confine a service's file system when its service %s",
   async ([service, code, said], ctx) => {

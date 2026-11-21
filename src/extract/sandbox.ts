@@ -1,9 +1,9 @@
 // The extraction sandbox. On Linux, extract re-runs itself inside bubblewrap or, where
 // bubblewrap does not work, inside a systemd-run --user service given bubblewrap's file system:
 // an empty root holding only the paths bound into it. The service is shown, from inside, to have
-// no network, to reach no unix socket, to write nothing but its work directory, and to read
-// neither a file outside its binds nor one through the working directory of a process of this
-// machine.
+// no network, to reach no unix socket, to write nothing but its work directory, to read neither
+// a file outside its binds nor one through the working directory of a process of this machine,
+// and to have no write access to its own control group.
 // detectSandbox finds which works, once per process; the argv builders write each command. Every
 // path in a command is absolute: the user manager's PATH may lack the running Node, and
 // systemd-run -p takes no %h. Neither sandbox lets an engine dump core, and where this systemd
@@ -72,8 +72,11 @@ const SCOPE_PROBE = [
 // (else exit NETWORK_SEEN), the file named first written (else exit 11), each file named after
 // the fourth written where it can be, which the probe then looks for on this machine; the file
 // named third, outside every bind, not read (else exit 13), nor the same file through the
-// working directory of a process of this machine, named fourth (else exit 14); and the unix
-// socket named second out of reach (else exit 12).
+// working directory of a process of this machine, named fourth (else exit 14); its own control
+// group's cgroup.procs not open for writing, which is opened and closed, never written (else exit
+// 15: a group it could write would let it lift its memory cap, and its user's other services'
+// would let it stop them), a group it cannot find failing the check too; and the unix socket named
+// second out of reach (else exit 12).
 const NETWORK_SEEN = 10;
 const CONFINED_CHECK = [
   'const fs = require("node:fs");',
@@ -108,6 +111,23 @@ const CONFINED_CHECK = [
   "if (reads(throughProc)) {",
   '  console.error("reads a file through the working directory of a process on this machine");',
   "  process.exit(14);",
+  "}",
+  "let group;",
+  "try {",
+  '  group = /^0::(\\/.*)$/m.exec(fs.readFileSync("/proc/self/cgroup", "utf8"))?.[1];',
+  "} catch {}",
+  "if (group === undefined) {",
+  '  console.error("cannot find its own control group");',
+  "  process.exit(15);",
+  "}",
+  "let writable = false;",
+  "try {",
+  '  fs.closeSync(fs.openSync(require("node:path").posix.join("/sys/fs/cgroup", group, "cgroup.procs"), "r+"));',
+  "  writable = true;",
+  "} catch {}",
+  "if (writable) {",
+  '  console.error("can write its own control group");',
+  "  process.exit(15);",
   "}",
   'const reached = require("node:net").connect(socket);',
   'reached.on("connect", () => {',
@@ -197,7 +217,7 @@ const isolationProbe = (): Promise<Probe> => {
 
 // Whether systemd-run can be the sandbox, as detectSandbox decides it: a service confined as a
 // build's is that sees no network, reaches no unix socket, writes nothing but its bound
-// directory and reads nothing outside it.
+// directory, reads nothing outside it and cannot write its own control group.
 export async function confinementProbe(): Promise<{
   ok: boolean;
   evidence: ProbeEvidence;
@@ -211,14 +231,14 @@ export async function confinementProbe(): Promise<{
 // process writes a file in a directory the service is not given, and starts a sleeping process
 // there, through whose working directory it reads the file itself. Inside, the service must see
 // no network interface but loopback, write its bound directory, read that file neither directly
-// nor through /proc/<pid>/cwd of the sleeping process, and not reach the unix socket this process
-// listens on in its bound directory; on this machine, only its file there may have landed, not
-// the one it writes beside that directory, nor the one in /dev/shm, and nothing may have reached
-// the socket. A user manager that cannot make the namespaces these need (unprivileged user
-// namespaces refused) may still run the service, in the host's network and file system, and exit
-// 0, so neither systemd-run's exit code nor the service's own view proves anything alone. The
-// sleeping process is killed by its pid, and the probe directory and the /dev/shm file are
-// removed, after.
+// nor through /proc/<pid>/cwd of the sleeping process, find its own control group and fail to
+// open its cgroup.procs for writing, and not reach the unix socket this process listens on in its
+// bound directory; on this machine, only its file there may have landed, not the one it writes
+// beside that directory, nor the one in /dev/shm, and nothing may have reached the socket. A user
+// manager that cannot make the namespaces these need (unprivileged user namespaces refused) may
+// still run the service, in the host's network and file system, and exit 0, so neither
+// systemd-run's exit code nor the service's own view proves anything alone. The sleeping process
+// is killed by its pid, and the probe directory and the /dev/shm file are removed, after.
 async function confinedService(): Promise<Probe> {
   const failed = (errno: string | null, excerpt: string): Probe => ({
     ok: false,
@@ -395,7 +415,8 @@ export async function detectSandbox(
 // refused the user namespaces it needs; systemd-run unable to reach a user manager, which also
 // leaves bubblewrap without a memory cap; and, where bubblewrap does not work, a systemd-run
 // service that still sees the host's network, or that reaches a unix socket, writes outside its
-// bound directory or reads outside it. None off Linux, where nothing is probed.
+// bound directory, reads outside it or can write its own control group. None off Linux, where
+// nothing is probed.
 export async function sandboxProblems(
   platform: NodeJS.Platform = process.platform,
 ): Promise<SandboxProblem[]> {
