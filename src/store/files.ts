@@ -141,16 +141,20 @@ export function readRegularFile(path: string, max: number): Buffer | null {
   try {
     const stats = fstatSync(fd);
     if (!stats.isFile() || stats.size > max) return null;
-    // read to the end, but never past max: a file that grew since fstat is refused
+    // Read to the end, but never past max: a file that grew since fstat is refused. The first
+    // read asks for one byte more than fstat's size, and a short read is followed by a read of
+    // one byte, which finds the end without another large buffer.
     const chunks: Buffer[] = [];
     let total = 0;
+    let size = Math.min(stats.size, max) + 1;
     for (;;) {
-      const chunk = Buffer.alloc(Math.min(1024 * 1024, max + 1 - total));
+      const chunk = Buffer.allocUnsafe(size);
       const n = readSync(fd, chunk, 0, chunk.length, null);
       if (n === 0) break;
       total += n;
       if (total > max) return null;
       chunks.push(chunk.subarray(0, n));
+      size = n < chunk.length ? 1 : Math.min(1024 * 1024, max + 1 - total);
     }
     return Buffer.concat(chunks, total);
   } catch {
