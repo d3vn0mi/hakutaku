@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import type { ExportManifest } from "../../../src/export/index.js";
 import type { AstGrepFacts } from "../../../src/extract/drivers/ast-grep.js";
 import type {
+  CallFact,
   ImportFact,
   OutlineDef,
   Pos,
@@ -15,6 +16,7 @@ import { mergeEntries } from "../../../src/extract/merge/entries.js";
 import { fileRows, mergeFiles } from "../../../src/extract/merge/files.js";
 import { mergeImports } from "../../../src/extract/merge/imports.js";
 import type { MergeInput } from "../../../src/extract/merge/types.js";
+import type { ScipFacts } from "../../../src/extract/scip/facts.js";
 import {
   comparePaths,
   type DefKind,
@@ -38,6 +40,29 @@ export const blobOf = (path: string): string =>
 
 export const P = (line: number, col: number): Pos => ({ line, col });
 
+// A file's text: each line ended by a line feed.
+export const lines = (...text: string[]): string => `${text.join("\n")}\n`;
+
+// The mark redaction leaves for a rule: its name between guillemets.
+export const mark = (rule: string): string =>
+  `${String.fromCodePoint(0xab)}redacted:${rule}${String.fromCodePoint(0xbb)}`;
+
+// A SCIP symbol of the sample's package, as scip-typescript names one: the file's directory,
+// its name between backticks, then the descriptor ("" for the file's module).
+export function symbolOf(file: string, descriptor: string): string {
+  const slash = file.lastIndexOf("/");
+  return `scip-typescript npm observatory 0.1.0 ${file.slice(0, slash + 1)}\`${file.slice(slash + 1)}\`/${descriptor}`;
+}
+
+export const scip = (facts: Partial<ScipFacts>): ScipFacts => ({
+  documents: new Set(),
+  definitions: [],
+  uses: [],
+  moduleAt: new Map(),
+  duplicates: [],
+  ...facts,
+});
+
 // Where `needle` starts on line `line` of `text`: 1-based, in code points.
 export function spot(text: string, line: number, needle: string): Pos {
   const found = text.split("\n")[line - 1];
@@ -57,6 +82,14 @@ export const importFact = (
   names: string[] = [],
   [startLine, endLine]: [number, number] = [at.line, at.line],
 ): ImportFact => ({ file, at, startLine, endLine, specifier, kind, names });
+
+// A call site's fact, its callee's name at `at`.
+export const callFact = (
+  file: string,
+  at: Pos,
+  callee: string,
+  receiver: string | null = null,
+): CallFact => ({ file, at, callee, receiver });
 
 // An outline definition; its name is the last segment of its qualname.
 export const outlineDef = (
