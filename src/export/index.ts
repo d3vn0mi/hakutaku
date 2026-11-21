@@ -78,7 +78,8 @@ export interface ExportManifest {
   submodules: Array<{ path: string; commit: string }>;
   refused: Array<{
     path: string;
-    // collision and dotgit: additions
+    // collision: a path that lands on a name the snapshot already holds, folded as a file system
+    // folds names, or a file where a directory should be; dotgit: a component that reads as .git
     reason: "dotdot" | "absolute" | "control-char" | "dotgit" | "collision";
   }>;
   // Kept in snapshot/ and tree, out of every engine's input; in path order

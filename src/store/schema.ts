@@ -1,5 +1,5 @@
-// The store schema, version 1. DDL is the shared contract's schema, verbatim, comments
-// included; the content hash reads rows only, so neither the comments nor the indexes reach it.
+// The store schema, version 1, with its comments. The content hash reads rows only, so neither
+// the comments nor the indexes reach it.
 //
 // Positions: lines are 1-based, columns are 1-based Unicode code points, and every range's end
 // is exclusive.
