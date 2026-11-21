@@ -8,12 +8,13 @@ import {
   existsSync,
   mkdtempSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, expect, it, vi } from "vitest";
 import { main } from "../../../src/cli/main.js";
@@ -141,6 +142,19 @@ const statuses = (facts: BuildFacts | null) =>
   Object.fromEntries(
     Object.entries(facts?.engines ?? {}).map(([name, e]) => [name, e.status]),
   );
+
+// No directory of this machine in a text a build keeps or throws: not the temporary directory
+// the test's repos, exports and stores are made in, not the home directory, and not Node's.
+function expectNoHostPath(text: string): void {
+  for (const dir of [
+    tmpdir(),
+    realpathSync(tmpdir()),
+    homedir(),
+    dirname(process.execPath),
+  ]) {
+    expect(text).not.toContain(dir);
+  }
+}
 
 it(
   "builds, then skips an unchanged input",
@@ -549,7 +563,7 @@ it(
 );
 
 it(
-  "keeps host paths and secrets out of a failed build's attempt, naming each directory by token",
+  "keeps host paths and secrets out of a failed build's attempt and error, naming each directory by token",
   async () => {
     const repo = await oneCommit(SKY);
     const dir = await exportOf(repo);
@@ -559,17 +573,20 @@ it(
     const enginesDir = standInEnginesDir("ast-grep", {
       sh: `#!/bin/sh\necho "cannot scan $*; token=${secret}" >&2\nexit 2\n`,
     });
-    await expect(extract(dir, out, { enginesDir })).rejects.toThrow(
-      /^ast-grep failed: exit code 2\ncannot scan scan --config <export>\/sgconfig\.yml /,
+    const thrown = await extract(dir, out, { enginesDir }).then(
+      () => null,
+      (error: unknown) => (error instanceof Error ? error.message : null),
     );
     const reason = readAttempt(out)?.reason ?? "";
+    // the error thrown says what the attempt says
+    expect(thrown).toBe(reason);
     expect(reason).toMatch(
       /^ast-grep failed: exit code 2\ncannot scan scan --config <export>\/sgconfig\.yml .* <snapshot>; token=«redacted:github-token»$/,
     );
-    expect(reason).not.toContain(dirname(dir));
     expect(reason).not.toContain(secret);
-    // any error the build records is cleaned, not only an engine's: here a hook's, which
-    // names the snapshot
+    expectNoHostPath(reason);
+    // any error the build records or throws is cleaned, not only an engine's: here a hook's,
+    // which names the snapshot
     await expect(
       extractSnapshot(
         { dir, out, sandbox: "none" },
@@ -579,7 +596,7 @@ it(
           },
         },
       ),
-    ).rejects.toThrow("stopped at");
+    ).rejects.toThrow(/^stopped at <snapshot>\/web$/);
     expect(readAttempt(out)?.reason).toBe("stopped at <snapshot>/web");
   },
   TIMEOUT,
@@ -601,7 +618,7 @@ it(
     expect(warnings).toContain(
       "dependency-cruiser failed: cannot read its output (ENOENT: no such file or directory, open '<work>/depcruise.out.json')",
     );
-    expect(warnings.join("\n")).not.toContain(dirname(out));
+    expectNoHostPath(warnings.join("\n"));
   },
   TIMEOUT,
 );

@@ -180,6 +180,16 @@ export async function extractSnapshot(
     if ("result" in outcome) return outcome;
     swapped = outcome;
   } catch (error) {
+    // The error goes on to the caller cleaned as the attempt is, so that whatever prints or
+    // keeps it names no path on this machine and no secret. It is cleaned in place, which keeps
+    // its class and fields, such as whether a sandboxed run printed it.
+    if (error instanceof Error) {
+      try {
+        error.message = o.clean(error.message);
+      } catch {
+        // a message that cannot be set is left as it is
+      }
+    }
     try {
       rmSync(o.tmp, { force: true });
       rmSync(`${o.tmp}-journal`, { force: true });
