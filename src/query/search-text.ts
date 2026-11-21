@@ -15,6 +15,7 @@ import { fail, ok, type QueryCtx, type QueryOut } from "./ctx.js";
 import { matchGlob } from "./glob.js";
 import { locationText } from "./source.js";
 import { type FileInfo, storeIndex } from "./store-index.js";
+import { searchBlindSpots } from "./tiers.js";
 
 const SEARCH_SQL =
   "SELECT text, file_id, line FROM text_index WHERE text_index MATCH ?";
@@ -82,6 +83,7 @@ export function querySearchText(
         ...(text === undefined ? {} : { text }),
       };
     }),
+    blindSpots: searchBlindSpots(store),
   });
 }
 

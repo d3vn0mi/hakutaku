@@ -361,6 +361,7 @@ export type ReferencesAnswer = { id: Id } & Fresh &
       test: boolean;
       text?: string;
     }>;
+    blindSpots: string[];
     view: string;
   };
 
@@ -399,6 +400,7 @@ export type DepsAnswer = { id: Id } & Fresh &
       specifier?: string;
       text?: string;
     }>;
+    blindSpots: string[];
     view: string;
   };
 
@@ -416,6 +418,7 @@ export type PathAnswer = {
       line: number;
       text?: string;
     }>;
+    blindSpots: string[];
     view: string;
   };
 
@@ -437,7 +440,10 @@ export type RulesAnswer = Fresh &
 
 // code_search_text: a list answer.
 export type SearchTextAnswer = { text: string } & Fresh &
-  Paged & { hits: Array<{ file: Id; line: number; text?: string }> };
+  Paged & {
+    hits: Array<{ file: Id; line: number; text?: string }>;
+    blindSpots: string[];
+  };
 
 // code_snippet. On a window, the paging fields count characters.
 export type SnippetAnswer = { id: Id; file: Id } & Fresh &

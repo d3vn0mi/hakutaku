@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import type { ImportKind } from "../../../src/model/index.js";
 import {
+  importBlindSpots,
   type QueryCtx,
   type QueryOut,
   queryDeps,
@@ -35,6 +36,7 @@ it("lists a file's imports with their lines and text", () => {
     "stale",
     "direction",
     "edges",
+    "blindSpots",
     "view",
   ]);
   expect(a.edges).toEqual([
@@ -381,4 +383,106 @@ it("keeps the first edge that reaches a node, in the answer's order", () => {
     ["d:a.ts", 1, 1],
     ["d:s.ts", 2, 5],
   ]);
+});
+
+const COMPUTED = "1 dynamic import with a computed path is not followed";
+const DENIED = "1 denylisted file is left out of the map, with its imports";
+const UNRESOLVED_ONE =
+  "1 relative import did not resolve to a file and is not an edge";
+
+it("names the computed imports a TypeScript or JavaScript file's edges miss, either way", () => {
+  expect(
+    answer(d({ file: "app/main.ts", direction: "out" })).blindSpots,
+  ).toEqual([COMPUTED, DENIED]);
+  expect(
+    answer(d({ file: "lib/units.ts", direction: "in", transitive: true }))
+      .blindSpots,
+  ).toEqual([COMPUTED, DENIED]);
+  expect(importBlindSpots(s, "javascript")).toEqual([COMPUTED, DENIED]);
+  // a Python or shell file has no computed-import line
+  expect(
+    answer(d({ file: "py/pkg/util.py", direction: "in" })).blindSpots,
+  ).toEqual([DENIED]);
+  expect(
+    answer(d({ file: "scripts/sync-", direction: "out" })).blindSpots,
+  ).toEqual([DENIED]);
+  const two = openTiny({ coverage: { computedImports: 2 } });
+  expect(
+    answer(d({ file: "app/main.ts", direction: "out" }, two)).blindSpots,
+  ).toEqual([
+    "2 dynamic imports with a computed path are not followed",
+    DENIED,
+  ]);
+});
+
+it("names the relative imports that did not resolve, for any file", () => {
+  const one = openTiny({ coverage: { unresolvedImports: 1, denied: 0 } });
+  const three = openTiny({ coverage: { unresolvedImports: 3, denied: 0 } });
+  expect(
+    answer(d({ file: "app/main.ts", direction: "out" }, one)).blindSpots,
+  ).toEqual([COMPUTED, UNRESOLVED_ONE]);
+  expect(
+    answer(d({ file: "scripts/sync-", direction: "in" }, three)).blindSpots,
+  ).toEqual(["3 relative imports did not resolve to a file and are not edges"]);
+});
+
+it("names how a Python file's imports were read, when grimp did not read them", () => {
+  const own = openTiny({
+    coverage: { pythonResolver: "hakutaku-resolver", denied: 0 },
+  });
+  const none = openTiny({ coverage: { pythonResolver: "none", denied: 0 } });
+  const py = { file: "py/pkg/__init__.py", direction: "out" } as const;
+  expect(answer(d(py, own)).blindSpots).toEqual([
+    "Python imports come from hakutaku's own resolver, because grimp did not run",
+  ]);
+  expect(answer(d(py, none)).blindSpots).toEqual([
+    "Python imports were not read in this build",
+  ]);
+  // only a Python file's answer says so
+  expect(
+    answer(d({ file: "app/main.ts", direction: "out" }, none)).blindSpots,
+  ).toEqual([COMPUTED]);
+});
+
+it("names the denylisted files left out with their imports", () => {
+  expect(
+    answer(d({ file: "lib/orbit.ts", direction: "in" })).blindSpots,
+  ).toEqual([COMPUTED, DENIED]);
+  const four = openTiny({ coverage: { computedImports: 0, denied: 4 } });
+  expect(
+    answer(d({ file: "lib/orbit.ts", direction: "in" }, four)).blindSpots,
+  ).toEqual(["4 denylisted files are left out of the map, with their imports"]);
+});
+
+it("keeps one order, computed, unresolved, Python, denylisted, and answers none when nothing applies", () => {
+  const all = openTiny({
+    coverage: {
+      computedImports: 2,
+      unresolvedImports: 1,
+      pythonResolver: "none",
+      denied: 3,
+    },
+  });
+  const many = "3 denylisted files are left out of the map, with their imports";
+  expect(
+    answer(d({ file: "app/main.ts", direction: "out" }, all)).blindSpots,
+  ).toEqual([
+    "2 dynamic imports with a computed path are not followed",
+    UNRESOLVED_ONE,
+    many,
+  ]);
+  expect(
+    answer(d({ file: "py/pkg/util.py", direction: "in" }, all)).blindSpots,
+  ).toEqual([
+    UNRESOLVED_ONE,
+    "Python imports were not read in this build",
+    many,
+  ]);
+  const clean = openTiny({ coverage: { computedImports: 0, denied: 0 } });
+  for (const file of ["app/main.ts", "py/pkg/util.py", "scripts/sync-"]) {
+    expect(answer(d({ file, direction: "out" }, clean)).blindSpots).toEqual([]);
+  }
+  expect(
+    answer(d({ file: "s.ts", direction: "out" }, ds, D_CTX)).blindSpots,
+  ).toEqual([]);
 });

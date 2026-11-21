@@ -3,6 +3,7 @@ import {
   type QueryCtx,
   type QueryOut,
   queryReferences,
+  referenceBlindSpots,
 } from "../../../src/query/index.js";
 import { openStore, type Store } from "../../../src/store/index.js";
 import type { ToolError } from "../../../src/tools/errors.js";
@@ -37,6 +38,7 @@ it("lists uses that are not calls", () => {
     "builtCommit",
     "stale",
     "references",
+    "blindSpots",
     "view",
   ]);
   expect(a.references).toEqual([
@@ -128,8 +130,75 @@ it("keeps each use's role, and answers a definition nobody uses", () => {
     builtCommit: "0123456789ab",
     stale: false,
     references: [],
+    blindSpots: [],
     view: "#lib~units.ts--toAu",
   });
+});
+
+const QUICK_TS =
+  "no compiler ran for TypeScript in this build (quick detail), so no reference is recorded";
+
+it("names a compiler tier that did not run, so no reference is recorded", () => {
+  const spots = (symbol: string, store: Store) =>
+    asDef(ref(symbol, TINY_CTX, store)).blindSpots;
+  expect(spots("lib/orbit.ts#Orbit", openTiny({ detail: "quick" }))).toEqual([
+    QUICK_TS,
+  ]);
+  expect(spots("py/pkg/util.py#helper", s)).toEqual([
+    "no compiler ran for Python in this build (below deep detail), so no reference is recorded",
+  ]);
+  expect(
+    referenceBlindSpots(openTiny({ detail: "quick" }), "javascript"),
+  ).toEqual([
+    "no compiler ran for JavaScript in this build (quick detail), so no reference is recorded",
+  ]);
+});
+
+it("says that hakutaku records no references for any other language", () => {
+  expect(asDef(ref("scripts/sync-#main")).blindSpots).toEqual([
+    "hakutaku records no references for shell",
+  ]);
+  expect(referenceBlindSpots(s, "go")).toEqual([
+    "hakutaku records no references for go",
+  ]);
+  expect(referenceBlindSpots(s, null)).toEqual([]);
+});
+
+it("counts the compiler-bound uses that match no definition, for compiled languages only", () => {
+  const odd = openTiny({ coverage: { unmatchedBoundUses: 3 } });
+  const unmatched =
+    "compiler-bound uses that match no outline definition are counted in coverage only (3)";
+  expect(asDef(ref("lib/orbit.ts#Orbit", TINY_CTX, odd)).blindSpots).toEqual([
+    unmatched,
+  ]);
+  expect(asDef(ref("py/pkg/util.py#helper", TINY_CTX, odd)).blindSpots).toEqual(
+    [
+      "no compiler ran for Python in this build (below deep detail), so no reference is recorded",
+      unmatched,
+    ],
+  );
+  expect(asDef(ref("scripts/sync-#main", TINY_CTX, odd)).blindSpots).toEqual([
+    "hakutaku records no references for shell",
+  ]);
+  expect(referenceBlindSpots(odd, "go")).toEqual([
+    "hakutaku records no references for go",
+  ]);
+});
+
+it("names the tier first, then the unmatched uses, and nothing when the compiler saw every use", () => {
+  const both = openTiny({
+    detail: "quick",
+    coverage: { unmatchedBoundUses: 1 },
+  });
+  expect(asDef(ref("lib/orbit.ts#Orbit", TINY_CTX, both)).blindSpots).toEqual([
+    QUICK_TS,
+    "compiler-bound uses that match no outline definition are counted in coverage only (1)",
+  ]);
+  expect(asDef(ref("lib/orbit.ts#Orbit")).blindSpots).toEqual([]);
+  // a library's importers come from the imports, and its answer has no blind spots
+  expect(answer(ref("tiny:npm:react", TINY_CTX, both))).not.toHaveProperty(
+    "blindSpots",
+  );
 });
 
 // The ranks store: ten files z/f0.ts … z/f9.ts, ranked against their path order, and a test

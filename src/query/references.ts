@@ -14,6 +14,7 @@ import { fail, ok, type QueryCtx, type QueryOut } from "./ctx.js";
 import { resolveTarget, wrongKind } from "./resolve.js";
 import { locationText } from "./source.js";
 import { type FileInfo, type StoreIndex, storeIndex } from "./store-index.js";
+import { referenceBlindSpots } from "./tiers.js";
 
 type Reference = ReferencesAnswer["references"][number];
 
@@ -44,15 +45,19 @@ export function queryReferences(
     case "external":
       return ok(libraryAnswer(ix, target.externalId, target.ref, q));
     case "definition":
-      return ok(definitionAnswer(store, ix, target.defId, target.ref, q));
+      return ok(
+        definitionAnswer(store, ix, target.defId, target.fileId, target.ref, q),
+      );
   }
 }
 
-// A definition's uses, by their file's rank, then path, line and col.
+// A definition's uses, by their file's rank, then path, line and col, and what the build could
+// not record of them in the language of the file that defines it.
 function definitionAnswer(
   store: Store,
   ix: StoreIndex,
   defId: number,
+  fileId: number,
   ref: NodeRef,
   q: QueryCtx,
 ): ReferencesAnswer {
@@ -82,6 +87,7 @@ function definitionAnswer(
       if (text !== undefined) out.text = text;
       return out;
     }),
+    blindSpots: referenceBlindSpots(store, fileAt(ix, fileId).lang),
     view: viewOf(ref),
   };
 }

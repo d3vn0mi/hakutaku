@@ -15,6 +15,7 @@ import {
   type StoreIndex,
   storeIndex,
 } from "./store-index.js";
+import { importBlindSpots } from "./tiers.js";
 
 type Edge = DepsAnswer["edges"][number];
 
@@ -63,6 +64,7 @@ export function queryDeps(
     stale: q.stale,
     direction: args.direction,
     edges: steps.map((step) => edgeOf(store, q, step)),
+    blindSpots: importBlindSpots(store, fileAt(ix, target.fileId).lang),
     view: viewOf(target.ref),
   });
 }

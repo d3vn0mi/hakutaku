@@ -44,5 +44,9 @@ export {
   compilerTier,
   displayLang,
   explainLabel,
+  importBlindSpots,
   LANG_DISPLAY,
+  pathBlindSpots,
+  referenceBlindSpots,
+  searchBlindSpots,
 } from "./tiers.js";

@@ -1,7 +1,7 @@
 // The tiny store: a small store built by hand, whose rows every unit test of the query functions
 // asserts against. Its rows are fixed; the options change the build's detail, its compiler
-// tiers, whether sources are stored, and the cycles' severity. Ids follow the store's row
-// orders, which writeStore checks.
+// tiers, whether sources are stored, the cycles' severity, and any other coverage count. Ids
+// follow the store's row orders, which writeStore checks.
 import type {
   DefKind,
   Detail,
@@ -29,6 +29,7 @@ export interface TinyOptions {
   noSource?: boolean;
   cycleSeverity?: Severity;
   outOfMemory?: Coverage["outOfMemory"];
+  coverage?: Partial<Coverage>; // set last, over what the other options give
 }
 
 export const TINY_CTX: QueryCtx = Object.freeze({
@@ -330,6 +331,7 @@ export function tinyContent(opts: TinyOptions = {}): StoreContent {
           ...(opts.outOfMemory === undefined
             ? {}
             : { outOfMemory: opts.outOfMemory }),
+          ...opts.coverage,
         },
       },
     ],

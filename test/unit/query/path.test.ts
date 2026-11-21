@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import type { ImportKind } from "../../../src/model/index.js";
 import {
+  pathBlindSpots,
   type QueryCtx,
   type QueryOut,
   queryPath,
@@ -27,6 +28,13 @@ const s = openTiny();
 const p = (a: Args, store: Store = s, q: QueryCtx = TINY_CTX) =>
   queryPath(store, { repo: q.repo, via: "imports", ...a }, q);
 
+const COMPUTED = "1 dynamic import with a computed path is not followed";
+const DENIED = "1 denylisted file is left out of the map, with its imports";
+const UNSCOPED =
+  'unscoped name matches are not followed; code_callers lists them with labels ["unscoped"]';
+const REFERENCE =
+  "references, uses that are not calls, are not followed; code_references lists them";
+
 it("finds the shortest import path, each hop with its line", () => {
   const a = answer(p({ from: "lib/orbit.test.ts", to: "lib/consts.ts" }));
   expect(Object.keys(a)).toEqual([
@@ -37,6 +45,7 @@ it("finds the shortest import path, each hop with its line", () => {
     "stale",
     "found",
     "hops",
+    "blindSpots",
     "view",
   ]);
   expect(a.hops).toEqual([
@@ -123,6 +132,7 @@ it("reaches a library through the imports that lead to it", () => {
         text: 'import { readFileSync } from "node:fs";',
       },
     ],
+    blindSpots: [COMPUTED, DENIED],
     view: "#app~main.ts",
   });
   expect(answer(p({ from: "app/main.ts", to: "tiny:npm:react" })).hops).toEqual(
@@ -169,6 +179,7 @@ it("answers a call path's from, to, via and view, and found false when no call l
           text: "return toAu(e);",
         },
       ],
+      blindSpots: [COMPUTED, UNSCOPED, REFERENCE],
       view: "#lib~orbit.ts--solve",
     }),
   );
@@ -560,4 +571,120 @@ it("expands callees by file path, then start line, before qualname and call orde
     { from: "c:s.ts#E", to: "c:a.ts#Z", kind: "bound", line: 8 },
     { from: "c:a.ts#Z", to: "c:t.ts#T", kind: "bound", line: 2 },
   ]);
+});
+
+it("names what a path via imports cannot see with code_deps' lines for the from file", () => {
+  // found or not, and from a node to itself, the lines come from the map and the from file
+  expect(
+    answer(p({ from: "lib/consts.ts", to: "app/main.ts" })).blindSpots,
+  ).toEqual([COMPUTED, DENIED]);
+  expect(
+    answer(p({ from: "lib/units.ts", to: "lib/units.ts" })).blindSpots,
+  ).toEqual([COMPUTED, DENIED]);
+  // via imports, neither the compiler tier nor the call sites count
+  const quick = openTiny({
+    detail: "quick",
+    coverage: { unmatchedBoundUses: 2 },
+  });
+  expect(
+    answer(p({ from: "app/main.ts", to: "tiny:node:fs" }, quick)).blindSpots,
+  ).toEqual([COMPUTED, DENIED]);
+  const all = openTiny({
+    coverage: {
+      computedImports: 2,
+      unresolvedImports: 1,
+      pythonResolver: "none",
+      denied: 3,
+    },
+  });
+  const unresolved =
+    "1 relative import did not resolve to a file and is not an edge";
+  const many = "3 denylisted files are left out of the map, with their imports";
+  expect(
+    answer(p({ from: "app/main.ts", to: "tiny:npm:react" }, all)).blindSpots,
+  ).toEqual([
+    "2 dynamic imports with a computed path are not followed",
+    unresolved,
+    many,
+  ]);
+  expect(
+    answer(p({ from: "py/pkg/__init__.py", to: "py/pkg/util.py" }, all))
+      .blindSpots,
+  ).toEqual([unresolved, "Python imports were not read in this build", many]);
+  const own = openTiny({
+    coverage: { pythonResolver: "hakutaku-resolver", denied: 0 },
+  });
+  expect(
+    answer(p({ from: "py/pkg/__init__.py", to: "py/pkg/util.py" }, own))
+      .blindSpots,
+  ).toEqual([
+    "Python imports come from hakutaku's own resolver, because grimp did not run",
+  ]);
+  const clean = openTiny({ coverage: { computedImports: 0, denied: 0 } });
+  expect(
+    answer(p({ from: "app/main.ts", to: "tiny:node:fs" }, clean)).blindSpots,
+  ).toEqual([]);
+});
+
+it("names what a path via calls cannot see: the from definition's caller lines, then the labels it never follows", () => {
+  const calls = (from: string, to: string, store: Store = s) =>
+    answer(p({ from, to, via: "calls" }, store)).blindSpots;
+  // found, not found, and the language of to does not count
+  expect(calls("app/main.ts#main", "lib/units.ts#toAu")).toEqual([
+    COMPUTED,
+    UNSCOPED,
+    REFERENCE,
+  ]);
+  expect(calls("lib/units.ts#toAu", "app/main.ts#main")).toEqual([
+    COMPUTED,
+    UNSCOPED,
+    REFERENCE,
+  ]);
+  expect(calls("lib/units.ts#toAu", "scripts/sync-#main")).toEqual([
+    COMPUTED,
+    UNSCOPED,
+    REFERENCE,
+  ]);
+  expect(calls("py/pkg/util.py#helper", "lib/units.ts#toAu")).toEqual([
+    "no compiler ran for Python in this build (below deep detail), so no site is bound",
+    UNSCOPED,
+    REFERENCE,
+  ]);
+  expect(calls("scripts/sync-#main", "lib/units.ts#toAu")).toEqual([
+    "shell callers are name matches in the file and the files that source it",
+    UNSCOPED,
+    REFERENCE,
+  ]);
+  const quick = openTiny({
+    detail: "quick",
+    coverage: { computedImports: 2, unmatchedBoundUses: 2 },
+  });
+  expect(calls("app/main.ts#main", "lib/units.ts#toAu", quick)).toEqual([
+    "no compiler ran for TypeScript in this build (quick detail), so no site is bound",
+    "2 dynamic imports with a computed path are not followed",
+    "compiler-bound uses that match no outline definition are counted in coverage only (2)",
+    UNSCOPED,
+    REFERENCE,
+  ]);
+  const own = openTiny({
+    tiers: { "scip-typescript": "ran", "scip-python": "ran" },
+    coverage: { pythonResolver: "hakutaku-resolver" },
+  });
+  expect(calls("py/pkg/util.py#helper", "lib/units.ts#toAu", own)).toEqual([
+    "Python imports come from hakutaku's own resolver, because grimp did not run",
+    UNSCOPED,
+    REFERENCE,
+  ]);
+  // the two labels are never followed, so a call path always names them
+  const clean = openTiny({ coverage: { computedImports: 0, denied: 0 } });
+  expect(calls("app/main.ts#main", "lib/units.ts#toAu", clean)).toEqual([
+    UNSCOPED,
+    REFERENCE,
+  ]);
+  expect(pathBlindSpots(s, "calls", "go")).toEqual([
+    "hakutaku extracts no callers for go",
+    UNSCOPED,
+    REFERENCE,
+  ]);
+  expect(pathBlindSpots(s, "calls", null)).toEqual([UNSCOPED, REFERENCE]);
 });

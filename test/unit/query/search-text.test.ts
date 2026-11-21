@@ -3,6 +3,7 @@ import {
   type QueryCtx,
   type QueryOut,
   querySearchText,
+  searchBlindSpots,
 } from "../../../src/query/index.js";
 import { openStore, type Store } from "../../../src/store/index.js";
 import type { ToolError } from "../../../src/tools/errors.js";
@@ -43,7 +44,13 @@ const where = (a: Args, store: Store = s, q: QueryCtx = TINY_CTX) =>
 
 it("finds a literal, case-sensitive, by rank", () => {
   const a = answer(st({ text: "position(" }));
-  expect(Object.keys(a)).toEqual(["text", "builtCommit", "stale", "hits"]);
+  expect(Object.keys(a)).toEqual([
+    "text",
+    "builtCommit",
+    "stale",
+    "hits",
+    "blindSpots",
+  ]);
   expect(a.hits).toEqual([
     {
       file: "tiny:lib/orbit.ts",
@@ -209,6 +216,57 @@ it("answers no hits for a literal that holds a NUL, without asking the index", (
   expect(where({ text: `${nul}yz` }, ranked, S_CTX)).toEqual([]);
   expect(where({ text: `imp${nul}ort` })).toEqual([]);
   expect(where({ text: `${nul}${nul}${nul}` })).toEqual([]);
+});
+
+const DENIED = "1 denylisted file is left out of the map";
+const REDACTED = "1 secret-shaped span is redacted and cannot be found";
+
+it("names the denylisted files and the redacted spans, with hits or without", () => {
+  expect(answer(st({ text: "position(" })).blindSpots).toEqual([
+    DENIED,
+    REDACTED,
+  ]);
+  expect(answer(st({ text: "Position(" }))).toMatchObject({
+    hits: [],
+    blindSpots: [DENIED, REDACTED],
+  });
+  const more = openTiny({ coverage: { denied: 3, redactions: 4 } });
+  expect(answer(st({ text: "import" }, more)).blindSpots).toEqual([
+    "3 denylisted files are left out of the map",
+    "4 secret-shaped spans are redacted and cannot be found",
+  ]);
+});
+
+it("names the files that keep no stored text, first", () => {
+  const one = openTiny({ coverage: { noSourceFiles: 1 } });
+  expect(answer(st({ text: "import" }, one)).blindSpots).toEqual([
+    "1 file over 1 MB, minified or generated keeps no stored text and is not searched",
+    DENIED,
+    REDACTED,
+  ]);
+  const two = openTiny({
+    coverage: { noSourceFiles: 2, denied: 0, redactions: 0 },
+  });
+  expect(answer(st({ text: "import" }, two)).blindSpots).toEqual([
+    "2 files over 1 MB, minified or generated keep no stored text and are not searched",
+  ]);
+});
+
+it("answers no blind spot when every file's text is searched", () => {
+  expect(answer(st({ text: "needle" }, ranked, S_CTX)).blindSpots).toEqual([]);
+  const clean = openTiny({ coverage: { denied: 0, redactions: 0 } });
+  expect(answer(st({ text: "nothing like it" }, clean)).blindSpots).toEqual([]);
+});
+
+it("names a map that stores no text before every other gap, though the tool answers no_source for it", () => {
+  expect(searchBlindSpots(bare)).toEqual([
+    "this map stores no source text, so no file is searched",
+    DENIED,
+    REDACTED,
+  ]);
+  expect(error(st({ text: "import" }, bare))).toMatchObject({
+    code: "no_source",
+  });
 });
 
 function rankStore(): Store {

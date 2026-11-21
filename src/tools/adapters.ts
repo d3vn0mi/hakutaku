@@ -15,7 +15,8 @@ import type {
 
 type Split = NonNullable<ListAdapter<object, unknown>["split"]>;
 
-// An adapter over the list an answer holds under key; the page takes the list's place.
+// An adapter over the list an answer holds under key; the page takes the list's place, and every
+// other key keeps its place and its value, blindSpots whole on every page.
 function listAt<A extends object, K extends keyof A, I>(
   key: K,
   items: (answer: A) => I[],

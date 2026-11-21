@@ -3,7 +3,7 @@
 // one import. Via calls they are definitions; each hop is one callee, labelled by its strongest
 // call. The walk is breadth-first from `from`, with parent links, and stops when it reaches
 // `to`; it is iterative, with a seen set, so a cyclic graph neither recurses nor loops.
-import { comparePaths, viewOf } from "../model/index.js";
+import { comparePaths, type Lang, viewOf } from "../model/index.js";
 import type { Store } from "../store/index.js";
 import type { ToolError } from "../tools/errors.js";
 import type { Checked, PathAnswer } from "../tools/types.js";
@@ -17,6 +17,7 @@ import {
   type StoreIndex,
   storeIndex,
 } from "./store-index.js";
+import { pathBlindSpots } from "./tiers.js";
 
 type Hop = PathAnswer["hops"][number];
 type Via = Checked<"code_path">["via"];
@@ -85,8 +86,14 @@ export function queryPath(
         ...(text === undefined ? {} : { text }),
       };
     }),
+    blindSpots: pathBlindSpots(store, args.via, langOf(ix, from)),
     view: viewOf(from.ref),
   });
+}
+
+// The language of an endpoint's file. A library has none; from is never one.
+function langOf(ix: StoreIndex, node: Endpoint): Lang | null {
+  return node.kind === "external" ? null : fileAt(ix, node.fileId).lang;
 }
 
 // An endpoint resolved, and refused unless via takes its kind: files via imports, where to may

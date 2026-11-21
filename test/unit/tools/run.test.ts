@@ -752,6 +752,41 @@ describe("paging", () => {
     }
   });
 
+  it("keeps blind spots whole on every page, past the last one too, right after the list", () => {
+    const quick = fixedHost({ tiny: tinyStore({ detail: "quick" }) });
+    const cases: [string, object, string][] = [
+      ["code_callers", { repo: "tiny", symbol: "solve" }, "callers"],
+      [
+        "code_references",
+        { repo: "tiny", symbol: "lib/orbit.ts#Orbit" },
+        "references",
+      ],
+      [
+        "code_deps",
+        { repo: "tiny", file: "app/main.ts", direction: "out" },
+        "edges",
+      ],
+      ["code_search_text", { repo: "tiny", text: "import" }, "hits"],
+    ];
+    for (const [n, a, key] of cases) {
+      const whole = answer(run(n, a, quick)).blindSpots;
+      expect(Array.isArray(whole) && whole.length > 0).toBe(true);
+      const pages = follow<Record<string, unknown>>(quick, n, {
+        ...a,
+        limit: 1,
+      });
+      expect(pages.length).toBeGreaterThan(1);
+      pages.push(answer(run(n, { ...a, offset: 99 }, quick)));
+      for (const page of pages) {
+        expect(page.blindSpots).toEqual(whole);
+        const keys = Object.keys(page);
+        expect(keys.slice(keys.indexOf(key) + 1)).toEqual(
+          n === "code_search_text" ? ["blindSpots"] : ["blindSpots", "view"],
+        );
+      }
+    }
+  });
+
   const SOLVE = { repo: "tiny", target: "solve", depth: 3 };
 
   it("pages code_impact over the nodes it reaches, rebuilt into the hops a page touches", () => {
