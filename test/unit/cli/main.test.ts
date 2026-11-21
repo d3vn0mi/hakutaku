@@ -239,6 +239,34 @@ it("exits 1 with hakutaku: <message> on stderr when a command throws", async () 
   expect(c.out).toEqual([]);
 });
 
+it("keeps the line breaks of a command's error, as LF, and makes each line safe for a terminal", async () => {
+  const ESC = String.fromCharCode(0x1b);
+  const CSI = String.fromCharCode(0x9b); // a C1 control
+  const cases: Array<[string, string]> = [
+    // a lone CR is a line break; ESC and the C1 control become "?"
+    [
+      `the snapshot's ${ESC}[2Jsky is not a regular file\rlens ${CSI}31mcap`,
+      "hakutaku: the snapshot's ?[2Jsky is not a regular file\nlens ?31mcap\n",
+    ],
+    // CRLF is one line break, and LF stays one
+    ["north\r\nsouth\nwest", "hakutaku: north\nsouth\nwest\n"],
+  ];
+  for (const [message, err] of cases) {
+    const c = capture();
+    const telescope: Command = {
+      name: "telescope",
+      summary: "points the observatory",
+      run: async () => {
+        throw new Error(message);
+      },
+    };
+    expect(await withCommand(telescope, () => main(["telescope"], c.io))).toBe(
+      1,
+    );
+    expect(c.err.join("")).toBe(err);
+  }
+});
+
 it("listens for stdout's errors once, before anything is written, whatever the arguments", async () => {
   const telescope: Command = {
     name: "telescope",

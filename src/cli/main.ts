@@ -126,11 +126,20 @@ async function dispatch(argv: string[], io: CliIO): Promise<number> {
   try {
     return await command.run(rest, io);
   } catch (error) {
-    io.stderr(
-      `hakutaku: ${error instanceof Error ? error.message : String(error)}\n`,
-    );
+    io.stderr(`hakutaku: ${errorLines(error)}\n`);
     return 1;
   }
+}
+
+// An error's message with its line breaks kept, CRLF and a lone CR each as LF, and every line made
+// safe for a terminal: a message can name a repository's path, whose control characters would
+// otherwise reach it.
+function errorLines(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message
+    .split(/\r\n|\r|\n/)
+    .map((line) => printable(line))
+    .join("\n");
 }
 
 function isEntryModule(): boolean {
