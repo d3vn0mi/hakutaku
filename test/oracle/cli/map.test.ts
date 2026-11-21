@@ -222,6 +222,52 @@ it(
   TIMEOUT,
 );
 
+// The profile at path with no Python root, so that no Python file is indexed and a gate fails.
+function withoutPythonRoots(path: string, into: string): void {
+  const profile = JSON.parse(readFileSync(path, "utf8"));
+  profile.python.roots = [];
+  mkdirSync(dirname(into), { recursive: true });
+  writeFileSync(into, `${JSON.stringify(profile, null, 2)}\n`);
+}
+
+it(
+  "exits 3 when the gates fail, saying whether a previous store keeps serving",
+  async (ctx) => {
+    requireInCI(ctx, PYTHON);
+    const repo = await sampleRepo();
+    const head = git(repo, "rev-parse", "HEAD");
+    const argv = ["--sandbox", "none", "--engines-dir", ENGINES_DIR];
+    const built = await run(["map", repo, "--id", "observatory", ...argv]);
+    expect(built.code, built.err).toBe(0);
+    const profile = profilePathFor("observatory");
+
+    // a first build of another id, with a broken profile: no store was there before
+    withoutPythonRoots(profile, profilePathFor("skychart"));
+    const first = await run(["map", repo, "--id", "skychart", ...argv]);
+    expect(first.code, first.err).toBe(3);
+    expect(first.out).toEqual([]);
+    expect(first.err).toMatch(/^gates failed: .+; no store is built yet\n$/);
+    expect(existsSync(storePathFor("skychart"))).toBe(false);
+
+    // the registered repo, with its profile broken: its store stays in place
+    withoutPythonRoots(profile, profile);
+    const again = await run(["map", repo, ...argv]);
+    expect(again.code, again.err).toBe(3);
+    expect(again.out).toEqual([]);
+    expect(again.err).toMatch(
+      /^gates failed: .+; the previous store keeps serving\n$/,
+    );
+    const store = openStore(storePathFor("observatory"));
+    if ("code" in store) throw new Error(store.reason);
+    try {
+      expect(store.meta.commit).toBe(head);
+    } finally {
+      store.close();
+    }
+  },
+  TIMEOUT,
+);
+
 it(
   "warns that freshness will read unknown where the ref files cannot name the ref",
   async () => {
