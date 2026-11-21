@@ -62,6 +62,49 @@ const failable = () => {
   };
 };
 
+// failable's io with a stderr that fails when the test says so too: onStderrError hands the test
+// each listener registered, and log also holds "listen stderr" for each of those and "stderr" for
+// each write to stderr.
+const failableStderr = () => {
+  const f = failable();
+  const listeners: Array<(error: Error) => void> = [];
+  const io: CliIO = {
+    ...f.io,
+    stderr: (s) => {
+      f.log.push("stderr");
+      f.err.push(s);
+    },
+    onStderrError: (listener) => {
+      f.log.push("listen stderr");
+      listeners.push(listener);
+    },
+  };
+  return {
+    ...f,
+    io,
+    failStderr: (error: Error) => {
+      for (const listener of listeners) listener(error);
+    },
+  };
+};
+
+// A command that writes a line to stderr, has stderr fail with each error given, then writes
+// another line to stderr and returns code.
+const failingStderrCommand = (
+  fail: (error: Error) => void,
+  errors: Error[],
+  code: number,
+): Command => ({
+  name: "telescope",
+  summary: "points the observatory",
+  run: async (_argv, io) => {
+    io.stderr("north\n");
+    for (const error of errors) fail(error);
+    io.stderr("south\n");
+    return code;
+  },
+});
+
 // A command that writes a line, has stdout fail with each error given, then writes another line
 // and returns code.
 const failingCommand = (
@@ -98,6 +141,128 @@ it("hands every error of the process's stdout to the listener a command register
     expect(listener.mock.calls).toEqual([[epipe], [epipe]]);
   } finally {
     process.stdout.off("error", listener);
+  }
+});
+
+it("hands every error of the process's stderr to the listener main registers", () => {
+  const listener = vi.fn();
+  processIO().onStderrError?.(listener);
+  try {
+    // process.stderr stays writable after an error too
+    const epipe = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+    process.stderr.emit("error", epipe);
+    process.stderr.emit("error", epipe);
+    expect(listener.mock.calls).toEqual([[epipe], [epipe]]);
+  } finally {
+    process.stderr.off("error", listener);
+  }
+});
+
+it("listens for stderr's errors once, before anything is written, whatever the arguments", async () => {
+  const telescope: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async (_argv, io) => {
+      io.stderr("north\n");
+      return 0;
+    },
+  };
+  for (const argv of [
+    ["--version"],
+    ["--help"],
+    [],
+    ["nebula"],
+    ["telescope"],
+  ]) {
+    const f = failableStderr();
+    await withCommand(telescope, () => main(argv, f.io));
+    const first = f.log.findIndex((e) => e === "stdout" || e === "stderr");
+    expect([
+      argv,
+      f.log.filter((e) => e === "listen stderr"),
+      f.log.indexOf("listen stderr") < first,
+    ]).toEqual([argv, ["listen stderr"], true]);
+  }
+});
+
+it("ends stderr quietly once its reader has gone: later stderr output is dropped and the command's code stands", async () => {
+  for (const code of ["EPIPE", "ECONNRESET"]) {
+    for (const exit of [0, 3]) {
+      const f = failableStderr();
+      const command = failingStderrCommand(f.failStderr, [errno(code)], exit);
+      expect([
+        code,
+        await withCommand(command, () => main(["telescope"], f.io)),
+      ]).toEqual([code, exit]);
+      expect(f.err).toEqual(["north\n"]);
+      expect(f.failedExit()).toBe(0);
+    }
+  }
+});
+
+it("drops stderr after any other error, which it cannot say, and exits 1 where the command returned 0", async () => {
+  const cases: Array<[number, number]> = [
+    [0, 1],
+    [3, 3],
+  ];
+  for (const [exit, code] of cases) {
+    const f = failableStderr();
+    const command = failingStderrCommand(
+      f.failStderr,
+      [errno("ENOSPC"), errno("ENOSPC")],
+      exit,
+    );
+    expect(await withCommand(command, () => main(["telescope"], f.io))).toBe(
+      code,
+    );
+    expect(f.err).toEqual(["north\n"]);
+    expect(f.failedExit()).toBe(1);
+  }
+});
+
+it("says nothing of a failed stdout on a stderr whose reader has gone, and still exits 1", async () => {
+  const f = failableStderr();
+  const command: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async (_argv, io) => {
+      f.failStderr(errno("EPIPE"));
+      io.stdout("north\n");
+      f.fail(errno("ENOSPC"));
+      return 0;
+    },
+  };
+  expect(await withCommand(command, () => main(["telescope"], f.io))).toBe(1);
+  expect(f.err).toEqual([]);
+  expect(f.failedExit()).toBe(1);
+});
+
+it("fails the exit code through the io when stderr fails after main returned, but not when its reader went away", async () => {
+  const telescope: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async (_argv, io) => {
+      io.stderr("north\n");
+      return 0;
+    },
+  };
+  const cases: Array<[string, number]> = [
+    ["EPIPE", 0],
+    ["ECONNRESET", 0],
+    ["EIO", 1],
+  ];
+  for (const [code, failedExit] of cases) {
+    const f = failableStderr();
+    expect(await withCommand(telescope, () => main(["telescope"], f.io))).toBe(
+      0,
+    );
+    f.failStderr(errno(code));
+    f.failStderr(errno(code));
+    expect([code, f.err, f.failedExit()]).toEqual([
+      code,
+      ["north\n"],
+      failedExit,
+    ]);
   }
 });
 

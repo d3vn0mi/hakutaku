@@ -37,6 +37,11 @@ export function processIO(): CliIO {
     onStdoutError: (listener) => {
       process.stdout.on("error", listener);
     },
+    // process.stderr too stays writable after an error. Its listener also hears the writes other
+    // modules make to process.stderr directly.
+    onStderrError: (listener) => {
+      process.stderr.on("error", listener);
+    },
     // Set as the process exits, after the entry block has set main's code, which would undo it.
     failExitCode: () => {
       process.once("exit", () => {
@@ -46,8 +51,8 @@ export function processIO(): CliIO {
   };
 }
 
-// Whether a stdout error says that its reader has gone, as a pipe's does once the command reading
-// it exits early, such as head: EPIPE, or ECONNRESET on a socket.
+// Whether an error of stdout or stderr says that its reader has gone, as a pipe's does once the
+// command reading it exits early, such as head: EPIPE, or ECONNRESET on a socket.
 function readerGone(error: Error): boolean {
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
   return code === "EPIPE" || code === "ECONNRESET";
@@ -60,29 +65,42 @@ function stdoutFailure(error: Error): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-// io as a command sees it, with stdout cut at the first error of the stream behind it: what is
-// written after that is dropped, never buffered. Only that first error counts, since the others
-// follow from it. One that says the reader has gone ends the output quietly; any other is said
-// once on stderr and fails the run, through failed() before main returns and failExitCode after.
-function guardStdout(io: CliIO): { io: CliIO; failed(): boolean } {
-  let cut = false;
+// io as a command sees it, with stdout and stderr each cut at the first error of the stream behind
+// it: what is written to it after that is dropped, never buffered. Only that first error counts,
+// since the others follow from it. One that says the reader has gone ends that output quietly.
+// Any other fails the run, through failed() before main returns and failExitCode after: stdout's
+// is said once on stderr, unless stderr is cut too, and stderr's cannot be said at all.
+function guardOutput(io: CliIO): { io: CliIO; failed(): boolean } {
   let failed = false;
-  io.onStdoutError?.((error) => {
-    if (cut) return;
-    cut = true;
-    if (readerGone(error)) return;
+  const fail = (): void => {
     failed = true;
-    io.stderr(
+    io.failExitCode?.();
+  };
+  let stderrCut = false;
+  io.onStderrError?.((error) => {
+    if (stderrCut) return;
+    stderrCut = true;
+    if (!readerGone(error)) fail();
+  });
+  const stderr = (s: string): void => {
+    if (!stderrCut) io.stderr(s);
+  };
+  let stdoutCut = false;
+  io.onStdoutError?.((error) => {
+    if (stdoutCut) return;
+    stdoutCut = true;
+    if (readerGone(error)) return;
+    stderr(
       `hakutaku: cannot write to stdout: ${printable(stdoutFailure(error))}\n`,
     );
-    io.failExitCode?.();
+    fail();
   });
   return {
     io: {
       stdout: (s) => {
-        if (!cut) io.stdout(s);
+        if (!stdoutCut) io.stdout(s);
       },
-      stderr: (s) => io.stderr(s),
+      stderr,
       // A getter, as processIO's is, so that a command that never reads stdin never opens it.
       get stdin() {
         return io.stdin;
@@ -99,10 +117,10 @@ export async function main(
   argv: string[],
   io: CliIO = processIO(),
 ): Promise<number> {
-  // Before anything is written, so that every path has its stdout's errors heard.
-  const stdout = guardStdout(io);
-  const code = await dispatch(argv, stdout.io);
-  return code === 0 && stdout.failed() ? 1 : code;
+  // Before anything is written, so that every path has its stdout's and stderr's errors heard.
+  const output = guardOutput(io);
+  const code = await dispatch(argv, output.io);
+  return code === 0 && output.failed() ? 1 : code;
 }
 
 async function dispatch(argv: string[], io: CliIO): Promise<number> {
