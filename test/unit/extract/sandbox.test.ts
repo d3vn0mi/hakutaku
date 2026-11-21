@@ -1119,10 +1119,18 @@ s.on("error", (e) => console.log(JSON.stringify({ cap, socket: e.code })));`;
   }
 }, 60_000);
 
-// A process that starts a child which fills 400 MiB, then says how the child ended.
+// How long the process below waits after its child has ended before it says how: without
+// OOMPolicy=continue, systemd stops the scope only once it has seen the kernel's kill, which can
+// come after a process that reports at once has already exited 0, and then nothing is left to
+// stop. Waiting lets the stop, where it comes, find the process still running (it came within
+// 200 ms here), and the same wait under OOMPolicy=continue shows the process outlives it.
+const SETTLE_MS = 3000;
+
+// A process that starts a child which fills 400 MiB, waits, then says how the child ended.
 const FILLS_PAST_THE_CAP = `
 const { spawnSync } = require("node:child_process");
 const r = spawnSync(process.execPath, ["-e", "const a = []; for (let i = 0; i < 25; i++) a.push(Buffer.alloc(16 * 1024 * 1024, 1));"], { stdio: "inherit" });
+Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${SETTLE_MS});
 console.log(JSON.stringify({ status: r.status, signal: r.signal }));`;
 
 it("keeps a capped sandbox running when the kernel kills one of its processes at the cap, which it stops without OOMPolicy", async (ctx) => {
