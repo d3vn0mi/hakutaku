@@ -169,8 +169,8 @@ const isLocal = (symbol: string): boolean => symbol.startsWith("local ");
 // Whether symbol is the module symbol of file: a symbol ending in a namespace, "/", whose last
 // name is the file's name. scip-typescript defines one at the start of every file, named after
 // the file's path below its package; a TypeScript namespace also ends in "/", under another
-// name.
-function isModuleOf(symbol: string, file: string): boolean {
+// name. The merge gives it to the file's module row rather than to an outline definition.
+export function isModuleOf(symbol: string, file: string): boolean {
   return (
     !isLocal(symbol) &&
     symbol.endsWith("/") &&
