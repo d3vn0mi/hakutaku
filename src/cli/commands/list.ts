@@ -83,7 +83,9 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   try {
     parsed = parse(argv);
   } catch (error) {
-    io.stderr(`hakutaku list: ${(error as Error).message}\n${USAGE}`);
+    io.stderr(
+      `hakutaku list: ${printable((error as Error).message)}\n${USAGE}`,
+    );
     return 2;
   }
   if (parsed.positionals.length > 0) {

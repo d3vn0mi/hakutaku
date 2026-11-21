@@ -6,6 +6,7 @@ import { main } from "../../../src/cli/main.js";
 import { hakutakuDirs, storePathFor } from "../../../src/registry/index.js";
 import { writeAttempt } from "../../../src/store/index.js";
 import { useRegisteredTiny } from "../../helpers/registry.js";
+import { HOSTILE, HOSTILE_SHOWN, rawLines } from "../../helpers/terminal.js";
 import { TINY_COMMIT } from "../../helpers/tiny.js";
 
 useRegisteredTiny();
@@ -122,4 +123,13 @@ it("exits 2 on an argument it does not take", async () => {
     expect(c.err).toMatch(/usage: hakutaku list \[--json\]\n$/);
     expect(c.out).toBe("");
   }
+});
+
+it("says an option it does not take on lines safe for a terminal", async () => {
+  const { c, io } = capture();
+  expect(await main(["list", `--${HOSTILE}`], io)).toBe(2);
+  expect(c.err).toMatch(/^hakutaku list: .+\n/);
+  expect(c.err).toContain(HOSTILE_SHOWN);
+  expect(c.err).toMatch(/usage: hakutaku list \[--json\]\n$/);
+  expect(rawLines(c.err)).toEqual([]);
 });

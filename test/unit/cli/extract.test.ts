@@ -6,6 +6,7 @@ import { COMMANDS } from "../../../src/cli/commands/index.js";
 import { main } from "../../../src/cli/main.js";
 import { removeTree } from "../../../src/export/index.js";
 import { SandboxedRunFailed } from "../../../src/extract/rerun.js";
+import { HOSTILE, HOSTILE_SHOWN, rawLines } from "../../helpers/terminal.js";
 
 // The build itself is a stand-in here: these tests check only what the command makes of it.
 const extractSnapshot = vi.hoisted(() => vi.fn());
@@ -115,6 +116,24 @@ it.each<[string, string[], string]>([
   expect(err.startsWith("hakutaku extract: ")).toBe(true);
   expect(err).toContain(message);
   expect(err.endsWith(USAGE)).toBe(true);
+});
+
+// An option it does not take is named as given; a value it does not take, and the memory cap,
+// through JSON.stringify, which writes ESC as an escape and leaves the rest.
+it("says a usage error on lines safe for a terminal", async () => {
+  for (const [argv, shown] of [
+    [["a", "--out", "s.sqlite", `--${HOSTILE}`], HOSTILE_SHOWN],
+    [["a", "--out", "s.sqlite", "--detail", HOSTILE], "[2J?31m; ?map"],
+    [["a", "--out", "s.sqlite", "--memory-max", HOSTILE], "[2J?31m; ?map"],
+  ] as const) {
+    const c = capture();
+    expect([argv, await main(["extract", ...argv], c.io)]).toEqual([argv, 2]);
+    const err = c.err.join("");
+    expect(err).toMatch(/^hakutaku extract: .+\n/);
+    expect(err).toContain(shown);
+    expect(err.endsWith(USAGE)).toBe(true);
+    expect(rawLines(err)).toEqual([]);
+  }
 });
 
 it("passes the flags a sandboxed re-run is given, which the usage leaves out", async () => {

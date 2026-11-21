@@ -14,6 +14,7 @@ import { heapMiB } from "../../extract/drivers/scip-typescript.js";
 import { type ExtractResult, extractSnapshot } from "../../extract/index.js";
 import { SandboxedRunFailed } from "../../extract/rerun.js";
 import type { Detail } from "../../model/index.js";
+import { printable } from "../table.js";
 import type { CliIO, Command } from "./index.js";
 
 const USAGE =
@@ -37,7 +38,7 @@ const SANDBOX_MODES = ["auto", "require", "none"] as const;
 const SANDBOX_KINDS = ["bubblewrap", "systemd-run"] as const;
 
 function usageError(io: CliIO, message: string): number {
-  io.stderr(`hakutaku extract: ${message}\n${USAGE}`);
+  io.stderr(`hakutaku extract: ${printable(message)}\n${USAGE}`);
   return 2;
 }
 

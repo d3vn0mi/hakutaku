@@ -40,7 +40,7 @@ const OPTIONS = {
 } as const;
 
 function usageError(io: CliIO, message: string): number {
-  io.stderr(`hakutaku profile: ${message}\n${USAGE}`);
+  io.stderr(`hakutaku profile: ${printable(message)}\n${USAGE}`);
   return 2;
 }
 

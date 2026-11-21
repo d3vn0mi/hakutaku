@@ -86,7 +86,7 @@ interface Flags {
 }
 
 function usageError(io: CliIO, message: string): number {
-  io.stderr(`hakutaku map: ${message}\n${USAGE}`);
+  io.stderr(`hakutaku map: ${printable(message)}\n${USAGE}`);
   return 2;
 }
 
@@ -193,7 +193,7 @@ async function build(io: CliIO, f: Flags): Promise<number> {
   } catch (error) {
     if (!(error instanceof ProfileConflictError)) throw error;
     printConflicts(io, error);
-    io.stderr(`name one in the profile: ${profile}\n`);
+    io.stderr(`name one in the profile: ${printable(profile)}\n`);
     return 1;
   }
   if (exported.commit !== commit) {
@@ -210,7 +210,7 @@ async function build(io: CliIO, f: Flags): Promise<number> {
     for (const warning of generated.warnings) {
       io.stderr(`${printable(warning)}\n`);
     }
-    io.stderr(`wrote ${profile}\n`);
+    io.stderr(`wrote ${printable(profile)}\n`);
   }
   // Freshness reads the ref from its ref files, with no git process; git reads more names.
   const head = createRefReader()(top, ref);

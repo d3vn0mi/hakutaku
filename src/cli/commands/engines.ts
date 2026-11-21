@@ -11,7 +11,7 @@ import {
   verifyEngines,
 } from "../../engines/index.js";
 import { confirm } from "../prompt.js";
-import { formatTable } from "../table.js";
+import { formatTable, printable } from "../table.js";
 import type { CliIO, Command } from "./index.js";
 
 // The first-run question, asked before anything is fetched.
@@ -30,7 +30,7 @@ const OPTIONS = {
 } as const;
 
 function usageError(io: CliIO, message: string): number {
-  io.stderr(`hakutaku engines: ${message}\n${USAGE}`);
+  io.stderr(`hakutaku engines: ${printable(message)}\n${USAGE}`);
   return 2;
 }
 
@@ -58,7 +58,7 @@ async function install(
   yes: boolean,
 ): Promise<number> {
   if (installed(dir, deep)) {
-    io.stderr(`the engines are already installed in ${dir}\n`);
+    io.stderr(`the engines are already installed in ${printable(dir)}\n`);
     return 0;
   }
   return askToInstall(io, dir, deep, yes);
@@ -83,14 +83,14 @@ export async function askToInstall(
       return 1;
     }
   }
-  io.stderr(`installing the engines in ${dir}\n`);
+  io.stderr(`installing the engines in ${printable(dir)}\n`);
   await installEngines({
     dir,
     deep,
     yes: true,
-    log: (line) => io.stderr(`${line}\n`),
+    log: (line) => io.stderr(`${printable(line)}\n`),
   });
-  io.stderr(`installed the engines in ${dir}\n`);
+  io.stderr(`installed the engines in ${printable(dir)}\n`);
   return 0;
 }
 
@@ -136,7 +136,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   }
   if (subcommand === "verify") {
     const { ok, problems } = verifyEngines(dir, { deep });
-    for (const problem of problems) io.stderr(`${problem}\n`);
+    for (const problem of problems) io.stderr(`${printable(problem)}\n`);
     return ok ? 0 : 1;
   }
   return install(io, dir, deep, values.yes ?? false);

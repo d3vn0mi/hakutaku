@@ -1,12 +1,35 @@
-import { readdirSync } from "node:fs";
+import { readdirSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { COMMANDS } from "../../../src/cli/commands/index.js";
 import { main } from "../../../src/cli/main.js";
 import { confirm } from "../../../src/cli/prompt.js";
 import { readLock, resolveBin } from "../../../src/engines/index.js";
+import { HOSTILE, HOSTILE_SHOWN, rawLines } from "../../helpers/terminal.js";
 import { fakeInstall, tmp } from "../engines/fake.js";
+
+type EnginesModule = typeof import("../../../src/engines/index.js");
+
+// installEngines, recorded: the real one unless a test replaces it for one call.
+const installEngines = vi.hoisted(() =>
+  vi.fn<EnginesModule["installEngines"]>(),
+);
+vi.mock("../../../src/engines/index.js", async (importOriginal) => {
+  const actual = await importOriginal<EnginesModule>();
+  installEngines.mockImplementation(actual.installEngines);
+  return { ...actual, installEngines };
+});
+
+// A complete install of stand-in engines, moved to a directory whose name is HOSTILE.
+const hostileInstall = (): string => {
+  const dir = join(tmp(), HOSTILE);
+  renameSync(fakeInstall(), dir);
+  return dir;
+};
+
+// A path that holds HOSTILE, as a terminal is shown it.
+const shown = (path: string): string => path.replace(HOSTILE, HOSTILE_SHOWN);
 
 const QUESTION =
   "hakutaku needs scip-typescript, dependency-cruiser and ast-grep (npm) and grimp (PyPI). Install the pinned versions now? [y/N]";
@@ -161,6 +184,69 @@ it("exits 2 with the usage for an unknown option", async () => {
   const err = c.err.join("");
   expect(err).toMatch(/^hakutaku engines: .*--colour/);
   expect(err.endsWith(`\n${USAGE}`)).toBe(true);
+});
+
+// An option it does not take is named as given; a subcommand it does not know, through
+// JSON.stringify, which writes ESC as an escape and leaves the rest.
+it("says a usage error on lines safe for a terminal", async () => {
+  for (const [argv, text] of [
+    [["list", `--${HOSTILE}`], HOSTILE_SHOWN],
+    [[HOSTILE], "[2J?31m; ?map"],
+  ] as const) {
+    const c = capture();
+    expect([argv, await main(["engines", ...argv], c.io)]).toEqual([argv, 2]);
+    const err = c.err.join("");
+    expect(err).toMatch(/^hakutaku engines: .+\n/);
+    expect(err).toContain(text);
+    expect(err.endsWith(USAGE)).toBe(true);
+    expect(rawLines(err)).toEqual([]);
+  }
+});
+
+it("names the engines directory it found installed on a line safe for a terminal", async () => {
+  const dir = hostileInstall();
+  const c = capture();
+  expect(await main(["engines", "install", "--engines-dir", dir], c.io)).toBe(
+    0,
+  );
+  expect(c.err.join("")).toBe(
+    `the engines are already installed in ${shown(dir)}\n`,
+  );
+});
+
+it("names the engines directory it installs in, and each line the install logs, on lines safe for a terminal", async () => {
+  const dir = join(tmp(), HOSTILE);
+  installEngines.mockImplementationOnce(async (opts) => {
+    opts.log?.(`grimp not installed: pip said ${HOSTILE}`);
+  });
+  const c = capture();
+  expect(
+    await main(["engines", "install", "--yes", "--engines-dir", dir], c.io),
+  ).toBe(0);
+  expect(c.err.join("")).toBe(
+    [
+      `installing the engines in ${shown(dir)}`,
+      `grimp not installed: pip said ${HOSTILE_SHOWN}`,
+      `installed the engines in ${shown(dir)}`,
+      "",
+    ].join("\n"),
+  );
+  expect(installEngines).toHaveBeenLastCalledWith(
+    expect.objectContaining({ dir, deep: false, yes: true }),
+  );
+});
+
+it("prints each problem verify finds on a line safe for a terminal", async () => {
+  const dir = hostileInstall();
+  const c = capture();
+  expect(
+    await main(["engines", "verify", "--deep", "--engines-dir", dir], c.io),
+  ).toBe(1);
+  const bin = resolveBin(
+    dir,
+    readLock().lock.engines["scip-python"]?.bin ?? "",
+  );
+  expect(c.err.join("")).toBe(`scip-python missing at ${shown(bin)}\n`);
 });
 
 it.each<[string, boolean]>([

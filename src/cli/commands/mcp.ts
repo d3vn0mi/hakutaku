@@ -8,6 +8,7 @@ import { Writable } from "node:stream";
 import { parseArgs } from "node:util";
 import { startMcpServer } from "../../mcp/index.js";
 import { registryHost, UnknownRepoError } from "../../registry/index.js";
+import { printable } from "../table.js";
 import type { CliIO, Command } from "./index.js";
 
 const USAGE = "usage: hakutaku mcp <id>... | --all [--allow-refresh]\n";
@@ -24,7 +25,7 @@ const parse = (argv: string[]) =>
   });
 
 function usageError(io: CliIO, message: string): number {
-  io.stderr(`hakutaku mcp: ${message}\n${USAGE}`);
+  io.stderr(`hakutaku mcp: ${printable(message)}\n${USAGE}`);
   return 2;
 }
 
@@ -54,7 +55,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     });
   } catch (error) {
     if (!(error instanceof UnknownRepoError)) throw error;
-    io.stderr(`hakutaku mcp: ${error.message}\n`);
+    io.stderr(`hakutaku mcp: ${printable(error.message)}\n`);
     return 2;
   }
   // The session is over when stdin ends or closes, or when stdout fails, as it does with EPIPE

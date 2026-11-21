@@ -30,3 +30,12 @@ export function printable(text: string): string {
     .replace(/[\s\u0085]*[\r\n\u0085\u2028\u2029][\s\u0085]*/g, "; ")
     .replace(/[\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu, "?");
 }
+
+// A text of several lines, such as an error's message or its stack, with its line breaks kept,
+// CRLF and a lone CR each as LF, and every line made safe for a terminal by printable().
+export function printableLines(text: string): string {
+  return text
+    .split(/\r\n|\r|\n/)
+    .map((line) => printable(line))
+    .join("\n");
+}

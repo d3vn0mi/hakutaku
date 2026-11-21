@@ -6,6 +6,7 @@ import { COMMANDS } from "../../../src/cli/commands/index.js";
 import { main } from "../../../src/cli/main.js";
 import { removeTree } from "../../../src/export/index.js";
 import { git, makeRepo } from "../../helpers/git.js";
+import { HOSTILE, HOSTILE_SHOWN, rawLines } from "../../helpers/terminal.js";
 
 const made: string[] = [];
 afterAll(() => {
@@ -50,6 +51,23 @@ const threeFiles = (): Promise<string> =>
 
 it("is registered as export", () => {
   expect(COMMANDS.map((c) => c.name)).toContain("export");
+});
+
+// An option it does not take is named as given; an id that is not one, through JSON.stringify,
+// which writes ESC as an escape and leaves the rest.
+it("says a usage error on lines safe for a terminal", async () => {
+  for (const [argv, shown] of [
+    [[`--${HOSTILE}`], HOSTILE_SHOWN],
+    [["repo", "--out", "out", "--id", HOSTILE], "[2J?31m; ?map"],
+  ] as const) {
+    const c = capture();
+    expect([argv, await main(["export", ...argv], c.io)]).toEqual([argv, 2]);
+    const err = c.err.join("");
+    expect(err).toMatch(/^hakutaku export: .+\n/);
+    expect(err).toContain(shown);
+    expect(err.endsWith(USAGE)).toBe(true);
+    expect(rawLines(err)).toEqual([]);
+  }
 });
 
 it("prints one ExportResult JSON line", async () => {

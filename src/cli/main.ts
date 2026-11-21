@@ -4,7 +4,7 @@ import { isatty } from "node:tty";
 import { fileURLToPath } from "node:url";
 import { HAKUTAKU_VERSION } from "../version.js";
 import { type CliIO, COMMANDS } from "./commands/index.js";
-import { printable } from "./table.js";
+import { printable, printableLines } from "./table.js";
 
 // The usage line, then one line per command: its name, then its summary, every summary starting
 // in one column.
@@ -118,7 +118,11 @@ async function dispatch(argv: string[], io: CliIO): Promise<number> {
   const command = COMMANDS.find((c) => c.name === name);
   if (command === undefined) {
     if (name !== undefined) {
-      io.stderr(`hakutaku: unknown command ${JSON.stringify(name)}\n`);
+      // JSON.stringify writes C0 controls as escapes, but leaves DEL, C1 controls, the line
+      // separators and the bidirectional controls raw
+      io.stderr(
+        `hakutaku: unknown command ${printable(JSON.stringify(name))}\n`,
+      );
     }
     io.stderr(usage());
     return 2;
@@ -135,11 +139,7 @@ async function dispatch(argv: string[], io: CliIO): Promise<number> {
 // safe for a terminal: a message can name a repository's path, whose control characters would
 // otherwise reach it.
 function errorLines(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message
-    .split(/\r\n|\r|\n/)
-    .map((line) => printable(line))
-    .join("\n");
+  return printableLines(error instanceof Error ? error.message : String(error));
 }
 
 function isEntryModule(): boolean {

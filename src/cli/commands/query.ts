@@ -6,6 +6,7 @@
 import { parseArgs } from "node:util";
 import { registryHost, UnknownRepoError } from "../../registry/index.js";
 import { runTool } from "../../tools/index.js";
+import { printable, printableLines } from "../table.js";
 import type { CliIO, Command } from "./index.js";
 
 const USAGE = "usage: hakutaku query <tool> <id> [--args '<json>']\n";
@@ -23,7 +24,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   try {
     parsed = parse(argv);
   } catch (error) {
-    io.stderr(`hakutaku query: ${messageOf(error)}\n${USAGE}`);
+    io.stderr(`hakutaku query: ${printable(messageOf(error))}\n${USAGE}`);
     return 2;
   }
   const { values, positionals } = parsed;
@@ -44,11 +45,13 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     host = registryHost({ repos: [id], allowRefresh: false });
   } catch (error) {
     if (!(error instanceof UnknownRepoError)) throw error;
-    io.stderr(`hakutaku query: ${error.message}\n`);
+    io.stderr(`hakutaku query: ${printable(error.message)}\n`);
     return 2;
   }
   const result = runTool(host, null, tool, withRepo(tool, id, given), (err) =>
-    io.stderr(`hakutaku query: internal error: ${detailOf(err)}\n`),
+    io.stderr(
+      `hakutaku query: internal error: ${printableLines(detailOf(err))}\n`,
+    ),
   );
   if (result.ok) {
     io.stdout(`${JSON.stringify(result.answer, null, 2)}\n`);

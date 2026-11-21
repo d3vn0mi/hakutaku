@@ -3,6 +3,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { type CliIO, COMMANDS } from "../../../src/cli/commands/index.js";
 import { main } from "../../../src/cli/main.js";
 import { useRegisteredTiny } from "../../helpers/registry.js";
+import { HOSTILE, HOSTILE_SHOWN, rawLines } from "../../helpers/terminal.js";
 
 type RegistryModule = typeof import("../../../src/registry/index.js");
 
@@ -167,4 +168,46 @@ it("writes an internal error's detail to stderr, and the error to stdout", async
     error: { code: "internal", message: "internal error" },
   });
   expect(c.err).toContain("hakutaku query: internal error: Error: disk");
+});
+
+it("says an option it does not take on lines safe for a terminal", async () => {
+  const { c, io } = capture();
+  expect(await main(["query", "code_repos", "tiny", `--${HOSTILE}`], io)).toBe(
+    2,
+  );
+  expect(c.err).toMatch(/^hakutaku query: .+\n/);
+  expect(c.err).toContain(HOSTILE_SHOWN);
+  expect(c.err.endsWith(USAGE)).toBe(true);
+  expect(rawLines(c.err)).toEqual([]);
+});
+
+it("names an unknown repo on one line safe for a terminal", async () => {
+  const { c, io } = capture();
+  expect(await main(["query", "code_repos", HOSTILE], io)).toBe(2);
+  expect(c.err).toBe(
+    `hakutaku query: unknown repo: ${HOSTILE_SHOWN}; registered: tiny\n`,
+  );
+  expect(c.out).toBe("");
+});
+
+it("writes an internal error's detail with its lines kept, each safe for a terminal", async () => {
+  const actual = await vi.importActual<RegistryModule>(
+    "../../../src/registry/index.js",
+  );
+  registryHost.mockImplementationOnce((opts) => ({
+    ...actual.registryHost(opts),
+    open: () => {
+      throw new Error(`disk ${HOSTILE}\r\nfull`);
+    },
+  }));
+  const { c, io } = capture();
+  expect(await main(["query", "code_overview", "tiny"], io)).toBe(4);
+  const lines = c.err.split("\n");
+  expect(lines.slice(0, 2)).toEqual([
+    `hakutaku query: internal error: Error: disk ${HOSTILE_SHOWN}`,
+    "full",
+  ]);
+  // the stack's own lines follow, as they were
+  expect(lines[2]).toMatch(/^ {4}at /);
+  expect(rawLines(c.err)).toEqual([]);
 });

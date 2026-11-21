@@ -5,6 +5,7 @@
 import { parseArgs } from "node:util";
 import { defaultRepoId, exportRepo } from "../../export/index.js";
 import { REPO_ID_RE } from "../../model/index.js";
+import { printable } from "../table.js";
 import type { CliIO, Command } from "./index.js";
 
 const USAGE =
@@ -20,7 +21,7 @@ const OPTIONS = {
 } as const;
 
 function usageError(io: CliIO, message: string): number {
-  io.stderr(`hakutaku export: ${message}\n${USAGE}`);
+  io.stderr(`hakutaku export: ${printable(message)}\n${USAGE}`);
   return 2;
 }
 

@@ -7,6 +7,7 @@ import {
   type Command,
 } from "../../../src/cli/commands/index.js";
 import { main, processIO } from "../../../src/cli/main.js";
+import { HOSTILE, rawLines } from "../../helpers/terminal.js";
 
 const capture = () => {
   const out: string[] = [];
@@ -104,6 +105,18 @@ it("exits 2 with the usage on stderr for an unknown command", async () => {
   const c = capture();
   expect(await main(["nebula"], c.io)).toBe(2);
   expect(c.err.join("")).toMatch(/^usage: hakutaku <command>/m);
+});
+
+it("names an unknown command on one line safe for a terminal", async () => {
+  const c = capture();
+  expect(await main([HOSTILE], c.io)).toBe(2);
+  const err = c.err.join("");
+  // JSON.stringify writes ESC as an escape, and leaves the CSI, the separator and the override
+  const backslash = "\\";
+  expect(err.split("\n")[0]).toBe(
+    `hakutaku: unknown command "sky${backslash}u001b[2J?31m; ?map"`,
+  );
+  expect(rawLines(err)).toEqual([]);
 });
 
 it("lists every registered command in --help", async () => {

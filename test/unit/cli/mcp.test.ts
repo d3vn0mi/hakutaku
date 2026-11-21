@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { type CliIO, COMMANDS } from "../../../src/cli/commands/index.js";
 import { main } from "../../../src/cli/main.js";
 import { useRegisteredTiny } from "../../helpers/registry.js";
+import { HOSTILE, HOSTILE_SHOWN, rawLines } from "../../helpers/terminal.js";
 
 type RegistryModule = typeof import("../../../src/registry/index.js");
 
@@ -130,6 +131,24 @@ it("mcp needs ids or --all, not both", async () => {
   expect(await main(["mcp", "--nope"], io)).toBe(2);
   expect(c.err).toMatch(/^hakutaku mcp: .+\n/);
   expect(c.err.endsWith(USAGE)).toBe(true);
+  expect(c.out).toBe("");
+});
+
+it("mcp says an option it does not take on lines safe for a terminal", async () => {
+  const { c, io } = capture();
+  expect(await main(["mcp", `--${HOSTILE}`], io)).toBe(2);
+  expect(c.err).toMatch(/^hakutaku mcp: .+\n/);
+  expect(c.err).toContain(HOSTILE_SHOWN);
+  expect(c.err.endsWith(USAGE)).toBe(true);
+  expect(rawLines(c.err)).toEqual([]);
+});
+
+it("mcp names an unknown repo on one line safe for a terminal", async () => {
+  const { c, io } = capture();
+  expect(await main(["mcp", HOSTILE], io)).toBe(2);
+  expect(c.err).toBe(
+    `hakutaku mcp: unknown repo: ${HOSTILE_SHOWN}; registered: tiny\n`,
+  );
   expect(c.out).toBe("");
 });
 

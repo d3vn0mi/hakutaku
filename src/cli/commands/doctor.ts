@@ -33,6 +33,7 @@ import {
   sandboxProblems,
 } from "../../extract/sandbox.js";
 import { cleanReason } from "../../redact/index.js";
+import { printable } from "../table.js";
 import type { CliIO, Command } from "./index.js";
 
 const USAGE = "usage: hakutaku doctor\n";
@@ -205,7 +206,9 @@ async function run(argv: string[], io: CliIO): Promise<number> {
       strict: true,
     });
   } catch (error) {
-    io.stderr(`hakutaku doctor: ${(error as Error).message}\n${USAGE}`);
+    io.stderr(
+      `hakutaku doctor: ${printable((error as Error).message)}\n${USAGE}`,
+    );
     return 2;
   }
   const checks = [

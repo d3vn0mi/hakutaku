@@ -15,6 +15,7 @@ import {
   SANDBOX_REPAIRS,
   type SandboxProblem,
 } from "../../../src/extract/sandbox.js";
+import { HOSTILE, HOSTILE_SHOWN, rawLines } from "../../helpers/terminal.js";
 
 const evidence = (patch: Partial<ProbeEvidence>): ProbeEvidence => ({
   command: "bwrap",
@@ -140,4 +141,21 @@ it("takes no argument", async () => {
   expect(await main(["doctor", "--mcp", "observatory"], io)).toBe(2);
   expect(c.err).toMatch(/^hakutaku doctor: .*\nusage: hakutaku doctor\n$/);
   expect(c.out).toBe("");
+});
+
+it("names an argument it does not take on a line safe for a terminal", async () => {
+  let err = "";
+  const io: CliIO = {
+    stdout: () => {},
+    stderr: (s) => {
+      err += s;
+    },
+    stdin: new PassThrough(),
+    env: {},
+    isTTY: false,
+  };
+  expect(await main(["doctor", HOSTILE], io)).toBe(2);
+  expect(err).toMatch(/^hakutaku doctor: .*\nusage: hakutaku doctor\n$/);
+  expect(err).toContain(HOSTILE_SHOWN);
+  expect(rawLines(err)).toEqual([]);
 });
