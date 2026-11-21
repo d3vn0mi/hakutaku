@@ -5,7 +5,7 @@
       "**",
       "!!**/dist",
       "!!**/coverage",
-      "!!**/fixtures",
+      "!!fixtures",
       "!engines.lock.json",
       "!test/golden/**/*.json"
     ]

@@ -56,7 +56,8 @@ const isManifest = (name: string): boolean =>
 
 const made: string[] = [];
 afterAll(() => {
-  for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of made.splice(0))
+    rmSync(dir, { recursive: true, force: true });
 });
 
 // The files git tracks under fixtures/, as paths from hakutaku's root.

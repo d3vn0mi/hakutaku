@@ -33,7 +33,8 @@ const DAYS_180 = 180 * 86_400;
 
 const made: string[] = [];
 afterAll(() => {
-  for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of made.splice(0))
+    rmSync(dir, { recursive: true, force: true });
 });
 
 // make.mjs run into a fresh directory: the repository it wrote, and what it printed.
@@ -111,7 +112,9 @@ it("has 120 to 200 files, 30 or more commits over more than 26 weeks, and the re
   expect(files.length).toBeLessThanOrEqual(200);
 
   // committer times, newest first
-  const times = git(repo, "log", "--format=%ct", "main").split("\n").map(Number);
+  const times = git(repo, "log", "--format=%ct", "main")
+    .split("\n")
+    .map(Number);
   expect(times.length).toBeGreaterThanOrEqual(30);
   expect(times[0]).toBe(HEAD_TIME);
   expect(times[0] - (times.at(-1) ?? times[0])).toBeGreaterThan(WEEKS_26);

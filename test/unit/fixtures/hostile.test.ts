@@ -49,7 +49,8 @@ const IDS: HostileCaseId[] = [
 
 const made: string[] = [];
 afterAll(() => {
-  for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of made.splice(0))
+    rmSync(dir, { recursive: true, force: true });
 });
 
 const tmp = (): string => {
@@ -64,9 +65,7 @@ it("makes the fixtures afresh on each call, with an empty canary and the host's 
   expect(second.dir).not.toBe(first.dir);
   for (const made of [first, second]) {
     expect(readdirSync(made.canaryDir)).toEqual([]);
-    expect(readFileSync(made.markerFile, "utf8").split("\n")).toContain(
-      MARKER,
-    );
+    expect(readFileSync(made.markerFile, "utf8").split("\n")).toContain(MARKER);
     for (const id of IDS) {
       expect(statSync(join(made.dir, id)).isDirectory()).toBe(true);
     }
@@ -81,7 +80,10 @@ it("reads the cases of cases.json, whose ids are the hostile case ids in order",
 
 it("takes what the canary holds, by file and line, and leaves it empty", async () => {
   const fx = await hostileFixtures();
-  writeFileSync(join(fx.canaryDir, "sgconfig"), "sgconfig: one\nsgconfig: two\n");
+  writeFileSync(
+    join(fx.canaryDir, "sgconfig"),
+    "sgconfig: one\nsgconfig: two\n",
+  );
   writeFileSync(join(fx.canaryDir, "git-config"), "git-config: three\n");
   expect(takeCanary(fx)).toEqual({
     "git-config": ["git-config: three"],

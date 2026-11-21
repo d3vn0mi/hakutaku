@@ -109,8 +109,7 @@ function numberOf(path: string): number | undefined {
   return py === null ? undefined : Number(py[1]);
 }
 
-const text = (path: string): string =>
-  readFileSync(join(repo, path), "utf8");
+const text = (path: string): string => readFileSync(join(repo, path), "utf8");
 
 it("lays out three manifests, then 75% TypeScript modules, 10% their tests and 15% Python modules", () => {
   const ts = paths.filter((p) => TS_MODULE.test(p));
@@ -272,7 +271,8 @@ it("has about one module in ten import one external module of its language, and 
   const py = paths
     .filter((p) => PY_MODULE.test(p))
     .flatMap((p) => parse(p).externals);
-  for (const e of ts) expect(["node:fs", "node:path", "react", "zod"]).toContain(e);
+  for (const e of ts)
+    expect(["node:fs", "node:path", "react", "zod"]).toContain(e);
   for (const e of py) expect(["os", "json", "numpy"]).toContain(e);
   // 268 modules, each importing one with a chance of 1 in 10
   expect(ts.length + py.length).toBeGreaterThanOrEqual(13);
@@ -355,9 +355,7 @@ it("writes 26 commits a week apart by Scale Author, each after the first appendi
     expect(c.at).toBe(c.ct);
     if (i > 0) expect(c.ct - (commits[i - 1]?.ct ?? 0)).toBe(WEEK);
   }
-  expect(commits[0]?.stats.map((s) => s[2]).sort()).toEqual(
-    [...paths].sort(),
-  );
+  expect(commits[0]?.stats.map((s) => s[2]).sort()).toEqual([...paths].sort());
   for (let k = 2; k <= 26; k++) {
     const stats = commits[k - 1]?.stats ?? [];
     const touched = paths.filter((p) => {
@@ -369,7 +367,10 @@ it("writes 26 commits a week apart by Scale Author, each after the first appendi
     );
     for (const [added, deleted, path] of stats) {
       expect([added, deleted], `${path} in commit ${k}`).toEqual(["1", "0"]);
-      const last = text(path ?? "").trimEnd().split("\n").at(-1);
+      const last = text(path ?? "")
+        .trimEnd()
+        .split("\n")
+        .at(-1);
       expect(last, path).toMatch(path?.endsWith(".py") ? /^# / : /^\/\/ /);
     }
   }
