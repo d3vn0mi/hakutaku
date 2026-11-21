@@ -952,7 +952,7 @@ For example, `code_callers` with the bare name `position`:
 | `invalid_argument` | The tool name is unknown; the arguments break the input schema; a string is over 4,096 characters; a search text is under 3 characters; an ID belongs to another repo; or a target is of a kind the tool does not take | `field`, the argument at fault; `hint` |
 | `denied_file` | The target is a denylisted path, such as an `.env` file or a key, which the map never stores | nothing more |
 | `no_source` | The map stores no source text, snippets are off for the repo, or the file kept none, being over 1 MB, minified or generated | nothing more |
-| `rate_limited` | `code_refresh` came again within 10 minutes of the start of the last build the host started for the repo | `retryAfterSeconds`, when the host knows it |
+| `rate_limited` | `code_refresh` came again within 10 minutes of the start of the last build the host started for the repo, once that build has ended | `retryAfterSeconds`, when the host knows it |
 | `refresh_disabled` | The host offers no refresh | nothing more |
 | `internal` | Anything else. The message is always `internal error`, and the details go only to the host's log | nothing more |
 
