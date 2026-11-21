@@ -104,8 +104,8 @@ CREATE TABLE call_sites (
 CREATE TABLE call_targets (
   site_id INTEGER NOT NULL REFERENCES call_sites(id),
   def_id INTEGER NOT NULL REFERENCES definitions(id),
-  label TEXT NOT NULL,                    -- 'bound' | 'scoped' only (addition: query time derives unscoped
-                                          -- and transitive scoped matches from call_sites and imports)
+  label TEXT NOT NULL,                    -- 'bound' | 'scoped' only: query time derives unscoped
+                                          -- and transitive scoped matches from call_sites and imports
   collision INTEGER NOT NULL,             -- 1: a scoped site whose file sees two or more definitions of the name
   PRIMARY KEY (site_id, def_id)
 );
