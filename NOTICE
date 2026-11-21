@@ -15,6 +15,12 @@ Use: the SCIP index format, created by Sourcegraph: src/extract/scip/scip.proto 
 
 ## Installed with the package
 
+### @modelcontextprotocol/sdk
+Version: 1.32.2
+Licence: MIT
+Copyright: Copyright (c) 2024 Anthropic, PBC
+Use: the MCP server over stdio
+
 ## Run as separate programs
 
 ### scip-typescript

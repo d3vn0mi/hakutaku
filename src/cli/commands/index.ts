@@ -1,6 +1,8 @@
 import { enginesCommand } from "./engines.js";
 import { exportCommand } from "./export.js";
 import { extractCommand } from "./extract.js";
+import { mcpCommand } from "./mcp.js";
+import { queryCommand } from "./query.js";
 
 export interface CliIO {
   stdout(s: string): void;
@@ -16,8 +18,10 @@ export interface Command {
   run(argv: string[], io: CliIO): Promise<number>;
 }
 
-// The order is fixed: map, list, profile, engines, export, extract, doctor.
+// The order is fixed: map, view, mcp, query, list, profile, engines, export, extract, doctor.
 export const COMMANDS: readonly Command[] = [
+  mcpCommand,
+  queryCommand,
   enginesCommand,
   exportCommand,
   extractCommand,
