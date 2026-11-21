@@ -150,7 +150,7 @@ it("resolves TS imports by dependency-cruiser, then SCIP, then hakutaku's resolv
       [2, 4, 1, null, "static", 1, "./body", "dependency-cruiser"],
       [3, 4, null, 1, "static", 2, "node:fs", "dependency-cruiser"],
       [4, 4, null, 2, "static", 3, "react", "dependency-cruiser"],
-      [5, 4, null, null, "static", 4, "./missing", "hakutaku-resolver"],
+      [5, 4, null, null, "static", 4, "./missing", "dependency-cruiser"],
       [6, 4, 3, null, "static", 5, "./gen", "hakutaku-resolver"],
     ),
   );
@@ -192,6 +192,54 @@ it("resolves TS imports by dependency-cruiser, then SCIP, then hakutaku's resolv
     ),
   );
   expect(resolved.externals).toEqual(externals);
+});
+
+it("leaves unresolved what dependency-cruiser resolved to nothing in a file it listed, though hakutaku's resolver finds it", () => {
+  const CONSTANTS = "web/src/orbits/constants.ts";
+  const KEPLER = "web/src/orbits/kepler.ts";
+  const UNITS = "web/src/orbits/units.ts";
+  const KEPLER_TEXT =
+    "import { AU } from './units';\nconst table = './constants';\nexport const a = AU;\n";
+  const FILES: Record<string, string> = {
+    [CONSTANTS]: "export const G = 1;\n",
+    [KEPLER]: KEPLER_TEXT,
+    [UNITS]: "export const AU = 1;\n",
+  };
+  const facts = astGrep({
+    imports: [importFact(KEPLER, spot(KEPLER_TEXT, 1, "'./units'"), "./units")],
+  });
+  // a dependency-cruiser that resolves no extensionless specifier: both files exist in the
+  // snapshot, and ./constants is an edge that no import statement names
+  const depcruise: DepcruiseFacts = {
+    modules: new Set([CONSTANTS, KEPLER, UNITS]),
+    edges: ["./units", "./constants"].map((specifier) => ({
+      from: KEPLER,
+      specifier,
+      to: null,
+      external: null,
+      typeOnly: false,
+    })),
+    violations: [],
+    circular: new Set(),
+  };
+
+  const cruised = importsOf(
+    mergeInput(FILES, { facts: { astGrep: facts, depcruise } }),
+  );
+  expect(cruised.imports).toEqual(
+    rows(
+      [1, 2, null, null, "static", 1, "./units", "dependency-cruiser"],
+      [2, 2, null, null, "static", 2, "./constants", "dependency-cruiser"],
+    ),
+  );
+  expect(cruised.relative).toEqual({ total: 2, unresolved: 2 });
+
+  // without dependency-cruiser, hakutaku's resolver finds the file
+  const resolved = importsOf(mergeInput(FILES, { facts: { astGrep: facts } }));
+  expect(resolved.imports).toEqual(
+    rows([1, 2, 3, null, "static", 1, "./units", "hakutaku-resolver"]),
+  );
+  expect(resolved.relative).toEqual({ total: 1, unresolved: 0 });
 });
 
 it("resolves Python imports by grimp inside packages and by hakutaku's resolver outside them", () => {
@@ -574,7 +622,7 @@ it("stores a dependency-cruiser edge no statement names at its specifier's strin
   );
   expect(merged.imports).toEqual(
     rows(
-      [1, 1, null, null, "static", 1, "./ghost", "hakutaku-resolver"],
+      [1, 1, null, null, "static", 1, "./ghost", "dependency-cruiser"],
       [2, 1, null, 1, "type-only", 3, "node", "dependency-cruiser"],
     ),
   );

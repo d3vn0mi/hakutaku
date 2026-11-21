@@ -2,10 +2,10 @@
 // becomes one row, or, for a Python from-import, one row per module it imports. A row's
 // count, specifier, kind and line come from the fact alone, so a build whose engines differ
 // differs only in the targets and producers. The best tier that covers the file resolves it:
-// - TS and JS: dependency-cruiser's edge with the same file and specifier, when it ran and
-//   listed the file; else, when it did not run, SCIP's module at the specifier, for a file
-//   SCIP indexed; else hakutaku's resolver, which also takes an import the tier left
-//   unresolved.
+// - TS and JS: dependency-cruiser's edge with the same file and specifier, resolved or not,
+//   when it ran and listed the file; else, when it did not run, SCIP's module at the
+//   specifier, for a file SCIP indexed; else hakutaku's resolver, which also takes an import
+//   with no edge, and one SCIP did not name.
 // - Python: grimp's import of the row's absolute module, or of that module's nearest
 //   ancestor, on the same line, when grimp read the file; else hakutaku's resolver. A
 //   dynamic import is never grimp's. Both look the module up in one module index, the longest
@@ -349,11 +349,15 @@ function tsTier(input: MergeInput, paths: ReadonlySet<string>) {
       if (cruised !== null) {
         if (cruised.modules.has(fact.file)) {
           // a value import and an import type of one module are two edges, which share
-          // their target: dependency-cruiser resolves a specifier once per module
+          // their target: dependency-cruiser resolves a specifier once per module. Its
+          // answer stands even when it resolved nothing: its rule findings and cycles come
+          // from the same resolution, so an import it missed must count against the gate.
+          // Only an import with no edge (the edge to a metadata-only file is excluded)
+          // goes on to the resolver.
           const edge = edges.get(pairKey(fact.file, specifier))?.[0];
-          const target = edge === undefined ? null : ofEdge(edge);
-          if (target !== null)
-            return { target, producer: "dependency-cruiser" };
+          if (edge !== undefined) {
+            return { target: ofEdge(edge), producer: "dependency-cruiser" };
+          }
         }
       } else if (scip?.documents.has(fact.file)) {
         const module = scip.moduleAt.get(positionKey(fact.file, fact.at));
@@ -364,10 +368,7 @@ function tsTier(input: MergeInput, paths: ReadonlySet<string>) {
       return resolver(fact.file, specifier);
     },
     edge(edge: Edge): Pick<Draft, "target" | "producer"> {
-      const target = ofEdge(edge);
-      return target !== null
-        ? { target, producer: "dependency-cruiser" }
-        : resolver(edge.from, edge.specifier);
+      return { target: ofEdge(edge), producer: "dependency-cruiser" };
     },
     // whether the file's import engine covered it, or null when it is no TS or JS file
     indexes(file: FileRow): boolean | null {
