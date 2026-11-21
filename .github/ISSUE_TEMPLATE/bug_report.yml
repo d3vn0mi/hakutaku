@@ -9,7 +9,7 @@ body:
         Thank you for taking the time to report a bug.
 
         - **A security problem?** Do not open an issue. Report it privately, as [SECURITY.md](https://github.com/d3vn0mi/hakutaku/blob/main/SECURITY.md) describes.
-        - **No private code.** Reproduce on the bundled synthetic sample (`fixtures/observatory/`), or on the smallest synthetic repository you can write. Until the sample lands, a public repository pinned by commit is fine. Never paste private code, private paths, secrets, store files (`*.sqlite`) or screenshots of a private repository.
+        - **No private code.** Reproduce on the bundled synthetic sample (`fixtures/observatory/`), or on the smallest synthetic repository you can write. Never paste private code, private paths, secrets, store files (`*.sqlite`) or screenshots of a private repository.
         - hakutaku is **pre-release**, with 0.1 in progress, so some things are not built yet.
 
   - type: dropdown
@@ -47,11 +47,12 @@ body:
     id: reproduce
     attributes:
       label: Steps to reproduce
-      description: On the synthetic sample, on a minimal synthetic repository, or on a public repository pinned by commit.
+      description: On the synthetic sample, or on a minimal synthetic repository.
       placeholder: |
-        1. hakutaku map fixtures/observatory --id observatory
-        2. hakutaku query code_callers observatory --args '{"symbol":"web/src/orbits/kepler.ts#Orbit.position"}'
-        3. The answer misses ...
+        1. node fixtures/observatory/make.mjs /tmp/sample
+        2. hakutaku map /tmp/sample/observatory --id observatory
+        3. hakutaku query code_callers observatory --args '{"symbol":"web/src/orbits/kepler.ts#Orbit.position"}'
+        4. The answer misses ...
     validations:
       required: true
 
@@ -76,7 +77,7 @@ body:
     attributes:
       label: Before you submit
       options:
-        - label: I reproduced this on the synthetic sample, on a minimal synthetic repository, or on a public repository pinned by commit.
+        - label: I reproduced this on the synthetic sample, or on a minimal synthetic repository.
           required: true
         - label: This report holds no private code, private paths, secrets, store files or screenshots of a private repository.
           required: true
