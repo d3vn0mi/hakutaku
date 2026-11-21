@@ -409,8 +409,9 @@ function pythonTier(input: MergeInput, paths: ReadonlySet<string>) {
     }
   }
 
+  // the tree's paths let a repo whose top holds an __init__.py read that top as a package
   const resolver = (from: string, module: string): Target =>
-    resolvePythonImport(from, module, index);
+    resolvePythonImport(from, module, index, paths);
 
   // The specifiers a fact imports: the module as written, or for a from-import each name
   // that is a submodule (the module and the name joined), and the module itself for any
@@ -428,7 +429,7 @@ function pythonTier(input: MergeInput, paths: ReadonlySet<string>) {
   };
   const isModule = (from: string, module: string): boolean =>
     module.startsWith(".")
-      ? resolvePythonImport(from, module, index) !== null
+      ? resolver(from, module) !== null
       : index.has(module);
 
   // A module's absolute name, read from the importing file's package; null when it climbs

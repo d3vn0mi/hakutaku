@@ -453,6 +453,47 @@ it("counts computed imports and unresolved relative imports", () => {
   ]);
 });
 
+it("reads a plugin-style repo's top as the package its relative imports start from", () => {
+  const TOP = "__init__.py";
+  const CHART = "sky/chart.py";
+  const merged = importsOf(
+    mergeInput(
+      {
+        [TOP]:
+          "from .sky import chart\nfrom . import helpers\nfrom .. import outside\n",
+        "helpers.py": "def shine():\n    return 1\n",
+        "sky/__init__.py": "",
+        [CHART]: "from .. import helpers\n",
+      },
+      {
+        // the root a generated profile gives a repo whose top holds an __init__.py
+        profile: { python: { roots: ["."], singleFileModules: [] } },
+        facts: {
+          astGrep: astGrep({
+            imports: [
+              importFact(TOP, P(1, 6), ".sky", "static", ["chart"]),
+              importFact(TOP, P(2, 6), ".", "static", ["helpers"]),
+              // .. climbs past the repo top, the outermost package
+              importFact(TOP, P(3, 6), "..", "static", ["outside"]),
+              importFact(CHART, P(1, 6), "..", "static", ["helpers"]),
+            ],
+          }),
+        },
+      },
+    ),
+  );
+  // the submodules a from-import names are written with their names, as anywhere else
+  expect(merged.imports).toEqual(
+    rows(
+      [1, 1, 4, null, "static", 1, ".sky.chart", "hakutaku-resolver"],
+      [2, 1, 2, null, "static", 2, ".helpers", "hakutaku-resolver"],
+      [3, 1, null, null, "static", 3, "..", "hakutaku-resolver"],
+      [4, 4, 2, null, "static", 1, "..helpers", "hakutaku-resolver"],
+    ),
+  );
+  expect(merged.relative).toEqual({ total: 4, unresolved: 1 });
+});
+
 it("names node built-ins by top-level name", () => {
   const A = "web/src/a.ts";
   const B = "web/src/b.ts";

@@ -162,6 +162,143 @@ it("takes a file's dotted name when the index names it twice, as a single-file m
   });
 });
 
+// A plugin-style repo, whose top is itself a package, as a host application imports a plugin:
+// its module index has the one root ".", and the tree adds the files the index never names.
+const plugin = new Map([
+  ["helpers", "helpers.py"],
+  ["orbit", "orbit/__init__.py"],
+  ["sky", "sky/__init__.py"],
+  ["sky.chart", "sky/chart.py"],
+  ["sky.plain.notes", "sky/plain/notes.py"],
+  ["sky.stars", "sky/stars/__init__.py"],
+  ["sky.stars.catalog", "sky/stars/catalog.py"],
+]);
+const pluginTree = new Set([
+  ...plugin.values(),
+  "README.md",
+  "__init__.py",
+  "orbit.py",
+  "sky-tool/__init__.py",
+  "sky-tool/run.py",
+  "sky/0001_initial.py",
+  "stubs.pyi",
+]);
+it.each<[string, string, string, PythonResolution]>([
+  [
+    "the repo top's __init__.py reads the repo top as its package",
+    "__init__.py",
+    ".sky",
+    { file: "sky/__init__.py" },
+  ],
+  [
+    "a dotted name goes down from the repo top",
+    "__init__.py",
+    ".sky.chart",
+    { file: "sky/chart.py" },
+  ],
+  [
+    "a dot alone names the repo top's own __init__.py",
+    "__init__.py",
+    ".",
+    { file: "__init__.py" },
+  ],
+  ["a climb past the repo top matches nothing", "__init__.py", "..", null],
+  [
+    "a climb past the repo top matches nothing, even onto a module of that name",
+    "__init__.py",
+    "..sky",
+    null,
+  ],
+  [
+    "a top-level module's package is the repo top",
+    "helpers.py",
+    ".sky.stars",
+    { file: "sky/stars/__init__.py" },
+  ],
+  [
+    "a module's climb past its root's top package lands in the repo top",
+    "sky/chart.py",
+    "..helpers",
+    { file: "helpers.py" },
+  ],
+  [
+    "each further dot goes up one package, to the repo top's __init__.py",
+    "sky/stars/catalog.py",
+    "...",
+    { file: "__init__.py" },
+  ],
+  [
+    "a package comes before a module of the same name",
+    "__init__.py",
+    ".orbit",
+    { file: "orbit/__init__.py" },
+  ],
+  [
+    "it names one module exactly, never a prefix of it",
+    "__init__.py",
+    ".sky.missing",
+    null,
+  ],
+  ["a stub is never a module", "__init__.py", ".stubs", null],
+  [
+    "a name part that is not an identifier names nothing",
+    "__init__.py",
+    ".sky-tool",
+    null,
+  ],
+  [
+    "a directory without an __init__.py breaks the package chain to the repo top",
+    "sky/plain/notes.py",
+    "...helpers",
+    null,
+  ],
+  [
+    "a directory not named by an identifier breaks the chain too",
+    "sky-tool/run.py",
+    "..helpers",
+    null,
+  ],
+  [
+    "a file whose name is not an identifier is no module of the chain",
+    "sky/0001_initial.py",
+    "..helpers",
+    null,
+  ],
+  ["a stub is no module of the chain either", "stubs.pyi", ".helpers", null],
+])("%s", (_rule, from, mod, want) =>
+  expect(resolvePythonImport(from, mod, plugin, pluginTree)).toEqual(want),
+);
+
+it("reads the repo top as a package only when it holds an __init__.py, and only when given the tree", () => {
+  const noTop = new Set([...pluginTree].filter((p) => p !== "__init__.py"));
+  expect(resolvePythonImport("helpers.py", ".sky", plugin, noTop)).toBeNull();
+  expect(resolvePythonImport("sky/chart.py", "..helpers", plugin, noTop)).toBe(
+    null,
+  );
+  // a relative import inside one root's packages reads the same either way
+  expect(resolvePythonImport("sky/chart.py", ".stars", plugin, noTop)).toEqual({
+    file: "sky/stars/__init__.py",
+  });
+  expect(resolvePythonImport("__init__.py", ".sky", plugin)).toBeNull();
+  expect(resolvePythonImport("sky/chart.py", "..helpers", plugin)).toBeNull();
+});
+
+it("keeps a deeper root's top package its own when no __init__.py joins it to the repo top", () => {
+  const vendored = new Map([
+    ["helpers", "helpers.py"],
+    ["lib", "vendor/lib/__init__.py"],
+    ["lib.parse", "vendor/lib/parse.py"],
+  ]);
+  const tree = new Set([...vendored.values(), "__init__.py"]);
+  expect(
+    resolvePythonImport("vendor/lib/parse.py", "..helpers", vendored, tree),
+  ).toBeNull();
+  // the repo top's __init__.py names the vendored package by its path from the repo top
+  expect(
+    resolvePythonImport("__init__.py", ".vendor.lib.parse", vendored, tree),
+  ).toEqual({ file: "vendor/lib/parse.py" });
+});
+
 it("reads an index built after an earlier call with another index", () => {
   const first = new Map([["sky", "a/sky/__init__.py"]]);
   const second = new Map([["sky", "b/sky/__init__.py"]]);

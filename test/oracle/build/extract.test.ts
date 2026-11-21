@@ -960,6 +960,69 @@ it(
   TIMEOUT,
 );
 
+// A plugin-style repo, whose top is itself a package, as a host application imports a plugin:
+// the top's __init__.py and a module of its subpackage import relative to the repo top.
+const PLUGIN = {
+  "__init__.py": lines("from .sky import chart", "from . import helpers"),
+  "helpers.py": lines("def shine():", "    return 1"),
+  "sky/__init__.py": "",
+  "sky/chart.py": lines(
+    "from .. import helpers",
+    "",
+    "def draw():",
+    "    return helpers.shine()",
+  ),
+};
+
+it(
+  "resolves a plugin-style repo's relative imports from its top, so the gates pass",
+  async () => {
+    const out = storePath();
+    const r = await extract(await exportOf(await oneCommit(PLUGIN)), out);
+    expect(r.result).toBe("built");
+    expect(r.gates.map((g) => g.ok)).toEqual(ALL_OK);
+    // grimp reads the package sky; the repo top is no package any root can name
+    expect(r.gates[0]?.detail).toBe("python 2/2");
+    expect(r.gates[1]).toEqual({
+      gate: "unresolved-imports",
+      ok: true,
+      detail: "0 of 3 relative imports unresolved (0.00%); limit 0.50%",
+    });
+    inStore(out, (s) => {
+      expect(s.meta.coverage.pythonResolver).toBe("grimp");
+      expect(s.meta.coverage.unresolvedImports).toBe(0);
+      expect(
+        s.db
+          .prepare(
+            "SELECT f.path AS src, d.path AS dst, i.specifier AS specifier, i.producer AS producer FROM imports i JOIN files f ON f.id = i.src_file_id LEFT JOIN files d ON d.id = i.dst_file_id ORDER BY i.id",
+          )
+          .all(),
+      ).toEqual([
+        {
+          src: "__init__.py",
+          dst: "sky/chart.py",
+          specifier: ".sky.chart",
+          producer: "hakutaku-resolver",
+        },
+        {
+          src: "__init__.py",
+          dst: "helpers.py",
+          specifier: ".helpers",
+          producer: "hakutaku-resolver",
+        },
+        // grimp read sky/chart.py, but gives no module for a climb past its top package
+        {
+          src: "sky/chart.py",
+          dst: "helpers.py",
+          specifier: "..helpers",
+          producer: "hakutaku-resolver",
+        },
+      ]);
+    });
+  },
+  TIMEOUT,
+);
+
 it(
   "prints one ExtractResult line and exits 3 when the gates fail",
   async () => {
