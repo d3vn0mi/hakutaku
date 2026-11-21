@@ -7,12 +7,31 @@
 // its columns are code points, not UTF-8 bytes (probed with é and an astral emoji before a
 // match), so a position is line + 1, column + 1. It reports nothing for a file that is not
 // valid UTF-8, and it exits 0 when nothing matches.
-import { createReadStream, readFileSync, rmSync, statSync } from "node:fs";
-import { join, posix, resolve } from "node:path";
+//
+// ast-grep never walks the snapshot itself: the driver builds a view of it in the work
+// directory, a link to each file the rules scan, the metadata-only files left out, and ast-grep
+// follows those links. Keeping a file out costs no argument, so the command line stays the same
+// however many metadata-only files there are: one exclusion argument per file passed ARG_MAX
+// at a few thousand deep paths, and the rules' own ignores lists would pass the per-file node
+// budget of ast-grep's YAML reader at about ten thousand files of one language.
+import {
+  accessSync,
+  constants,
+  createReadStream,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+} from "node:fs";
+import { dirname, join, posix, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { readLock, resolveBin } from "../../engines/index.js";
-import type { ImportKind } from "../../model/index.js";
+import type { ExportManifest } from "../../export/index.js";
+import { comparePaths, type ImportKind } from "../../model/index.js";
 import type { EngineDriver, ExtractContext } from "../context.js";
+import { checkSnapshotDirs } from "../export-dir.js";
 import type { CallFact, ImportFact, OutlineDef, Pos } from "../facts.js";
 import {
   buildOutline,
@@ -57,7 +76,8 @@ const SCANNED = new Set([
   ".bash",
 ]);
 
-// Every ignore file is ignored: an analysed repo's .gitignore or .ignore must not hide a file.
+// Every ignore file is ignored, and hidden files are read: no .gitignore, .ignore or git
+// exclude above the work directory may hide a file of the view, nor may a leading dot.
 const NO_IGNORE = ["hidden", "dot", "exclude", "global", "parent", "vcs"];
 
 const TIMEOUT_MS = 600_000;
@@ -72,29 +92,58 @@ const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
 export const astGrepDriver: EngineDriver<AstGrepFacts> = {
   name: "ast-grep",
   minDetail: "quick",
-  applies: (ctx) => {
-    const skipped = new Set(ctx.manifest.metadataOnly.map((m) => m.path));
-    return ctx.manifest.tree.some(
-      (e) =>
-        (e.mode === "100644" || e.mode === "100755") &&
-        scanned(e.path) &&
-        !skipped.has(e.path),
-    );
-  },
+  applies: (ctx) => scanInput(ctx.manifest).length > 0,
   run: runAstGrep,
 };
 
 const scanned = (path: string): boolean => SCANNED.has(posix.extname(path));
 
-// The --globs value that keeps one snapshot file out of the scan. ast-grep roots its globs at
-// its working directory, the work directory, and matches a path outside it whole, so a
-// repo-relative glob never matches a snapshot file (probed); this one names the file by its
-// absolute path under a leading **, every glob character escaped.
-export function excludeGlob(snapshotDir: string, path: string): string {
-  return `!**${escapeGlob(snapshotDir)}/${escapeGlob(path)}`;
+// The files ast-grep reads: the tree's regular files with an extension the rules scan, less the
+// metadata-only files, in path order.
+function scanInput(
+  manifest: Pick<ExportManifest, "tree" | "metadataOnly">,
+): string[] {
+  const skipped = new Set(manifest.metadataOnly.map((m) => m.path));
+  return manifest.tree
+    .filter(
+      (e) =>
+        (e.mode === "100644" || e.mode === "100755") &&
+        scanned(e.path) &&
+        !skipped.has(e.path),
+    )
+    .map((e) => e.path)
+    .sort(comparePaths);
 }
 
-const escapeGlob = (s: string): string => s.replace(/[\\*?[\]{}]/g, "\\$&");
+// The view ast-grep scans: a directory for each snapshot directory on the way to a file it
+// reads, and a link to each such file. Export writes only directories and regular files in the
+// snapshot, so anything else on a file's path is refused here, before ast-grep follows a link
+// that would take it out of the snapshot. So is a file this process cannot read, which
+// ast-grep would skip without a word.
+function makeView(
+  snapshotDir: string,
+  view: string,
+  paths: readonly string[],
+): void {
+  rmSync(view, { recursive: true, force: true });
+  mkdirSync(view);
+  const checked = new Set<string>();
+  for (const path of paths) {
+    try {
+      checkSnapshotDirs(snapshotDir, path, checked);
+      if (!lstatSync(join(snapshotDir, path)).isFile()) {
+        throw new Error(`the snapshot's ${path} is not a regular file`);
+      }
+      accessSync(join(snapshotDir, path), constants.R_OK);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === undefined) throw error;
+      throw new Error(`cannot read the snapshot's ${path} (${code})`);
+    }
+    mkdirSync(dirname(join(view, path)), { recursive: true });
+    symlinkSync(join(snapshotDir, path), join(view, path));
+  }
+}
 
 async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
   const snapshotDir = resolve(ctx.snapshotDir);
@@ -107,26 +156,23 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
     ctx.enginesDir,
     readLock().lock.engines["ast-grep"].bin,
   );
-  // Metadata-only files stay out of the engine's input. Only files the rules scan need a
-  // glob, which keeps the command short.
   const metadataOnly = new Set(ctx.manifest.metadataOnly.map((m) => m.path));
-  const globs = [...metadataOnly]
-    .filter(scanned)
-    .flatMap((path) => ["--globs", excludeGlob(snapshotDir, path)]);
+  const view = join(workDir, "ast-grep");
   const argv = [
     bin,
     "scan",
     "--config",
     join(resolve(ctx.exportDir), "sgconfig.yml"),
     "--json=stream",
+    "--follow",
     ...NO_IGNORE.flatMap((kind) => ["--no-ignore", kind]),
-    ...globs,
-    snapshotDir,
+    view,
   ];
   const timeoutMs =
     ctx.timeoutMs ?? (ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS);
   const out = join(workDir, "ast-grep.jsonl");
   try {
+    makeView(snapshotDir, view, scanInput(ctx.manifest));
     const result = await (ctx.runner ?? runEngine)({
       engine: "ast-grep",
       argv,
@@ -137,7 +183,8 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
     });
     // Every non-zero exit is a failure, since the rules keep ast-grep's default severity and a
     // scan that matches nothing exits 0; so is an ERROR line on stderr, which is how ast-grep
-    // reports a path it could not read.
+    // reports a directory it could not read. A file it could not read it skips without a word,
+    // which is why the view refuses one first.
     const f = failureContext(ctx, timeoutMs);
     const failure = runFailure(result, f);
     if (failure !== null) {
@@ -148,22 +195,26 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
         `ast-grep failed: ${excerptOf(result.stderrTail, result.stderrCut, f.clean)}`,
       );
     }
-    const matches = await readMatches(out, snapshotDir);
+    const matches = await readMatches(out, view, snapshotDir);
     for (const match of matches) {
       if (metadataOnly.has(match.file)) {
         throw new Error(
-          `ast-grep failed: it scanned ${match.file}, which is metadata-only, so its --globs did not keep it out`,
+          `ast-grep failed: it scanned ${match.file}, which is metadata-only`,
         );
       }
     }
     return astGrepFacts(matches);
   } finally {
     rmSync(out, { force: true });
+    rmSync(view, { recursive: true, force: true });
   }
 }
 
+// The matches in ast-grep's stream: each file is named below the view it scanned, and its lines
+// are read from the snapshot.
 async function readMatches(
   path: string,
+  view: string,
   snapshotDir: string,
 ): Promise<RawMatch[]> {
   const rawLine = snapshotLines(snapshotDir);
@@ -171,11 +222,7 @@ async function readMatches(
   let block: string[] = [];
   let size = 0;
   const flush = (): void => {
-    for (const m of parseAstGrepStream(
-      block.join("\n"),
-      snapshotDir,
-      rawLine,
-    )) {
+    for (const m of parseAstGrepStream(block.join("\n"), view, rawLine)) {
       matches.push(m);
     }
     block = [];
@@ -227,13 +274,14 @@ function snapshotLines(
 }
 
 // The matches in a block of ast-grep's stream, sorted by file, start and rule id. Each line
-// is one match; a blank line is skipped. A definition's name line is read with rawLine.
+// is one match, its file a path below `root`, the directory ast-grep scanned; a blank line is
+// skipped. A definition's name line is read with rawLine.
 export function parseAstGrepStream(
   jsonl: string,
-  snapshotDir: string,
+  root: string,
   rawLine: (file: string, line0: number) => Uint8Array,
 ): RawMatch[] {
-  const prefix = `${snapshotDir.replace(/\/+$/, "")}/`;
+  const prefix = `${root.replace(/\/+$/, "")}/`;
   const out: RawMatch[] = [];
   for (const line of jsonl.split("\n")) {
     if (line.trim() !== "") out.push(parseLine(line, prefix, rawLine));

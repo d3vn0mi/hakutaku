@@ -593,7 +593,7 @@ it(
     // the error thrown says what the attempt says
     expect(thrown).toBe(reason);
     expect(reason).toMatch(
-      /^ast-grep failed: exit code 2\ncannot scan scan --config <export>\/sgconfig\.yml .* <snapshot>; token=«redacted:github-token»$/,
+      /^ast-grep failed: exit code 2\ncannot scan scan --config <export>\/sgconfig\.yml .* <work>\/ast-grep; token=«redacted:github-token»$/,
     );
     expect(reason).not.toContain(secret);
     expectNoHostPath(reason);

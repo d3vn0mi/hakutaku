@@ -6,7 +6,6 @@ import type { ExtractContext } from "../../../src/extract/context.js";
 import {
   astGrepDriver,
   astGrepFacts,
-  excludeGlob,
   parseAstGrepStream,
   type RawMatch,
 } from "../../../src/extract/drivers/ast-grep.js";
@@ -217,15 +216,6 @@ it("refuses a line that is not a match, a file outside the snapshot and an unkno
       parseAstGrepStream(streamLine(id, "x.ts", [0, 0], [0, 1]), SNAP, rawLine),
     ).toThrow(`unknown ast-grep rule id: ${id}`);
   }
-});
-
-it("anchors an exclusion glob at the snapshot and escapes every glob character", () => {
-  expect(excludeGlob("/export/snapshot", "web/gen.ts")).toBe(
-    "!**/export/snapshot/web/gen.ts",
-  );
-  expect(excludeGlob("/tmp/a[1]/snap", "web/{a,b}*?\\.ts")).toBe(
-    "!**/tmp/a\\[1\\]/snap/web/\\{a,b\\}\\*\\?\\\\.ts",
-  );
 });
 
 // A match written by hand, for the fact tests.

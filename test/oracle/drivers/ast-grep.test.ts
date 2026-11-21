@@ -24,6 +24,7 @@ import {
   astGrepDriver,
 } from "../../../src/extract/drivers/ast-grep.js";
 import type { Pos } from "../../../src/extract/facts.js";
+import { runEngine } from "../../../src/extract/run.js";
 import { loadProfile } from "../../../src/profile/index.js";
 import { makeRepo } from "../../helpers/git.js";
 
@@ -343,6 +344,64 @@ it("extracts definitions, calls and imports in TS, Python and Bash", async () =>
   expect(existsSync(join(workDir, "ast-grep.jsonl"))).toBe(false);
 }, 300_000);
 
+// The Linux default ARG_MAX: the most an exec's arguments and environment can take.
+const ARG_MAX = 2_097_152;
+
+// A glob character escaped, as an exclusion glob in ast-grep's arguments would need it.
+const escapeGlob = (s: string): string => s.replace(/[\\*?[\]{}]/g, "\\$&");
+
+it("keeps thousands of metadata-only files out of ast-grep without an argument for each", async () => {
+  // deep paths, so that a few thousand of them pass ARG_MAX as one exclusion each would
+  const deep = ["a", "b", "c", "d"].map((c) => c.repeat(240)).join("/");
+  const count = 2400;
+  const files: Record<string, string> = {
+    "web/orbit.ts": "export function orbit() {}\n",
+    // a file beside them that is not metadata-only
+    [`gen/${deep}/decoy.ts`]: "export function decoy() {}\n",
+  };
+  for (let i = 0; i < count; i++) {
+    files[`gen/${deep}/client${i}.ts`] = GENERATED(`client${i}`);
+  }
+  const ctx = await exportOf(
+    await makeRepo({ commits: [{ date: "2026-03-02T10:00:00Z", files }] }),
+  );
+  expect(ctx.manifest.metadataOnly).toHaveLength(count);
+  // an exclusion per file, "--globs" and an absolute glob, each with its 8-byte pointer
+  const perFile = ctx.manifest.metadataOnly.map(
+    ({ path }) =>
+      Buffer.byteLength("--globs") +
+      1 +
+      Buffer.byteLength(
+        `!**${escapeGlob(ctx.snapshotDir)}/${escapeGlob(path)}`,
+      ) +
+      1 +
+      16,
+  );
+  expect(perFile.reduce((a, b) => a + b, 0)).toBeGreaterThan(ARG_MAX);
+
+  const argvs: string[][] = [];
+  const facts = await astGrepDriver.run({
+    ...ctx,
+    runner: (run) => {
+      argvs.push(run.argv);
+      return runEngine(run);
+    },
+  });
+  expect(argvs).toHaveLength(1);
+  const bytes = (argvs[0] ?? []).reduce(
+    (n, a) => n + Buffer.byteLength(a) + 1 + 8,
+    0,
+  );
+  expect(bytes).toBeLessThan(4096);
+  expect(
+    facts.defs.map((d) => [d.file.replace(deep, "<deep>"), d.qualname]),
+  ).toEqual([
+    ["gen/<deep>/decoy.ts", "decoy"],
+    ["web/orbit.ts", "orbit"],
+  ]);
+  expect(facts.calls).toEqual([]);
+}, 300_000);
+
 it("fails with ast-grep's own error when it exits non-zero", async () => {
   const ctx = await exportOf(await smallRepo());
   // a rule file ast-grep cannot load: it exits 8
@@ -356,20 +415,61 @@ it("fails with ast-grep's own error when it exits non-zero", async () => {
   expect(existsSync(join(ctx.workDir, "ast-grep.jsonl"))).toBe(false);
 }, 300_000);
 
-// root reads any directory, so the refusal cannot be staged
+// root reads any directory or file, so no refusal below can be staged
 it.skipIf(process.getuid?.() === 0)(
   "fails when ast-grep reports a path it cannot read, though it exits 0",
   async () => {
     const ctx = await exportOf(await smallRepo());
+    // the view's directory sim is unreadable while ast-grep runs
+    const sim = join(ctx.workDir, "ast-grep", "sim");
+    await expect(
+      astGrepDriver.run({
+        ...ctx,
+        runner: async (run) => {
+          chmodSync(sim, 0o000);
+          try {
+            return await runEngine(run);
+          } finally {
+            chmodSync(sim, 0o755);
+          }
+        },
+      }),
+    ).rejects.toThrow(
+      /^ast-grep failed: ERROR: <work>\/ast-grep\/sim: Permission denied/,
+    );
+  },
+  300_000,
+);
+
+it.skipIf(process.getuid?.() === 0)(
+  "fails before ast-grep runs on a snapshot file it could not read, which it would skip without a word",
+  async () => {
+    const ctx = await exportOf(await smallRepo());
+    let ran = false;
+    const run = () =>
+      astGrepDriver.run({
+        ...ctx,
+        runner: (r) => {
+          ran = true;
+          return runEngine(r);
+        },
+      });
+    // a file that cannot be read, and a directory that cannot be searched
     const sim = join(ctx.snapshotDir, "sim");
-    chmodSync(sim, 0o000);
-    try {
-      await expect(astGrepDriver.run(ctx)).rejects.toThrow(
-        /^ast-grep failed: ERROR: <snapshot>\/sim: Permission denied/,
-      );
-    } finally {
-      chmodSync(sim, 0o555);
+    for (const [path, mode, back] of [
+      [join(sim, "sky.py"), 0o000, 0o444],
+      [sim, 0o000, 0o555],
+    ] as const) {
+      chmodSync(path, mode);
+      try {
+        await expect(run()).rejects.toThrow(
+          /^cannot read the snapshot's sim\/sky\.py \(EACCES\)$/,
+        );
+      } finally {
+        chmodSync(path, back);
+      }
     }
+    expect(ran).toBe(false);
   },
   300_000,
 );

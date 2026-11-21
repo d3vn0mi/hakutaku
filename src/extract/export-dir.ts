@@ -65,22 +65,35 @@ export function snapshotReader(
   snapshotDir: string,
 ): (path: string) => Uint8Array {
   return (path) => {
-    const parts = path.split("/");
-    let at = snapshotDir;
-    parts.forEach((part, i) => {
-      at = join(at, part);
-      if (i < parts.length - 1 && !lstatSync(at).isDirectory()) {
-        throw new Error(
-          `the snapshot's ${parts.slice(0, i + 1).join("/")} is not a directory`,
-        );
-      }
-    });
-    const bytes = readRegularFile(at, Number.POSITIVE_INFINITY);
+    checkSnapshotDirs(snapshotDir, path);
+    const bytes = readRegularFile(
+      join(snapshotDir, path),
+      Number.POSITIVE_INFINITY,
+    );
     if (bytes === null) {
       throw new Error(`the snapshot's ${path} is not a regular file`);
     }
     return bytes;
   };
+}
+
+// Checks each directory on a snapshot path with lstat, from the top: one that is a link, or
+// anything else but a directory, is refused. `checked` holds the directories already found
+// sound, so that a caller checking many paths checks each directory once.
+export function checkSnapshotDirs(
+  snapshotDir: string,
+  path: string,
+  checked: Set<string> = new Set(),
+): void {
+  const parts = path.split("/");
+  for (let n = 1; n < parts.length; n++) {
+    const dir = parts.slice(0, n).join("/");
+    if (checked.has(dir)) continue;
+    if (!lstatSync(join(snapshotDir, dir)).isDirectory()) {
+      throw new Error(`the snapshot's ${dir} is not a directory`);
+    }
+    checked.add(dir);
+  }
 }
 
 function readJson(dir: string, name: string): unknown {
