@@ -145,7 +145,7 @@ it("keeps its exit code, and prints no stack trace, when the reader of its stder
       { code, signal: null, stdout: "", stderr: "" },
     ]);
   }
-  // with both gone, a command that writes on both keeps its code too
+  // with stdout's reader gone too, the code still stands
   expect(
     await runCli(["nebula"], home, { stdout: "gone", stderr: "gone" }),
   ).toEqual({ code: 2, signal: null, stdout: "", stderr: "" });
