@@ -69,6 +69,10 @@ jobs:
           name: sample-hash-${{ strategy.job-index }}
           path: ${{ runner.temp }}/sample-hash.txt
           if-no-files-found: error
+      # Each hostile case through export and extract, with no sandbox, after its control has
+      # shown that the fixture fires.
+      - name: hostile fixtures
+        run: npm run test:hostile
       - name: secret scan
         run: npm run check:secrets
       - name: home paths and stray stores

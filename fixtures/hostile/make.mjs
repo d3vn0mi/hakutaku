@@ -30,6 +30,10 @@
 //                        backticks; a shell that expands one makes a file named markup-names-canary
 //   minified-50mb        no canary: a one-line 52,428,800-byte JavaScript file, which must keep its metadata only
 //                        and leave the build within its limits
+//   engine-failure-text  no canary: src/keys.js holds a fake token on one line, joined from parts here so that no
+//                        file of hakutaku's tree holds it whole. A test's failing engine prints that line with the
+//                        paths it was given; neither the token nor a path must reach an attempt, an answer or a
+//                        list row
 //
 // Nothing hostile is in hakutaku's own tree. This script writes every hostile file, .git/config entry and hook into
 // <outDir> when it runs. The `..` tree entry, the symlink and the 50 MB file exist only there. The planted scripts
@@ -253,6 +257,13 @@ const BUILD = {
     put(dir, "src/big.min.js", big);
     put(dir, "src/app.js", 'import "./big.min.js";\n\nexport const app = 1;\n');
     commit(dir, "test: a 50 MB minified file");
+  },
+  "engine-failure-text"(id) {
+    const dir = newRepo(id);
+    // joined from parts, so that no file of hakutaku's tree holds the whole token
+    const token = ["gh", "p_", "Fx7Kq2Lm9Rt4", "Vb8Nc3Hs6Jd1", "Pw5Zy0Ag2Ue4"].join("");
+    put(dir, "src/keys.js", `// The key a deploy script reads.\nexport const token = "${token}";\n`);
+    commit(dir, "test: a file whose line holds a fake token");
   },
 };
 

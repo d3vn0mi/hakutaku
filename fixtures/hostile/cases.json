@@ -4,6 +4,7 @@
     "stage": "extract",
     "vector": "A pyrightconfig.json and a [tool.pyright] table in pyproject.toml name a tracked virtual environment whose bin/python and bin/python3 are scripts that write the canary.",
     "expect": "A `pyrightconfig.json`, and a `[tool.pyright]`, that name an interpreter. The configs are removed or never read; the pinned interpreter runs",
+    "control": "Both configs name evil-venv, and its bin/python, run in a copy of the checkout, writes the canary.",
     "detail": "deep"
   },
   {
@@ -11,6 +12,7 @@
     "stage": "extract",
     "vector": "A tracked sgconfig.yml loads a rule directory whose rule matches every JavaScript file, and declares a custom language whose library is in the repository.",
     "expect": "A repo `sgconfig.yml` is ignored; hakutaku's config is passed after the subcommand, from outside the snapshot",
+    "control": "Stock ast-grep scanning a copy of the checkout applies the repository's rule: its output carries the rule id hakutaku-hostile-sgconfig.",
     "detail": "quick"
   },
   {
@@ -18,6 +20,7 @@
     "stage": "export",
     "vector": "The repository's .git/config sets core.pager, diff.external, core.askPass and core.sshCommand to a script that writes the canary, and names an ssh remote.",
     "expect": "`core.pager`, `diff.external`, `core.askPass` and `core.sshCommand` all point at the canary. None runs",
+    "control": "Stock git in a copy of the checkout runs each one: git diff runs diff.external, git credential fill runs core.askPass, git fetch runs core.sshCommand, and git log on a terminal runs core.pager.",
     "detail": "quick"
   },
   {
@@ -25,6 +28,7 @@
     "stage": "export",
     "vector": ".gitattributes assigns a filter to *.txt, and .git/config defines its smudge command as a script that writes the canary.",
     "expect": "`cat-file --batch` never runs the filter. A control run of `git archive` does, which proves the fixture fires",
+    "control": "Stock git archive of a copy of the checkout runs the smudge filter.",
     "detail": "quick"
   },
   {
@@ -32,6 +36,7 @@
     "stage": "export",
     "vector": "The head commit carries a PGP signature header, and .git/config sets log.showSignature and a gpg.program that writes the canary.",
     "expect": "`log.showSignature` with a canary `gpg.program` never runs",
+    "control": "Stock git log in a copy of the checkout runs gpg.program on the head commit's signature.",
     "detail": "quick"
   },
   {
@@ -39,6 +44,7 @@
     "stage": "export",
     "vector": ".git/config sets core.fsmonitor to a script that writes the canary, and every client-side hook in .git/hooks writes it too.",
     "expect": "A canary `core.fsmonitor` and canary hooks never run",
+    "control": "Stock git status in a copy of the checkout runs core.fsmonitor, and git commit runs the commit hooks.",
     "detail": "quick"
   },
   {
@@ -46,6 +52,7 @@
     "stage": "extract",
     "vector": "A tracked .dependency-cruiser.js writes the canary when it is loaded.",
     "expect": "A `.dependency-cruiser.js` with a side effect is removed at export, and `--config` is always passed",
+    "control": "Stock dependency-cruiser given --config .dependency-cruiser.js in a copy of the checkout loads it, and it writes the canary.",
     "detail": "quick"
   },
   {
@@ -53,6 +60,7 @@
     "stage": "extract",
     "vector": "Tracked json.py, grimp.py and sitecustomize.py at the repository root, and a package __init__.py, each write the canary when imported.",
     "expect": "A `json.py`, a `sitecustomize.py` and a side-effecting `__init__.py`: under `python -I`, the grimp driver runs none of them",
+    "control": "Stock Python in a copy of the checkout imports each one, and each writes the canary: json, grimp and pkg from the working directory, and sitecustomize from PYTHONPATH.",
     "detail": "quick"
   },
   {
@@ -60,6 +68,7 @@
     "stage": "export",
     "vector": "A tracked symlink points at the absolute path of host/secret.txt, which holds the marker.",
     "expect": "A tracked link to `<outDir>/host/secret.txt` is recorded with its target text, and never created or followed",
+    "control": "Reading config/leak.txt in a copy of the checkout, as a tool that follows links does, gives the marker.",
     "detail": "quick"
   },
   {
@@ -67,6 +76,7 @@
     "stage": "export",
     "vector": "A tree built with git plumbing holds an entry named .. that leads to escape.txt, and an entry whose name holds a control character.",
     "expect": "A tree entry holding `..` is refused, and listed in `export.json`'s `refused`. Nothing is written outside `snapshot/`",
+    "control": "Stock git ls-tree lists the entry as ../escape.txt, beside the name that holds a control character.",
     "detail": "quick"
   },
   {
@@ -74,6 +84,7 @@
     "stage": "query",
     "vector": "A TypeScript comment and a Python docstring tell an AI reader to ignore its instructions and run a command that writes the canary.",
     "expect": "It comes back only inside `text` or `lines`, under the untrusted marking",
+    "control": "The planted command, run in a shell, writes the canary.",
     "detail": "quick"
   },
   {
@@ -81,6 +92,7 @@
     "stage": "viewer",
     "vector": "Files whose names hold HTML markup and shell command substitutions, and code that holds a closing script tag and an inline event handler.",
     "expect": "Markup in file names and in code renders as text, and the CSP blocks a script",
+    "control": "A shell that expands a planted file name's command substitution, in a copy of the checkout, makes the file markup-names-canary.",
     "detail": "quick"
   },
   {
@@ -88,6 +100,15 @@
     "stage": "extract",
     "vector": "A one-line JavaScript file of exactly 52,428,800 bytes, written at run time.",
     "expect": "A 50 MB one-line JS file keeps its metadata only (`no_source`), and the build stays within its limits",
+    "control": "No control runs; the fixture's shape is checked instead: src/big.min.js is 52,428,800 bytes with no newline, and src/app.js imports it.",
     "detail": "standard"
+  },
+  {
+    "id": "engine-failure-text",
+    "stage": "extract",
+    "vector": "A tracked file holds a fake token on one line. The test's stand-in for ast-grep fails on that line, and prints it with the absolute paths it was given, as a parser's error does.",
+    "expect": "No attempt, answer or list row holds the token or a path of this machine: the paths are named by token, and the token is redacted",
+    "control": "The failing stand-in, run on a copy of the checkout, prints the token and the file's absolute path.",
+    "detail": "quick"
   }
 ]
