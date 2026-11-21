@@ -137,6 +137,20 @@ function runsFile(filters: string[], path: string): boolean {
   );
 }
 
+// The test files among files that no CI vitest run collects: each *.test or *.spec JS or TS file
+// outside fixtures/ (sample repositories, whose test files are data) that vitest's include,
+// test/**/*.test.ts, leaves out, or that no run's filters name.
+function missedTests(files: string[], runs: string[][]): string[] {
+  const collected = (path: string): boolean =>
+    path.startsWith("test/") && path.endsWith(".test.ts");
+  return files.filter(
+    (p) =>
+      TEST_FILE.test(p) &&
+      !p.startsWith("fixtures/") &&
+      (!collected(p) || !runs.some((filters) => runsFile(filters, p))),
+  );
+}
+
 // Each run: command line of the workflows, with the vitest runs it starts.
 function ciLines(): Array<{
   file: string;
@@ -218,8 +232,12 @@ it("reads the vitest runs a CI command line starts, directly or through package.
     ["test/unit", "test/oracle/build"],
   ]);
   expect(vitestRuns("node_modules/.bin/vitest; npm ci", scripts)).toEqual([[]]);
+  // a comment is no command, even where it reads like a second one
   expect(
-    vitestRuns("sudo apt-get install -y bubblewrap # then npm test", scripts),
+    vitestRuns(
+      "sudo apt-get install -y bubblewrap # && npx vitest run test/x; npm test",
+      scripts,
+    ),
   ).toEqual([]);
   expect(() => vitestRuns("npm run missing", scripts)).toThrow(
     "CI runs the npm script missing, which package.json does not have",
@@ -246,6 +264,35 @@ it("takes a file as run where a filter names it or a directory above it, or the 
   expect(runsFile(["test/oracle"], "test/unit/a.test.ts")).toBe(false);
 });
 
+it("names each test file outside fixtures/ that vitest's include leaves out or no run's filters name", () => {
+  const files = [
+    "test/unit/a.test.ts",
+    "test/b.test.ts",
+    "test/oracle/c.test.ts",
+    "test/unit/d.spec.ts",
+    "test/unit/e.test.js",
+    "test/unit/f.test.mts",
+    "src/g.test.ts",
+    "fixtures/web/h.test.ts",
+    "test/helpers/i.ts",
+    "README.md",
+  ];
+  expect(missedTests(files, [["test/unit"], ["test/b.test.ts"]])).toEqual([
+    "test/oracle/c.test.ts",
+    "test/unit/d.spec.ts",
+    "test/unit/e.test.js",
+    "test/unit/f.test.mts",
+    "src/g.test.ts",
+  ]);
+  // a run of every file still leaves out what vitest's include does not collect
+  expect(missedTests(files, [[]])).toEqual([
+    "test/unit/d.spec.ts",
+    "test/unit/e.test.js",
+    "test/unit/f.test.mts",
+    "src/g.test.ts",
+  ]);
+});
+
 it("runs every test file in some CI vitest run", () => {
   // vitest collects test/**/*.test.ts and nothing else; a change to its config is read here first
   const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -253,19 +300,11 @@ it("runs every test file in some CI vitest run", () => {
   expect(config).not.toMatch(
     /\b(exclude|dir|root|projects|includeSource|typecheck)\s*:/,
   );
-  const collected = (path: string): boolean =>
-    path.startsWith("test/") && path.endsWith(".test.ts");
-
   const runs = ciLines().flatMap((l) => l.runs);
   expect(runs.length).toBeGreaterThan(0);
-  // fixtures/ holds sample repositories, whose test files are data
-  const tests = treeFiles().filter(
-    (p) => TEST_FILE.test(p) && !p.startsWith("fixtures/"),
-  );
-  expect(tests).toContain("test/repo/tree.test.ts");
-  const missed = tests.filter(
-    (p) => !collected(p) || !runs.some((filters) => runsFile(filters, p)),
-  );
+  const files = treeFiles();
+  expect(files).toContain("test/repo/tree.test.ts");
+  const missed = missedTests(files, runs);
   expect(
     missed,
     `test files no CI vitest run collects:\n${missed.join("\n")}`,
