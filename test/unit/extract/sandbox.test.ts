@@ -52,6 +52,13 @@ const inner = [
 const BWRAP_PROBE = "bwrap --unshare-all --die-with-parent --ro-bind / / true";
 const SYSTEMD_RUN_PROBE =
   "systemd-run --user --wait --quiet --collect -p PrivateNetwork=yes true";
+// Whether this systemd takes OOMPolicy=continue, for a scope and for a service.
+const OOM_SCOPE_PROBE =
+  "systemd-run --user --scope --quiet --collect -p OOMPolicy=continue true";
+const OOM_SERVICE_PROBE =
+  "systemd-run --user --wait --quiet --collect -p OOMPolicy=continue true";
+// What bubblewrap runs inner through: a shell that sets the core limit to 0 first.
+const NO_CORE = ["/bin/sh", "-c", 'ulimit -c 0 && exec "$@"', "sh"];
 // The probe that takes systemd-run as the sandbox: a check inside the service that it sees no
 // network interface but loopback. No element holds a space, so the log line splits back.
 const ONLY_LOOPBACK =
@@ -144,6 +151,7 @@ it("writes the whole bubblewrap command, each path bound at its own path", () =>
     "--setenv",
     "LANG",
     "C.UTF-8",
+    ...NO_CORE,
     ...inner,
   ]);
 });
@@ -209,8 +217,8 @@ it.each([
   ),
 );
 
-it("writes the whole systemd-run command, with no swap beyond the memory cap", () =>
-  expect(systemdRunArgv({ ...paths, memoryMax: "15G" }, inner)).toEqual([
+it("writes the whole systemd-run command, with no swap beyond the memory cap and no core dumps", () => {
+  const head = [
     "systemd-run",
     "--user",
     "--wait",
@@ -223,25 +231,52 @@ it("writes the whole systemd-run command, with no swap beyond the memory cap", (
     "MemoryMax=15G",
     "-p",
     "MemorySwapMax=0",
-    "-p",
-    "Nice=19",
-    "--",
-    ...inner,
-  ]));
+  ];
+  const tail = ["-p", "LimitCORE=0", "-p", "Nice=19", "--", ...inner];
+  expect(systemdRunArgv({ ...paths, memoryMax: "15G" }, inner)).toEqual([
+    ...head,
+    ...tail,
+  ]);
+  // where this systemd takes it, an engine the kernel kills at the cap stops only itself
+  expect(
+    systemdRunArgv({ ...paths, memoryMax: "15G" }, inner, {
+      oomContinue: true,
+    }),
+  ).toEqual([...head, "-p", "OOMPolicy=continue", ...tail]);
+});
 
 // Stand-ins for bwrap and systemd-run on a PATH holding nothing else. Each appends its name and
-// arguments to the log, then exits with its code; a tool given no code is not on the PATH.
+// arguments to the log, writes what it is given to say on stderr, then exits with its code; a
+// tool given no code is not on the PATH. systemd-run fails a probe of OOMPolicy when told to.
 function fakeTools(
   codes: Partial<Record<"bwrap" | "systemd-run", number>>,
+  opts: {
+    said?: Partial<Record<"bwrap" | "systemd-run", string>>;
+    noOomPolicy?: boolean;
+  } = {},
 ): string {
   const bin = tmp();
   const log = join(bin, "log");
   writeFileSync(log, "");
   for (const [name, code] of Object.entries(codes)) {
     const file = join(bin, name);
+    const said = opts.said?.[name as "bwrap" | "systemd-run"];
     writeFileSync(
       file,
-      `#!/bin/sh\necho "${name} $*" >> "${log}"\nexit ${code}\n`,
+      [
+        "#!/bin/sh",
+        `echo "${name} $*" >> "${log}"`,
+        ...(opts.noOomPolicy === true
+          ? [
+              'case "$*" in *OOMPolicy=*) echo "Unknown assignment: OOMPolicy=continue" >&2; exit 1;; esac',
+            ]
+          : []),
+        ...(said === undefined
+          ? []
+          : [`printf '%s\\n' ${JSON.stringify(said)} >&2`]),
+        `exit ${code}`,
+        "",
+      ].join("\n"),
     );
     chmodSync(file, 0o755);
   }
@@ -322,20 +357,75 @@ it.each<[string, Partial<Record<"bwrap" | "systemd-run", number>>]>([
   expect(await s.detectSandbox("linux")).toBeNull();
 });
 
-it.each<[string, Partial<Record<"bwrap" | "systemd-run", number>>]>([
-  ["both fail", { bwrap: 1, "systemd-run": 1 }],
-  ["neither is installed", {}],
-])(
-  "says bubblewrap and systemd-run are unavailable when %s",
-  async (_, codes) => {
-    fakeTools(codes);
-    const s = await freshSandbox();
-    expect(await s.detectSandbox("linux")).toBeNull();
-    expect(await s.noSandboxReason("linux")).toBe(
-      "no sandbox: bubblewrap and systemd-run are unavailable",
-    );
-  },
-);
+it.each<[string, Partial<Record<"bwrap" | "systemd-run", number>>, string]>([
+  [
+    "both fail",
+    { bwrap: 1, "systemd-run": 1 },
+    "no sandbox: user namespaces are refused; no user manager can be reached",
+  ],
+  [
+    "neither is installed",
+    {},
+    "no sandbox: bubblewrap is not installed; no user manager can be reached",
+  ],
+])("names the repair of each tool when %s", async (_, codes, reason) => {
+  fakeTools(codes);
+  const s = await freshSandbox();
+  expect(await s.detectSandbox("linux")).toBeNull();
+  expect(await s.noSandboxReason("linux")).toBe(reason);
+});
+
+it("keeps each failed probe's evidence: its error code, its exit, and the last line it said, cleaned", async () => {
+  vi.stubEnv("HOME", "/srv/astronomer");
+  // assembled here, never written whole
+  const secret = ["gh", "p_", "Q7x2M4p9K3l8N5r6".repeat(3)].join("");
+  fakeTools(
+    { bwrap: 1, "systemd-run": 1 },
+    {
+      said: {
+        bwrap: "bwrap: setting up uid map: Permission denied",
+        "systemd-run": `Failed to connect to bus at /srv/astronomer/bus: token=${secret}`,
+      },
+    },
+  );
+  const s = await freshSandbox();
+  const problems = await s.sandboxProblems("linux");
+  expect(problems.map((p) => p.line)).toEqual([
+    "user namespaces are refused",
+    "no user manager can be reached",
+  ]);
+  expect(problems.map((p) => s.evidenceLine(p.evidence))).toEqual([
+    "bwrap: exit code 1: bwrap: setting up uid map: Permission denied",
+    "systemd-run: exit code 1: Failed to connect to bus at ~/bus: token=«redacted:github-token»",
+  ]);
+  expect(problems[0]?.evidence).toMatchObject({
+    command: "bwrap",
+    errno: null,
+    exitCode: 1,
+    signal: null,
+    timedOut: false,
+  });
+  // a tool that is not installed could not start, which its error code says
+  fakeTools({});
+  const none = await freshSandbox();
+  expect(
+    (await none.sandboxProblems("linux")).map((p) =>
+      none.evidenceLine(p.evidence),
+    ),
+  ).toEqual([
+    "bwrap: could not start: ENOENT",
+    "systemd-run: could not start: ENOENT",
+  ]);
+});
+
+it("finds no problem where bubblewrap and systemd-run both work, and none off Linux", async () => {
+  const log = fakeTools({ bwrap: 0, "systemd-run": 0 });
+  const s = await freshSandbox();
+  expect(await s.sandboxProblems("linux")).toEqual([]);
+  // the network check matters only where bubblewrap does not work
+  expect(logged(log)).toEqual([BWRAP_PROBE, SYSTEMD_RUN_PROBE]);
+  expect(await s.sandboxProblems("darwin")).toEqual([]);
+});
 
 it.runIf(hostHasNetwork)(
   "says systemd-run cannot cut the network when its service runs in the host's network",
@@ -344,8 +434,17 @@ it.runIf(hostHasNetwork)(
     const s = await freshSandbox();
     expect(await s.detectSandbox("linux")).toBeNull();
     expect(await s.noSandboxReason("linux")).toBe(
-      "no sandbox: bubblewrap does not work and systemd-run cannot cut the network",
+      "no sandbox: bubblewrap is not installed; systemd-run cannot cut the network",
     );
+    expect(
+      (await s.sandboxProblems("linux")).map((p) => [
+        p.line,
+        s.evidenceLine(p.evidence),
+      ]),
+    ).toEqual([
+      ["bubblewrap is not installed", "bwrap: could not start: ENOENT"],
+      ["systemd-run cannot cut the network", "systemd-run: exit code 1"],
+    ]);
   },
 );
 
@@ -356,21 +455,27 @@ it("names the platform off Linux, running no probe", async () => {
   expect(logged(log)).toEqual([]);
 });
 
-it("runs bubblewrap under a systemd-run scope with the memory cap when systemd-run works", async () => {
+const SCOPE = [
+  "systemd-run",
+  "--user",
+  "--scope",
+  "--quiet",
+  "--collect",
+  "-p",
+  "MemoryMax=3G",
+  "-p",
+  "MemorySwapMax=0",
+];
+
+it("runs bubblewrap under a systemd-run scope with the memory cap, where one engine at the cap stops only itself", async () => {
   const log = fakeTools({ bwrap: 0, "systemd-run": 0 });
   const s = await freshSandbox();
   expect(await s.detectSandbox("linux")).toBe("bubblewrap");
   const scoped = {
     argv: [
-      "systemd-run",
-      "--user",
-      "--scope",
-      "--quiet",
-      "--collect",
+      ...SCOPE,
       "-p",
-      "MemoryMax=3G",
-      "-p",
-      "MemorySwapMax=0",
+      "OOMPolicy=continue",
       "--",
       ...s.bwrapArgv(paths, inner),
     ],
@@ -378,7 +483,20 @@ it("runs bubblewrap under a systemd-run scope with the memory cap when systemd-r
   };
   expect(await s.sandboxCommand("bubblewrap", paths, inner)).toEqual(scoped);
   expect(await s.sandboxCommand("bubblewrap", paths, inner)).toEqual(scoped);
-  expect(logged(log)).toEqual([BWRAP_PROBE, SYSTEMD_RUN_PROBE]);
+  expect(logged(log)).toEqual([
+    BWRAP_PROBE,
+    SYSTEMD_RUN_PROBE,
+    OOM_SCOPE_PROBE,
+  ]);
+});
+
+it("leaves OOMPolicy out of the scope where this systemd does not take it", async () => {
+  fakeTools({ bwrap: 0, "systemd-run": 0 }, { noOomPolicy: true });
+  const s = await freshSandbox();
+  expect(await s.sandboxCommand("bubblewrap", paths, inner)).toEqual({
+    argv: [...SCOPE, "--", ...s.bwrapArgv(paths, inner)],
+    warnings: [],
+  });
 });
 
 it("says a sandbox caps memory when systemd-run is the sandbox, or caps bubblewrap's scope", async () => {
@@ -402,18 +520,25 @@ it("runs bubblewrap without a memory cap, and warns, when systemd-run does not w
   });
 });
 
-it("runs systemd-run alone when it is the sandbox", async () => {
+it("runs systemd-run alone when it is the sandbox, with OOMPolicy where its services take it", async () => {
   const log = fakeTools({ bwrap: 1, "systemd-run": 0 });
   const s = await freshSandbox();
   expect(await s.detectSandbox("linux")).toBe("systemd-run");
   expect(await s.sandboxCommand("systemd-run", paths, inner)).toEqual({
-    argv: s.systemdRunArgv(paths, inner),
+    argv: s.systemdRunArgv(paths, inner, { oomContinue: true }),
     warnings: [],
   });
   expect(logged(log)).toEqual([
     BWRAP_PROBE,
     SYSTEMD_RUN_ISOLATION_PROBE.join(" "),
+    OOM_SERVICE_PROBE,
   ]);
+  fakeTools({ bwrap: 1, "systemd-run": 0 }, { noOomPolicy: true });
+  const old = await freshSandbox();
+  expect(await old.sandboxCommand("systemd-run", paths, inner)).toEqual({
+    argv: old.systemdRunArgv(paths, inner),
+    warnings: [],
+  });
 });
 
 // The live runs below need the real tools, so they run only where each works.
@@ -424,6 +549,7 @@ const works = (argv: string[]): boolean =>
 const bwrapWorks = works(BWRAP_PROBE.split(" "));
 const systemdRunWorks = works(SYSTEMD_RUN_PROBE.split(" "));
 const systemdRunIsolates = works(SYSTEMD_RUN_ISOLATION_PROBE);
+const oomScopeWorks = works(OOM_SCOPE_PROBE.split(" "));
 
 // The isolation probe's check, on its own: it passes in a fresh network namespace and fails in the
 // host's, so a probe that passes proves the service had no network.
@@ -484,6 +610,7 @@ console.log(JSON.stringify({
   store: write(${JSON.stringify(p.storeDir)}),
   outside: fs.existsSync(${JSON.stringify(outside)}),
   network: Object.keys(os.networkInterfaces()).sort(),
+  core: /^Max core file size +(\\S+) +(\\S+)/m.exec(fs.readFileSync("/proc/self/limits", "utf8")).slice(1).join(" "),
 }));`;
 
 const SEEN_IN_BUBBLEWRAP = {
@@ -496,6 +623,7 @@ const SEEN_IN_BUBBLEWRAP = {
   store: "written",
   outside: false,
   network: ["lo"],
+  core: "0 0", // soft and hard: no core dumps, nor a way to turn them back on
 };
 
 const runArgv = (argv: string[]) => {
@@ -555,5 +683,45 @@ console.log(JSON.stringify({ nice: os.getPriority(), network: Object.keys(os.net
       memoryMax: String(3 * 1024 ** 3),
     });
     expect(["0", null]).toContain(seen.swapMax); // null where swap is not accounted
+  },
+);
+
+it.runIf(systemdRunWorks)(
+  "runs systemd-run's service with no core dumps",
+  () => {
+    const { p } = liveLayout();
+    const script =
+      'console.log(/^Max core file size +(\\S+) +(\\S+)/m.exec(require("node:fs").readFileSync("/proc/self/limits", "utf8")).slice(1).join(" "))';
+    const r = runArgv(systemdRunArgv(p, [process.execPath, "-e", script]));
+    expect(r.status).toBe(0);
+    expect(r.out.trim()).toBe("0 0");
+  },
+);
+
+// A process that starts a child which fills 400 MiB, then says how the child ended.
+const FILLS_PAST_THE_CAP = `
+const { spawnSync } = require("node:child_process");
+const r = spawnSync(process.execPath, ["-e", "const a = []; for (let i = 0; i < 25; i++) a.push(Buffer.alloc(16 * 1024 * 1024, 1));"], { stdio: "inherit" });
+console.log(JSON.stringify({ status: r.status, signal: r.signal }));`;
+
+it.runIf(bwrapWorks && systemdRunWorks && oomScopeWorks)(
+  "keeps a capped sandbox running when the kernel kills one of its processes at the cap, which it stops without OOMPolicy",
+  async () => {
+    const { p } = liveLayout();
+    const capped = { ...p, memoryMax: "200M" };
+    const { argv } = await sandboxCommand("bubblewrap", capped, [
+      process.execPath,
+      "-e",
+      FILLS_PAST_THE_CAP,
+    ]);
+    const at = argv.indexOf("OOMPolicy=continue");
+    expect(argv[at - 1]).toBe("-p");
+    const kept = runArgv(argv);
+    expect(kept.status).toBe(0);
+    expect(JSON.parse(kept.out)).toEqual({ status: null, signal: "SIGKILL" });
+    // the control: the same scope without it stops the whole sandbox, which never reports
+    const stopped = runArgv([...argv.slice(0, at - 1), ...argv.slice(at + 1)]);
+    expect(stopped.status).not.toBe(0);
+    expect(stopped.out).toBe("");
   },
 );

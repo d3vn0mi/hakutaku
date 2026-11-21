@@ -15,7 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterAll, expect, it } from "vitest";
+import { afterAll, expect, it, vi } from "vitest";
 import { main } from "../../../src/cli/main.js";
 import { exportRepo, removeTree } from "../../../src/export/index.js";
 import {
@@ -602,6 +602,33 @@ it(
       "dependency-cruiser failed: cannot read its output (ENOENT: no such file or directory, open '<work>/depcruise.out.json')",
     );
     expect(warnings.join("\n")).not.toContain(dirname(out));
+  },
+  TIMEOUT,
+);
+
+it(
+  "refuses --sandbox require where no sandbox works, naming each repair with its probe's evidence",
+  async () => {
+    const repo = await oneCommit(SKY);
+    const dir = await exportOf(repo);
+    const out = storePath();
+    // neither bwrap nor systemd-run on the PATH, probed afresh
+    vi.stubEnv("PATH", tmp());
+    try {
+      vi.resetModules();
+      const fresh = await import("../../../src/extract/index.js");
+      const refusal = [
+        "--sandbox require: no sandbox: bubblewrap is not installed; no user manager can be reached",
+        "bwrap: could not start: ENOENT",
+        "systemd-run: could not start: ENOENT",
+      ].join("\n");
+      await expect(
+        fresh.extractSnapshot({ dir, out, sandbox: "require" }),
+      ).rejects.toThrow(refusal);
+      expect(readAttempt(out)?.reason).toBe(refusal);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   },
   TIMEOUT,
 );

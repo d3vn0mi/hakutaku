@@ -67,7 +67,11 @@ import {
   type EngineRunResult,
   runEngine,
 } from "./run.js";
-import { detectSandbox, noSandboxReason } from "./sandbox.js";
+import {
+  detectSandbox,
+  noSandboxEvidence,
+  noSandboxReason,
+} from "./sandbox.js";
 import { matchesStore, skipKey } from "./skip.js";
 import { cleanupStale, markStage, swapIn } from "./swap.js";
 
@@ -328,7 +332,14 @@ async function build(
       });
     }
     const why = await noSandboxReason();
-    if (o.sandbox === "require") throw new Error(`--sandbox require: ${why}`);
+    if (o.sandbox === "require") {
+      // the repair lines, then each probe's evidence below them
+      throw new Error(
+        [`--sandbox require: ${why}`, ...(await noSandboxEvidence())].join(
+          "\n",
+        ),
+      );
+    }
     process.stderr.write(`hakutaku: ${why}; extracting without one\n`);
     warnings.push(`${why}; extracting without one`);
     sandbox = "unavailable";
