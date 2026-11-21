@@ -90,8 +90,8 @@
   {
     "id": "markup-names",
     "stage": "viewer",
-    "vector": "Files whose names hold HTML markup and shell command substitutions, and code that holds a closing script tag and an inline event handler.",
-    "expect": "Markup in file names and in code renders as text, and the CSP blocks a script",
+    "vector": "Files whose names hold HTML markup and shell command substitutions, a file path and a function name worded as instructions to an AI reader, and code that holds a closing script tag and an inline event handler.",
+    "expect": "Markup in file names and in code renders as text, and the CSP blocks a script. The query tools give every name back as data, under the untrusted marking",
     "control": "A shell that expands a planted file name's command substitution, in a copy of the checkout, makes the file markup-names-canary.",
     "detail": "quick"
   },

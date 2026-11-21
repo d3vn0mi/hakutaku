@@ -75,6 +75,11 @@ jobs:
       # shown that the fixture fires.
       - name: hostile fixtures
         run: npm run test:hostile
+      # hakutaku mcp from dist/, over stdio with the MCP SDK's client: the tools, every golden
+      # answer, a store swapped under the server, and, under strace, no process, internet socket
+      # or file outside the store, the checkout's .git and hakutaku's own tree.
+      - name: MCP conformance
+        run: npm run test:mcp
       - name: secret scan
         run: npm run check:secrets
       - name: home paths and stray stores

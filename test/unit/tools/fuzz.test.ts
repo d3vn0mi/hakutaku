@@ -8,35 +8,12 @@ import {
   type ToolResult,
 } from "../../../src/tools/index.js";
 import { fixedHost } from "../../helpers/fixed-host.js";
+import { fuzzGlobs, fuzzRepos, fuzzTargets } from "../../helpers/fuzz.js";
 import { tinyStore } from "../../helpers/tiny.js";
 
 const OUT = "/tmp/hakutaku-fuzz-canary/secret.txt";
-const REPOS = [
-  "../tiny",
-  "/etc/passwd",
-  OUT,
-  `file://${OUT}`,
-  "tiny/../x",
-  "*",
-  "tiny:",
-  "https://example.com/x",
-  "TINY",
-  " tiny",
-];
-const TARGETS = [
-  OUT,
-  "../../etc/passwd",
-  `file://${OUT}`,
-  "~/.ssh/id_rsa",
-  "lib/**",
-  "lib/*.ts",
-  "%2e%2e/%2e%2e/etc/passwd",
-  "tiny:../../etc/passwd",
-  `tiny:${OUT}`,
-  "C:\\Windows\\win.ini",
-  "\u0000",
-  "lib/orbit.ts\u0000.png",
-];
+const REPOS = fuzzRepos("tiny", OUT);
+const TARGETS = fuzzTargets("tiny", OUT, "lib/orbit.ts");
 
 const host = fixedHost({ tiny: tinyStore() });
 
@@ -65,13 +42,7 @@ it("a target from outside the store never resolves", () => {
 });
 
 it("path_glob only filters stored paths", () => {
-  for (const g of [
-    "/etc/*",
-    "../**",
-    OUT,
-    "**/*",
-    "*a*a*a*a*a*a*a*a*a*a*a*a*a*a*b",
-  ]) {
+  for (const g of fuzzGlobs(OUT)) {
     const r = answer(
       runTool(host, null, "code_search_text", {
         repo: "tiny",
