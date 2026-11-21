@@ -62,6 +62,8 @@ const inner = [
 const BWRAP_PROBE = "bwrap --unshare-all --die-with-parent --ro-bind / / true";
 const SYSTEMD_RUN_PROBE =
   "systemd-run --user --wait --quiet --collect -p PrivateNetwork=yes true";
+// Whether systemd-run starts a scope, which is what caps bubblewrap's memory.
+const SCOPE_PROBE = "systemd-run --user --scope --quiet --collect true";
 // Whether this systemd takes OOMPolicy=continue, for a scope and for a service.
 const OOM_SCOPE_PROBE =
   "systemd-run --user --scope --quiet --collect -p OOMPolicy=continue true";
@@ -335,14 +337,15 @@ it("quotes each path systemd-run binds, and refuses one a quote cannot carry", (
 // Stand-ins for bwrap and systemd-run on a PATH holding nothing else. Each appends its name and
 // arguments to the log, up to a "--" that starts the command it would run, writes what it is
 // given to say on stderr, then exits with its code; a tool given no code is not on the PATH.
-// systemd-run fails a probe of OOMPolicy when told to, and one that exits 0 writes the file the
-// confinement check names first, as a confined service does. HOME is a fresh directory, which
-// holds the confinement probe's directory.
+// systemd-run fails a probe of OOMPolicy, or every scope, when told to, and one that exits 0
+// writes the file the confinement check names first, as a confined service does. HOME is a
+// fresh directory, which holds the confinement probe's directory.
 function fakeTools(
   codes: Partial<Record<"bwrap" | "systemd-run", number>>,
   opts: {
     said?: Partial<Record<"bwrap" | "systemd-run", string>>;
     noOomPolicy?: boolean;
+    noScope?: boolean;
   } = {},
 ): string {
   const bin = tmp();
@@ -361,6 +364,11 @@ function fakeTools(
         ...(opts.noOomPolicy === true
           ? [
               'case "$*" in *OOMPolicy=*) echo "Unknown assignment: OOMPolicy=continue" >&2; exit 1;; esac',
+            ]
+          : []),
+        ...(opts.noScope === true
+          ? [
+              'case " $* " in *" --scope "*) echo "Failed to start transient scope unit: Access denied" >&2; exit 1;; esac',
             ]
           : []),
         ...(said === undefined
@@ -732,11 +740,7 @@ it("runs bubblewrap under a systemd-run scope with the memory cap, where one eng
   };
   expect(await s.sandboxCommand("bubblewrap", paths, inner)).toEqual(scoped);
   expect(await s.sandboxCommand("bubblewrap", paths, inner)).toEqual(scoped);
-  expect(logged(log)).toEqual([
-    BWRAP_PROBE,
-    SYSTEMD_RUN_PROBE,
-    OOM_SCOPE_PROBE,
-  ]);
+  expect(logged(log)).toEqual([BWRAP_PROBE, SCOPE_PROBE, OOM_SCOPE_PROBE]);
 });
 
 it("leaves OOMPolicy out of the scope where this systemd does not take it", async () => {
@@ -754,10 +758,25 @@ it("says a sandbox caps memory when systemd-run is the sandbox, or caps bubblewr
   expect(await s.capsMemory("systemd-run")).toBe(true);
   expect(logged(works)).toEqual([]);
   expect(await s.capsMemory("bubblewrap")).toBe(true);
-  expect(logged(works)).toEqual([SYSTEMD_RUN_PROBE]);
+  expect(logged(works)).toEqual([SCOPE_PROBE]);
   fakeTools({ bwrap: 0, "systemd-run": 1 });
   const without = await freshSandbox();
   expect(await without.capsMemory("bubblewrap")).toBe(false);
+});
+
+// A user manager may start a service and still refuse a scope, which must move systemd-run
+// itself into a unit: then nothing caps bubblewrap, and the build is told so.
+it("caps bubblewrap's memory only where systemd-run starts a scope, whatever a service does", async () => {
+  const log = fakeTools({ bwrap: 0, "systemd-run": 0 }, { noScope: true });
+  const s = await freshSandbox();
+  expect(await s.capsMemory("bubblewrap")).toBe(false);
+  expect(await s.sandboxCommand("bubblewrap", paths, inner)).toEqual({
+    argv: s.bwrapArgv(paths, inner),
+    warnings: ["no memory cap: systemd-run is unavailable"],
+  });
+  expect(logged(log)).toEqual([SCOPE_PROBE]);
+  // a service still starts, so systemd-run alone keeps its cap
+  expect(await s.capsMemory("systemd-run")).toBe(true);
 });
 
 it("runs bubblewrap without a memory cap, and warns, when systemd-run does not work", async () => {

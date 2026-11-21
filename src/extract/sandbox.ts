@@ -47,8 +47,7 @@ const BWRAP_PROBE = [
   "/",
   "true",
 ];
-// Whether systemd-run starts a user service at all: enough for the scope that caps bubblewrap's
-// memory.
+// Whether systemd-run starts a user service at all.
 const SYSTEMD_RUN_PROBE = [
   "systemd-run",
   "--user",
@@ -57,6 +56,16 @@ const SYSTEMD_RUN_PROBE = [
   "--collect",
   "-p",
   "PrivateNetwork=yes",
+  "true",
+];
+// Whether systemd-run starts a scope, which caps bubblewrap's memory. A user manager may start a
+// service and still refuse a scope, which must move systemd-run itself into a unit of its own.
+const SCOPE_PROBE = [
+  "systemd-run",
+  "--user",
+  "--scope",
+  "--quiet",
+  "--collect",
   "true",
 ];
 // The check the confinement probe runs inside its service: no network interface but loopback
@@ -178,6 +187,7 @@ function probeOnce(argv: readonly string[]): Promise<Probe> {
 
 const bwrapProbe = (): Promise<Probe> => probeOnce(BWRAP_PROBE);
 const systemdRunProbe = (): Promise<Probe> => probeOnce(SYSTEMD_RUN_PROBE);
+const scopeProbe = (): Promise<Probe> => probeOnce(SCOPE_PROBE);
 
 let isolation: Promise<Probe> | undefined;
 const isolationProbe = (): Promise<Probe> => {
@@ -361,8 +371,8 @@ async function bwrapWorks(): Promise<boolean> {
   return (await bwrapProbe()).ok;
 }
 
-async function systemdRunWorks(): Promise<boolean> {
-  return (await systemdRunProbe()).ok;
+async function scopesWork(): Promise<boolean> {
+  return (await scopeProbe()).ok;
 }
 
 async function systemdRunIsolates(): Promise<boolean> {
@@ -460,14 +470,15 @@ function evidenceOf({ ok: _, ...evidence }: Probe): ProbeEvidence {
 }
 
 // Whether a sandbox detectSandbox found caps memory: systemd-run always does, and bubblewrap
-// does inside the systemd-run scope that sandboxCommand puts it in when systemd-run works.
+// does inside the systemd-run scope that sandboxCommand puts it in where systemd-run starts a
+// scope.
 export async function capsMemory(sandbox: Sandbox): Promise<boolean> {
-  return sandbox === "systemd-run" || (await systemdRunWorks());
+  return sandbox === "systemd-run" || (await scopesWork());
 }
 
 // The command that runs inner in a sandbox detectSandbox found, and the warnings it
-// brings. bubblewrap caps no memory, so it runs inside a systemd-run scope that does whenever
-// systemd-run works too.
+// brings. bubblewrap caps no memory, so it runs inside a systemd-run scope that does wherever
+// systemd-run starts a scope.
 export async function sandboxCommand(
   sandbox: Sandbox,
   p: SandboxPaths,
@@ -477,7 +488,7 @@ export async function sandboxCommand(
     const oomContinue = (await probeOnce(OOM_SERVICE_PROBE)).ok;
     return { argv: systemdRunArgv(p, inner, { oomContinue }), warnings: [] };
   }
-  if (await systemdRunWorks()) {
+  if (await scopesWork()) {
     const oomContinue = (await probeOnce(OOM_SCOPE_PROBE)).ok;
     return {
       argv: [...scopePrefix(p, oomContinue), ...bwrapArgv(p, inner)],
