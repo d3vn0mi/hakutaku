@@ -32,6 +32,8 @@ const COMPUTED = "1 dynamic import with a computed path is not followed";
 const DENIED = "1 denylisted file is left out of the map, with its imports";
 const UNSCOPED =
   'unscoped name matches are not followed; code_callers lists them with labels ["unscoped"]';
+const CHAINED =
+  "scoped links that code_callers finds through import chains are not followed";
 const REFERENCE =
   "references, uses that are not calls, are not followed; code_references lists them";
 
@@ -179,7 +181,7 @@ it("answers a call path's from, to, via and view, and found false when no call l
           text: "return toAu(e);",
         },
       ],
-      blindSpots: [COMPUTED, UNSCOPED, REFERENCE],
+      blindSpots: [COMPUTED, UNSCOPED, CHAINED, REFERENCE],
       view: "#lib~orbit.ts--solve",
     }),
   );
@@ -626,33 +628,38 @@ it("names what a path via imports cannot see with code_deps' lines for the from 
   ).toEqual([]);
 });
 
-it("names what a path via calls cannot see: the from definition's caller lines, then the labels it never follows", () => {
+it("names what a path via calls cannot see: the from definition's caller lines, then the links it never follows", () => {
   const calls = (from: string, to: string, store: Store = s) =>
     answer(p({ from, to, via: "calls" }, store)).blindSpots;
   // found, not found, and the language of to does not count
   expect(calls("app/main.ts#main", "lib/units.ts#toAu")).toEqual([
     COMPUTED,
     UNSCOPED,
+    CHAINED,
     REFERENCE,
   ]);
   expect(calls("lib/units.ts#toAu", "app/main.ts#main")).toEqual([
     COMPUTED,
     UNSCOPED,
+    CHAINED,
     REFERENCE,
   ]);
   expect(calls("lib/units.ts#toAu", "scripts/sync-#main")).toEqual([
     COMPUTED,
     UNSCOPED,
+    CHAINED,
     REFERENCE,
   ]);
   expect(calls("py/pkg/util.py#helper", "lib/units.ts#toAu")).toEqual([
     "no compiler ran for Python in this build (below deep detail), so no site is bound",
     UNSCOPED,
+    CHAINED,
     REFERENCE,
   ]);
   expect(calls("scripts/sync-#main", "lib/units.ts#toAu")).toEqual([
     "shell callers are name matches in the file and the files that source it",
     UNSCOPED,
+    CHAINED,
     REFERENCE,
   ]);
   const quick = openTiny({
@@ -664,6 +671,7 @@ it("names what a path via calls cannot see: the from definition's caller lines, 
     "2 dynamic imports with a computed path are not followed",
     "compiler-bound uses that match no outline definition are counted in coverage only (2)",
     UNSCOPED,
+    CHAINED,
     REFERENCE,
   ]);
   const own = openTiny({
@@ -673,18 +681,25 @@ it("names what a path via calls cannot see: the from definition's caller lines, 
   expect(calls("py/pkg/util.py#helper", "lib/units.ts#toAu", own)).toEqual([
     "Python imports come from hakutaku's own resolver, because grimp did not run",
     UNSCOPED,
+    CHAINED,
     REFERENCE,
   ]);
-  // the two labels are never followed, so a call path always names them
+  // those three kinds of link are never followed, so a call path always names them
   const clean = openTiny({ coverage: { computedImports: 0, denied: 0 } });
   expect(calls("app/main.ts#main", "lib/units.ts#toAu", clean)).toEqual([
     UNSCOPED,
+    CHAINED,
     REFERENCE,
   ]);
   expect(pathBlindSpots(s, "calls", "go")).toEqual([
     "hakutaku extracts no callers for go",
     UNSCOPED,
+    CHAINED,
     REFERENCE,
   ]);
-  expect(pathBlindSpots(s, "calls", null)).toEqual([UNSCOPED, REFERENCE]);
+  expect(pathBlindSpots(s, "calls", null)).toEqual([
+    UNSCOPED,
+    CHAINED,
+    REFERENCE,
+  ]);
 });

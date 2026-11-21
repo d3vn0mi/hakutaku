@@ -219,7 +219,8 @@ it("answers no hits for a literal that holds a NUL, without asking the index", (
 });
 
 const DENIED = "1 denylisted file is left out of the map";
-const REDACTED = "1 secret-shaped span is redacted and cannot be found";
+const REDACTED =
+  "secret-shaped text is redacted (1 span across the map), so it cannot be found";
 
 it("names the denylisted files and the redacted spans, with hits or without", () => {
   expect(answer(st({ text: "position(" })).blindSpots).toEqual([
@@ -233,7 +234,7 @@ it("names the denylisted files and the redacted spans, with hits or without", ()
   const more = openTiny({ coverage: { denied: 3, redactions: 4 } });
   expect(answer(st({ text: "import" }, more)).blindSpots).toEqual([
     "3 denylisted files are left out of the map",
-    "4 secret-shaped spans are redacted and cannot be found",
+    "secret-shaped text is redacted (4 spans across the map), so it cannot be found",
   ]);
 });
 

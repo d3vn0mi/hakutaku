@@ -213,16 +213,18 @@ export function importBlindSpots(store: Store, lang: Lang | null): string[] {
   return out;
 }
 
-// The labels a call path never follows, since its walk takes only the stored bound and scoped
-// calls; each line says where those uses are listed.
+// The links a call path never follows, since its walk takes only the bound and scoped calls the
+// store holds: unscoped name matches, the scoped links code_callers works out at query time by
+// following import chains, and references. Each line says which tool finds them.
 const UNFOLLOWED: readonly string[] = Object.freeze([
   'unscoped name matches are not followed; code_callers lists them with labels ["unscoped"]',
+  "scoped links that code_callers finds through import chains are not followed",
   "references, uses that are not calls, are not followed; code_references lists them",
 ]);
 
 // What a path cannot see, from the language of its from node. Via imports, the lines of the
 // imports around the from file. Via calls, those of the from definition's callers, then one
-// line for each label the walk does not follow.
+// line for each kind of link the walk does not follow.
 export function pathBlindSpots(
   store: Store,
   via: "imports" | "calls",
@@ -234,6 +236,9 @@ export function pathBlindSpots(
 
 // What a search of the stored text cannot find, one line per gap, in a fixed order. A map with no
 // source text answers code_search_text with no_source, so only a direct caller sees that line.
+// The redaction count covers the whole map: stored text, and also signatures, import
+// specifiers, library names, entry point names, call receivers and symbolic link targets. So the
+// line gives it as a count across the map, not as a count of searched lines.
 export function searchBlindSpots(store: Store): string[] {
   const { noSource, coverage } = store.meta;
   const out: string[] = [];
@@ -259,12 +264,9 @@ export function searchBlindSpots(store: Store): string[] {
     );
   }
   if (coverage.redactions > 0) {
+    const spans = counted(coverage.redactions, "span", "spans");
     out.push(
-      counted(
-        coverage.redactions,
-        "secret-shaped span is redacted and cannot be found",
-        "secret-shaped spans are redacted and cannot be found",
-      ),
+      `secret-shaped text is redacted (${spans} across the map), so it cannot be found`,
     );
   }
   return out;
