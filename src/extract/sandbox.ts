@@ -11,14 +11,17 @@
 // the build goes on without it. Each probe keeps its evidence, and a failed one names its repair.
 import { type ChildProcess, spawn } from "node:child_process";
 import {
+  closeSync,
+  constants,
   lstatSync,
   mkdirSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createServer, type Server } from "node:net";
+import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { cleanReason } from "../redact/index.js";
@@ -85,7 +88,9 @@ const SCOPE_PROBE = [
 // group's cgroup.procs not open for writing, which is opened and closed, never written (else exit
 // 15: a group it could write would let it lift its memory cap, and its user's other services'
 // would let it stop them), a group it cannot find failing the check too; and the unix socket named
-// second out of reach (else exit 12).
+// second out of reach (else exit 12). The socket is tried from its own directory, by its name
+// alone: a unix socket's address holds at most 108 bytes on Linux, which the socket's path in the
+// home directory can pass, and a connect refused for the length alone would prove nothing.
 const NETWORK_SEEN = 10;
 const CONFINED_CHECK = [
   'const fs = require("node:fs");',
@@ -138,7 +143,9 @@ const CONFINED_CHECK = [
   '  console.error("can write its own control group");',
   "  process.exit(15);",
   "}",
-  'const reached = require("node:net").connect(socket);',
+  'const { basename, dirname } = require("node:path");',
+  "process.chdir(dirname(socket));",
+  'const reached = require("node:net").connect(basename(socket));',
   'reached.on("connect", () => {',
   '  console.error("reaches a unix socket on this machine");',
   "  process.exit(12);",
@@ -275,7 +282,7 @@ async function confinedService(): Promise<Probe> {
   const canary = join(unbound, "canary");
   const beside = join(root, "beside");
   const shm = join("/dev/shm", basename(root));
-  let listening: { server: Server; reached: () => number } | undefined;
+  let listening: Listening | undefined;
   let sleeper: ChildProcess | undefined;
   try {
     mkdirSync(bound);
@@ -368,28 +375,54 @@ async function confinedService(): Promise<Probe> {
     return probed;
   } finally {
     if (sleeper?.pid !== undefined) sleeper.kill("SIGKILL");
-    if (listening !== undefined) {
-      const { server } = listening;
-      await new Promise((done) => server.close(done));
-    }
+    if (listening !== undefined) await listening.close();
     rmSync(root, { recursive: true, force: true });
     rmSync(shm, { force: true });
   }
 }
 
-// A unix socket listening at path, and how many connections have reached it.
-function listenAt(
-  path: string,
-): Promise<{ server: Server; reached: () => number }> {
+// A unix socket that listens, made by listenAt: the address this process reaches it at, how many
+// connections have reached it, and close, which stops it and removes it.
+export interface Listening {
+  address: string;
+  reached(): number;
+  close(): Promise<void>;
+}
+
+// A unix socket listening at path, however long path is. A unix socket's address holds at most
+// 108 bytes on Linux, which a path in the home directory can pass, so the socket is bound through
+// /proc/self/fd/<n>/<name>, <n> its directory opened: a short address, at which the socket is
+// still made in that directory. The socket is removed through that address as it closes, so the
+// directory stays open until then. Linux only, as every probe is.
+export async function listenAt(path: string): Promise<Listening> {
+  const dir = openSync(
+    dirname(path),
+    constants.O_RDONLY | constants.O_DIRECTORY,
+  );
+  const address = `/proc/self/fd/${dir}/${basename(path)}`;
   let reached = 0;
   const server = createServer((connection) => {
     reached += 1;
     connection.destroy();
   });
-  return new Promise((done, fail) => {
-    server.once("error", fail);
-    server.listen(path, () => done({ server, reached: () => reached }));
-  });
+  try {
+    await new Promise<void>((done, fail) => {
+      server.once("error", fail);
+      server.listen(address, () => done());
+    });
+  } catch (error) {
+    // a failed listen has closed its handle, and removed what it made, already
+    closeSync(dir);
+    throw error;
+  }
+  return {
+    address,
+    reached: () => reached,
+    close: async () => {
+      await new Promise((done) => server.close(done));
+      closeSync(dir);
+    },
+  };
 }
 
 // Whether anything is at path, a link included, which is not followed.

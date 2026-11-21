@@ -2,6 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -18,6 +19,7 @@ import {
   confinementProbe,
   detectSandbox,
   evidenceLine,
+  listenAt,
   type SandboxPaths,
   sandboxCommand,
   systemdRunArgv,
@@ -772,6 +774,80 @@ it("takes systemd-run as the sandbox when its service has no network, writes onl
     },
   ]);
   expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
+});
+
+// A unix socket's address holds at most 108 bytes on Linux, and the confinement probe listens on
+// one in its directory in the home directory, whose path can be longer, as one under a long
+// TMPDIR is. This one is, on its own.
+const longHome = (): string => {
+  const home = join(
+    tmp(),
+    "a-home-directory-whose-path-alone-is-longer-than-a-unix-socket-address".padEnd(
+      110,
+      "-",
+    ),
+  );
+  mkdirSync(home);
+  return home;
+};
+
+it("falls back to systemd-run when bubblewrap fails, however long the home directory's path", async () => {
+  const log = fakeTools({ bwrap: 1, "systemd-run": 0 });
+  vi.stubEnv("HOME", longHome());
+  const s = await freshSandbox();
+  expect(await s.detectSandbox("linux")).toBe("systemd-run");
+  expect(logged(log)).toEqual([BWRAP_PROBE, ISOLATION_PROBE]);
+  expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
+});
+
+it("takes systemd-run as the sandbox when its service is confined, however long the home directory's path", async (ctx) => {
+  requireInCI(ctx, bwrap);
+  standInSystemdRun("confined");
+  vi.stubEnv("HOME", longHome());
+  const s = await freshSandbox();
+  expect(await s.detectSandbox("linux")).toBe("systemd-run");
+  expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
+});
+
+// The service must still try the socket where the home directory's path is too long for its
+// address: a check that could not name it would pass a service that reaches it.
+it("says systemd-run cannot confine a service that reaches the probe's unix socket, however long the home directory's path", async (ctx) => {
+  requireInCI(ctx, bwrap);
+  standInSystemdRun("sockets open");
+  vi.stubEnv("HOME", longHome());
+  const s = await freshSandbox();
+  expect(await s.detectSandbox("linux")).toBeNull();
+  expect(
+    (await s.sandboxProblems("linux")).map((p) => [
+      p.line,
+      s.evidenceLine(p.evidence),
+    ]),
+  ).toEqual([
+    ["bubblewrap is not installed", "bwrap: could not start: ENOENT"],
+    [
+      "systemd-run cannot confine a service's file system",
+      "systemd-run: exit code 12: reaches a unix socket on this machine",
+    ],
+  ]);
+  expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
+});
+
+it("listens on a unix socket at a path too long for a socket's address, reached through the address it gives, and removes it once closed", async () => {
+  const dir = longHome();
+  const path = join(dir, "socket");
+  expect(Buffer.byteLength(path)).toBeGreaterThan(108);
+  const listening = await listenAt(path);
+  try {
+    expect(Buffer.byteLength(listening.address)).toBeLessThan(108);
+    await new Promise<void>((done, fail) =>
+      createConnection(listening.address, () => done()).once("error", fail),
+    );
+    await vi.waitFor(() => expect(listening.reached()).toBe(1));
+    expect(lstatSync(path).isSocket()).toBe(true);
+  } finally {
+    await listening.close();
+  }
+  expect(readdirSync(dir)).toEqual([]);
 });
 
 it("names the platform off Linux, running no probe", async () => {
