@@ -21,10 +21,11 @@
 </div>
 
 > [!IMPORTANT]
-> **Pre-release: in design, 0.1 in progress.** Nothing is installable yet. There is no npm package
-> and no code in this repository so far. Every command and config below is **planned for 0.1**, and
-> may change before it ships. Watch the repository, or join
-> [Discussions](https://github.com/d3vn0mi/hakutaku/discussions), to follow the first release.
+> **Pre-release: 0.1 in progress.** Nothing is installable yet: 0.1 is not on npm. The engine, the
+> store, the 13 tools and the MCP server are built and tested in this repository, and the viewer is
+> next. Every command and config below is **planned for 0.1**, and may change before it ships. Watch
+> the repository, or join [Discussions](https://github.com/d3vn0mi/hakutaku/discussions), to follow
+> the first release.
 
 ## What it is
 
@@ -178,14 +179,34 @@ The road to 0.1:
         through export and extract in CI.
   - [x] **The commands** `map`, `list`, `profile` and `doctor`, and deep Python detail, which runs
         scip-python under a 15 GB memory cap by default.
-- [ ] **Tools and MCP server.** The 13 tools, with labels, paging and errors. `hakutaku query`. The
-      golden tests. In progress, 12 of 16 steps done: the tool contract (types, limits, errors,
-      label wording, argument checks and paging), all 13 tools answering from a store, the host
-      that serves the registered repositories, says whether each map is current, and rate-limits
-      refreshes, and the stdio MCP server with `hakutaku mcp` and `hakutaku query`. Every answer
-      that can carry repository content is marked as untrusted, and the answers about references,
-      dependencies, paths and text search name their blind spots. Next: the golden answers,
-      conformance and the latency check.
+- [x] **Tools and MCP server** (done 2026-11-21). The 13 tools, with labels, paging and errors, the
+      stdio MCP server, `hakutaku query` and the golden tests. All 16 steps:
+  - [x] **The tool contract.** Types, limits, errors, label wording, argument checks and paging.
+  - [x] **The 13 tools and the host.** All 13 tools answer from a store. The host serves the
+        registered repositories, says whether each map is current, and rate-limits refreshes.
+  - [x] **The MCP server.** `hakutaku mcp` serves the tools over stdio, and `hakutaku query` runs
+        any of them from a shell. Every answer that can carry repository content is marked as
+        untrusted, and the answers about references, dependencies, paths and text search name
+        their blind spots.
+  - [x] **Golden answers.** Every tool's answers on the synthetic sample, pinned byte for byte in
+        [`test/golden/`](test/golden/), and the oracle's facts that only the tools can show,
+        checked through them.
+  - [x] **Conformance.** An MCP client over stdio replays the golden calls, all but the one to
+        `code_repos` and those made at a detail other than standard or under a size cap of their
+        own, and gets each golden answer back byte for byte. A store swapped in under a running
+        server answers the next call. Instructions planted in a hostile repository's comments and
+        docstrings come back only as source text, and nothing runs the command they ask for. Names
+        that hold markup, shell commands or instructions come back only in answers the MCP server
+        marks untrusted. Traced with strace after start-up, a server asked about paths, URLs and
+        globs outside its store starts no process, opens no network socket, and opens no file
+        outside its store's directory, the repository's `.git` and hakutaku's own files, apart from
+        `/proc`, `/sys` and `/dev`.
+  - [x] **Latency.** A generated repository of 2,500 files answers 200 calls over stdio, 20 for each
+        of ten tools, timed from the client. The check holds their 95th percentile under 300 ms,
+        and every call under 1.5 s.
+  - [x] **The reference**, [`docs/tools.md`](docs/tools.md): what each tool takes and answers, and
+        how it refuses. A test checks its argument tables, error codes, label wording, examples and
+        IDs against the code and the sample.
 - [ ] **Viewer.** Lenses, depth levels, search and filters, the source view, accessibility and the
       performance budget.
 - [ ] **Release.** CI, the hostile-repository suite, and an npm release with provenance. A static map of
@@ -311,7 +332,8 @@ then `code_overview` (the core, the entry points and the hotspots), then `code_e
 
 ## The tools
 
-Planned for 0.1. All 13 are read-only, except `code_refresh`, which asks for a rebuild.
+Planned for 0.1. All 13 are read-only, except `code_refresh`, which asks for a rebuild. The full
+reference, with every argument, answer, error and limit, is [`docs/tools.md`](docs/tools.md).
 
 | Tool | Answers |
 |---|---|
@@ -445,9 +467,9 @@ Every call site says how it was found. Each label has a different value as evide
 - **`code_explain`** sums up a definition's uses in one `label`, `bound` or `scoped`. It always adds
   one fixed `note` sentence that says which tiers ran, for example *"every counted file has a
   compiler-bound use; code_callers lists each use with its line"*.
-- **`blindSpots`** names what the build could not see. Examples: computed `import()` paths, receivers
-  typed by packages that were not installed, a compiler tier that did not run, a language with no
-  callers.
+- **`blindSpots`** names what the build could not see. Examples: dynamic imports with a computed
+  path, a compiler tier that did not run, a language hakutaku extracts no callers for, relative
+  imports that did not resolve, and denylisted files.
 
 > [!NOTE]
 > Precision and recall for each label will be published with 0.1. They will be measured against the
@@ -548,7 +570,8 @@ As planned for 0.1:
 - **ast-grep's outline mints every ID**, at every detail level. So a commit yields the same IDs at
   quick, standard and deep detail, and when a compiler tier fails.
 - **When an engine is missing or fails,** hakutaku falls back to its own resolver over the import
-  statements. It labels what that produces, and names the gap in `blindSpots`.
+  statements. `blindSpots` names a compiler tier that did not run, and says when Python imports come
+  from hakutaku's own resolver because grimp did not run.
 - **Engines are installed, not depended on.** `hakutaku engines install` reads `engines.lock.json`,
   which pins exact versions with integrity hashes. It installs them into
   `$XDG_DATA_HOME/hakutaku/engines/`, and grimp from binary wheels with `--require-hashes`. Only
@@ -601,8 +624,9 @@ not write. So every byte of an analysed repository is treated as data.
   `«redacted:<rule>»` before any text enters the store, and keeps the line numbers. A store that holds
   a denylisted path, or skipped redaction, is never swapped in.
 - **No tool opens what a model names.** No tool takes a filesystem path, glob or URL from a model and
-  opens it. After start-up, the MCP server starts no process and opens no socket, except a build when
-  it runs with `--allow-refresh`.
+  opens it. After start-up, the MCP server starts no process and opens no network socket, except a
+  build when it runs with `--allow-refresh`. A test runs the server under strace, without that flag,
+  and holds it to this.
 - **Injected instructions stay data.** Everything a repository controls, its paths and names as well
   as its text, is treated as untrusted: the server's instructions say so and the answers that carry
   it are marked. The viewer escapes all of it, under a strict Content Security Policy.
@@ -627,7 +651,7 @@ analysed repository. To report a vulnerability, see [SECURITY.md](SECURITY.md).
   stored. A huge imported module can use up the deep tier's hour or its memory cap; the build then
   falls back to `scoped` Python callers and says so.
 - **No dependency install.** A receiver typed by a package that is not installed is invisible to the
-  compiler tier, and `blindSpots` says so.
+  compiler tier.
 - **Computed `import()` paths are not followed.** `unscoped` name matches are the only way to see
   them.
 - **`scoped` callers are name matches** in files linked by imports. They can include false matches,
