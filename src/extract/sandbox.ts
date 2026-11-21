@@ -499,14 +499,18 @@ const SYSTEM_BINDS: ReadonlyArray<readonly [string, string]> = [
   ["--ro-bind-try", "/etc/alternatives"],
 ];
 
+// The host name bubblewrap gives its own UTS namespace, so that uname(2) inside never names this
+// machine.
+const HOSTNAME = "sandbox";
+
 // The shell bubblewrap runs inner through, which sets the core limit, soft and hard, to 0 first:
 // a scope takes no LimitCORE, and the shell is on every system bubblewrap binds.
 const NO_CORE = ["/bin/sh", "-c", 'ulimit -c 0 && exec "$@"', "sh"];
 
-// bubblewrap: no namespace shared, no environment kept, and nothing of the file system but the
-// system directories, Node, hakutaku, the pinned Python, the export and the engines, all
-// read-only, and the build's work directory, the one writable path. inner runs with no core
-// dumps.
+// bubblewrap: no namespace shared, a host name of its own, no environment kept, and nothing of
+// the file system but the system directories, Node, hakutaku, the pinned Python, the export and
+// the engines, all read-only, and the build's work directory, the one writable path. inner runs
+// with no core dumps.
 export function bwrapArgv(p: SandboxPaths, inner: string[]): string[] {
   const binds: Array<[string, string]> = [
     ["--ro-bind", absolute(p, "nodePrefix")],
@@ -529,6 +533,8 @@ export function bwrapArgv(p: SandboxPaths, inner: string[]): string[] {
     "--die-with-parent",
     "--new-session",
     "--clearenv",
+    "--hostname",
+    HOSTNAME,
     ...atOwnPaths(SYSTEM_BINDS),
     "--proc",
     "/proc",

@@ -161,7 +161,7 @@ it("sets PrivateNetwork and MemoryMax for systemd-run", () =>
 it("finds no sandbox off Linux", async () =>
   expect(await detectSandbox("darwin")).toBeNull());
 
-it("writes the whole bubblewrap command, each path bound at its own path", () => {
+it("writes the whole bubblewrap command, each path bound at its own path, under a host name of its own", () => {
   const bind = (flag: string, path: string) => [flag, path, path];
   expect(bwrapArgv(paths, inner)).toEqual([
     "bwrap",
@@ -169,6 +169,8 @@ it("writes the whole bubblewrap command, each path bound at its own path", () =>
     "--die-with-parent",
     "--new-session",
     "--clearenv",
+    "--hostname",
+    "sandbox",
     ...bind("--ro-bind", "/usr"),
     ...bind("--ro-bind-try", "/bin"),
     ...bind("--ro-bind-try", "/lib"),
@@ -877,6 +879,7 @@ console.log(JSON.stringify({
   throughProc: read(${JSON.stringify(`/proc/${sleeper}/cwd/canary.txt`)}),
   network: Object.keys(os.networkInterfaces()).sort(),
   core: /^Max core file size +(\\S+) +(\\S+)/m.exec(fs.readFileSync("/proc/self/limits", "utf8")).slice(1).join(" "),
+  hostname: os.hostname(),
   root: list("/"),
   etc: list("/etc"),
 }));`;
@@ -897,6 +900,7 @@ const SEEN_IN_BUBBLEWRAP = {
   throughProc: REFUSED,
   network: ["lo"],
   core: "0 0", // soft and hard: no core dumps, nor a way to turn them back on
+  hostname: "sandbox", // uname(2) in its own UTS namespace
 };
 
 // What an allowlist shows: at the root, bubblewrap's system directories, the API file systems,
