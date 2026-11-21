@@ -2,7 +2,7 @@
 // --yes` once, and `npm run build` for the sandboxed run, before this file. Each repo is made
 // with makeRepo, exported with exportRepo, and extracted with sandbox "none" unless a test says
 // otherwise. Every build's engines are checked one by one, never through its result alone.
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -1280,6 +1280,89 @@ it(
   TIMEOUT,
 );
 
+// A canary in a directory of its own, outside every bind of a sandbox, and a process of this
+// machine sleeping in that directory, whose working directory leads to the canary through /proc.
+// The process is killed by its pid once the test is done.
+async function withCanary<T>(
+  test: (canary: { path: string; throughProc: string }) => Promise<T>,
+): Promise<T> {
+  const dir = tmp();
+  writeFileSync(join(dir, "canary.txt"), "canary\n");
+  const sleeper = spawn(
+    process.execPath,
+    ["-e", "setTimeout(() => {}, 300000)"],
+    {
+      cwd: dir,
+      stdio: "ignore",
+    },
+  );
+  const pid = sleeper.pid;
+  if (pid === undefined) throw new Error("the sleeper did not start");
+  try {
+    return await test({
+      path: join(dir, "canary.txt"),
+      throughProc: `/proc/${pid}/cwd/canary.txt`,
+    });
+  } finally {
+    process.kill(pid, "SIGKILL");
+  }
+}
+
+// A dependency-cruiser that tries to read the canary, directly and through /proc, and says on
+// stderr what each read gave, its text or its error code; then it fails, so the build goes on
+// without it, and its warning keeps what it said.
+function pryingEngine(canary: { path: string; throughProc: string }): string {
+  return sandboxEnginesDir(
+    [
+      'import { readFileSync } from "node:fs";',
+      'const read = (path) => { try { return JSON.stringify(readFileSync(path, "utf8")); } catch (e) { return e.code; } };',
+      `console.error("canary: " + read(${JSON.stringify(canary.path)}) + "; through /proc: " + read(${JSON.stringify(canary.throughProc)}));`,
+      "process.exit(1);",
+      "",
+    ].join("\n"),
+  );
+}
+
+// What the prying engine said, from the warnings of the build it failed in.
+const pried = (out: string): string | undefined =>
+  readBuildFacts(out)?.warnings.find((w) =>
+    w.startsWith("dependency-cruiser failed: "),
+  );
+
+// Neither read may give the canary's text: each fails with an error code.
+const PRIED_NOTHING =
+  /^dependency-cruiser failed: exit code 1\ncanary: E[A-Z]+; through \/proc: E[A-Z]+$/;
+
+it(
+  "keeps a hostile engine in bubblewrap from reading a file outside its binds, directly or through /proc, which it reads without a sandbox",
+  async (ctx) => {
+    requireInCI(ctx, bwrap);
+    const dir = await exportOf(await oneCommit(SKY));
+    await withCanary(async (canary) => {
+      const enginesDir = pryingEngine(canary);
+      const out = storePath();
+      const r = await extract(dir, out, {
+        enginesDir,
+        detail: "quick",
+        sandbox: "require",
+      });
+      expect(r.result).toBe("built");
+      expect(readBuildFacts(out)?.sandbox).toBe("bubblewrap");
+      expect(pried(out)).toMatch(PRIED_NOTHING);
+
+      // the control: without a sandbox, the same engine reads the canary both ways
+      const plain = storePath();
+      expect(
+        (await extract(dir, plain, { enginesDir, detail: "quick" })).result,
+      ).toBe("built");
+      expect(pried(plain)).toBe(
+        'dependency-cruiser failed: exit code 1\ncanary: "canary\\n"; through /proc: "canary\\n"',
+      );
+    });
+  },
+  TIMEOUT,
+);
+
 it(
   "records how a sandboxed build that was stopped ended, and the stage it was at",
   async (ctx) => {
@@ -1450,6 +1533,30 @@ it(
       "attempt.json",
       "canary.txt",
     ]);
+  },
+  TIMEOUT,
+);
+
+it(
+  "keeps a hostile engine under systemd-run from reading a file outside its binds, directly or through /proc",
+  async (ctx) => {
+    requireInCI(ctx, confiningManager);
+    const dir = await exportOf(await oneCommit(SKY));
+    await withCanary(async (canary) => {
+      const out = storePath();
+      const r = await withSystemdRunOnly((build) =>
+        build({
+          dir,
+          out,
+          enginesDir: pryingEngine(canary),
+          detail: "quick",
+          sandbox: "require",
+        }),
+      );
+      expect(r.result).toBe("built");
+      expect(readBuildFacts(out)?.sandbox).toBe("systemd-run");
+      expect(pried(out)).toMatch(PRIED_NOTHING);
+    });
   },
   TIMEOUT,
 );
