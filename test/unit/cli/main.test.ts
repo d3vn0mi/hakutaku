@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
+import { PassThrough } from "node:stream";
 import { expect, it, vi } from "vitest";
-import { COMMANDS, type Command } from "../../../src/cli/commands/index.js";
+import {
+  type CliIO,
+  COMMANDS,
+  type Command,
+} from "../../../src/cli/commands/index.js";
 import { main, processIO } from "../../../src/cli/main.js";
 
 const capture = () => {
@@ -18,6 +23,60 @@ const capture = () => {
     },
   };
 };
+
+// An error of a stream, with its code, as Node gives one.
+const errno = (code: string): Error =>
+  Object.assign(new Error(`write ${code}`), { code });
+
+// An io whose stdout fails when the test says so: onStdoutError hands the test each listener
+// registered, and failExitCode counts its calls. log holds, in order, "listen" for each listener
+// registered and "stdout" for each write to stdout.
+const failable = () => {
+  const c = capture();
+  const log: string[] = [];
+  const listeners: Array<(error: Error) => void> = [];
+  let failedExit = 0;
+  const io: CliIO = {
+    ...c.io,
+    stdout: (s) => {
+      log.push("stdout");
+      c.out.push(s);
+    },
+    onStdoutError: (listener) => {
+      log.push("listen");
+      listeners.push(listener);
+    },
+    failExitCode: () => {
+      failedExit += 1;
+    },
+  };
+  return {
+    ...c,
+    io,
+    log,
+    fail: (error: Error) => {
+      for (const listener of listeners) listener(error);
+    },
+    failedExit: () => failedExit,
+  };
+};
+
+// A command that writes a line, has stdout fail with each error given, then writes another line
+// and returns code.
+const failingCommand = (
+  fail: (error: Error) => void,
+  errors: Error[],
+  code: number,
+): Command => ({
+  name: "telescope",
+  summary: "points the observatory",
+  run: async (_argv, io) => {
+    io.stdout("north\n");
+    for (const error of errors) fail(error);
+    io.stdout("south\n");
+    return code;
+  },
+});
 
 it("prints the package version for --version", async () => {
   const c = capture();
@@ -178,4 +237,166 @@ it("exits 1 with hakutaku: <message> on stderr when a command throws", async () 
   expect(code).toBe(1);
   expect(c.err.join("")).toBe("hakutaku: lens cap is on\n");
   expect(c.out).toEqual([]);
+});
+
+it("listens for stdout's errors once, before anything is written, whatever the arguments", async () => {
+  const telescope: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async (_argv, io) => {
+      io.stdout("north\n");
+      return 0;
+    },
+  };
+  for (const argv of [
+    ["--version"],
+    ["--help"],
+    [],
+    ["nebula"],
+    ["telescope"],
+  ]) {
+    const f = failable();
+    await withCommand(telescope, () => main(argv, f.io));
+    expect([argv, f.log[0], f.log.filter((e) => e === "listen")]).toEqual([
+      argv,
+      "listen",
+      ["listen"],
+    ]);
+  }
+});
+
+it("ends quietly once stdout's reader has gone: later output is dropped, stderr stays empty and the command's code stands", async () => {
+  for (const code of ["EPIPE", "ECONNRESET"]) {
+    for (const exit of [0, 3]) {
+      const f = failable();
+      const command = failingCommand(f.fail, [errno(code)], exit);
+      expect([
+        code,
+        await withCommand(command, () => main(["telescope"], f.io)),
+      ]).toEqual([code, exit]);
+      expect(f.out).toEqual(["north\n"]);
+      expect(f.err).toEqual([]);
+      expect(f.failedExit()).toBe(0);
+    }
+  }
+});
+
+it("says once on stderr that stdout failed for any other error, drops later output, and exits 1 where the command returned 0", async () => {
+  const cases: Array<[number, number]> = [
+    [0, 1],
+    [3, 3],
+  ];
+  for (const [exit, code] of cases) {
+    const f = failable();
+    const command = failingCommand(
+      f.fail,
+      [errno("ENOSPC"), errno("ENOSPC")],
+      exit,
+    );
+    expect(await withCommand(command, () => main(["telescope"], f.io))).toBe(
+      code,
+    );
+    expect(f.out).toEqual(["north\n"]);
+    expect(f.err).toEqual(["hakutaku: cannot write to stdout: ENOSPC\n"]);
+    expect(f.failedExit()).toBe(1);
+  }
+});
+
+it("names a stdout error that has no code by its message, on one line safe for a terminal", async () => {
+  const f = failable();
+  const ESC = String.fromCharCode(0x1b);
+  const command = failingCommand(
+    f.fail,
+    [new Error(`disk ${ESC}[2J gone\r\nfor good`)],
+    0,
+  );
+  expect(await withCommand(command, () => main(["telescope"], f.io))).toBe(1);
+  expect(f.err).toEqual([
+    "hakutaku: cannot write to stdout: disk ?[2J gone; for good\n",
+  ]);
+});
+
+it("fails the exit code through the io when stdout fails after main returned, but not when its reader went away", async () => {
+  const telescope: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async (_argv, io) => {
+      io.stdout("north\n");
+      return 0;
+    },
+  };
+  const cases: Array<[string, string[], number]> = [
+    ["EPIPE", [], 0],
+    ["ECONNRESET", [], 0],
+    ["EIO", ["hakutaku: cannot write to stdout: EIO\n"], 1],
+  ];
+  for (const argv of [["--version"], ["--help"], ["telescope"]]) {
+    for (const [code, err, failedExit] of cases) {
+      const f = failable();
+      expect(await withCommand(telescope, () => main(argv, f.io))).toBe(0);
+      f.fail(errno(code));
+      f.fail(errno(code));
+      expect([argv, code, f.err, f.failedExit()]).toEqual([
+        argv,
+        code,
+        err,
+        failedExit,
+      ]);
+    }
+  }
+});
+
+it("hands a command the io's own stdin, env and terminal, and opens stdin only when the command reads it", async () => {
+  const stdin = new PassThrough();
+  let opened = 0;
+  const io: CliIO = {
+    ...capture().io,
+    get stdin() {
+      opened += 1;
+      return stdin;
+    },
+    env: { SKY: "clear" },
+    isTTY: true,
+  };
+  const quiet: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async () => 0,
+  };
+  expect(await withCommand(quiet, () => main(["--help"], io))).toBe(0);
+  expect(await withCommand(quiet, () => main(["telescope"], io))).toBe(0);
+  expect(opened).toBe(0);
+  const seen: unknown[] = [];
+  const reader: Command = {
+    name: "telescope",
+    summary: "points the observatory",
+    run: async (_argv, commandIO) => {
+      seen.push(commandIO.stdin, commandIO.env, commandIO.isTTY);
+      return 0;
+    },
+  };
+  expect(await withCommand(reader, () => main(["telescope"], io))).toBe(0);
+  expect(opened).toBe(1);
+  expect(seen[0]).toBe(stdin);
+  expect(seen[1]).toBe(io.env);
+  expect(seen[2]).toBe(true);
+});
+
+it("ends the process with 1 where its code would be 0, and keeps any other code, once failExitCode is called", () => {
+  const before = process.listeners("exit");
+  processIO().failExitCode?.();
+  const added = process.listeners("exit").filter((l) => !before.includes(l));
+  const saved = process.exitCode;
+  try {
+    expect(added).toHaveLength(1);
+    const ended = [undefined, 0, 3].map((code) => {
+      process.exitCode = code;
+      added[0]?.(code ?? 0);
+      return process.exitCode;
+    });
+    expect(ended).toEqual([1, 1, 3]);
+  } finally {
+    process.exitCode = saved;
+    for (const listener of added) process.off("exit", listener);
+  }
 });

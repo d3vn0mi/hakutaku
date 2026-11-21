@@ -1,8 +1,9 @@
 // hakutaku mcp <id>... | --all [--allow-refresh]
 // Serves the repos named, or every registered repo, as an MCP server over stdio until stdin ends
-// or the client stops reading stdout. The repos are fixed at start. stdout carries only the
-// protocol; usage errors and logs go to stderr. Exit codes: 0 once the session is over, 1 failed
-// (the message on stderr), 2 a usage error.
+// or stdout fails, as it does once the client stops reading it. The repos are fixed at start.
+// stdout carries only the protocol; usage errors and logs go to stderr. Exit codes: 0 once the
+// session is over, 1 failed (the message on stderr), as when stdout fails for another reason than
+// the client closing its read end, 2 a usage error.
 import { Writable } from "node:stream";
 import { parseArgs } from "node:util";
 import { startMcpServer } from "../../mcp/index.js";
@@ -58,8 +59,9 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   }
   // The session is over when stdin ends or closes, or when stdout fails, as it does with EPIPE
   // once the client has closed its read end. No answer can reach the client after that, so the
-  // server ends quietly, whatever the error. All of these are listened for before the server
-  // starts to read, so that none can come first.
+  // server ends, whatever the error; main says an error other than the client going away on
+  // stderr, and exits 1 for it. All of these are listened for before the server starts to read,
+  // so that none can come first.
   const ended = new Promise<void>((resolve) => {
     io.stdin.once("end", resolve);
     io.stdin.once("close", resolve);

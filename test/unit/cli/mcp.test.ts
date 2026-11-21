@@ -158,9 +158,15 @@ it("mcp ends when stdin closes without ending", async () => {
   expect(stdin.listenerCount("data")).toBe(0);
 });
 
-it("mcp ends quietly, with exit 0, once stdout fails because the client closed its read end", async () => {
-  // EPIPE is what a closed read end gives; any other error on stdout ends the session the same way
-  for (const code of ["EPIPE", "EIO"]) {
+it("mcp ends once stdout fails: quietly, with exit 0, when the client closed its read end, and with the error on stderr and exit 1 otherwise", async () => {
+  // EPIPE is what a closed read end gives, ECONNRESET a socket's; any other error on stdout ends
+  // the session too, and is said
+  const cases: Array<[string, string, number]> = [
+    ["EPIPE", "", 0],
+    ["ECONNRESET", "", 0],
+    ["EIO", "hakutaku: cannot write to stdout: EIO\n", 1],
+  ];
+  for (const [code, err, exit] of cases) {
     const stdin = new PassThrough();
     const { c, io } = capture(stdin);
     const out = closableStdout(c, code);
@@ -176,8 +182,8 @@ it("mcp ends quietly, with exit 0, once stdout fails because the client closed i
     stdin.write(line(call(3, "code_overview", { repo: "tiny" })));
     stdin.write(line({ jsonrpc: "2.0", id: 4, method: "tools/list" }));
     // stdin never ends: the failed stdout alone ends the server
-    expect([code, await within(5000, done)]).toEqual([code, 0]);
-    expect(c.err).toBe("");
+    expect([code, await within(5000, done)]).toEqual([code, exit]);
+    expect(c.err).toBe(err);
     expect(messages(c.out).map((m) => m.id)).toEqual([1]);
     expect(stdin.listenerCount("data")).toBe(0);
   }
