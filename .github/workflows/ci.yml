@@ -75,9 +75,13 @@ jobs:
       # shown that the fixture fires.
       - name: hostile fixtures
         run: npm run test:hostile
-      # hakutaku mcp from dist/, over stdio with the MCP SDK's client: the tools, every golden
-      # answer, a store swapped under the server, and, under strace, no process, internet socket
-      # or file outside the store, the checkout's .git and hakutaku's own tree.
+      # hakutaku mcp from dist/, over stdio with the MCP SDK's client: the tools, the golden answers
+      # (all but code_repos' and those made at a detail other than standard or under a cap of their
+      # own), a store swapped under the server, and, under strace, no process, no internet socket
+      # and no file opened outside the store's directory, the sample checkout's .git, hakutaku's own
+      # tree, /proc, /sys and /dev. Then the latency check: the generated 2,500-file repository,
+      # built cold since no cache carries it, answers 200 calls timed from the client, with the 95th
+      # percentile under 300 ms and every call under 1.5 s.
       - name: MCP conformance
         run: npm run test:mcp
       - name: secret scan
