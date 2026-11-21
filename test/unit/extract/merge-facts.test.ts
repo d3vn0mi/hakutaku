@@ -2,11 +2,14 @@
 // store's writer takes; the coverage built from them, the build's tiers and the export; and
 // the redactions every stored text took.
 import { expect, it } from "vitest";
+import type { AstGrepFacts } from "../../../src/extract/drivers/ast-grep.js";
 import {
   coverageOf,
   type MergedContent,
+  type MergeInput,
   mergeFacts,
 } from "../../../src/extract/merge/index.js";
+import type { ScipFacts } from "../../../src/extract/scip/facts.js";
 import { findSecrets } from "../../../src/redact/index.js";
 import { openStore } from "../../../src/store/index.js";
 import { emptyContent, miniStore } from "../../helpers/mini-store.js";
@@ -73,7 +76,9 @@ const classSymbols = (file: string, name: string) => [
   { file, at: P(2, 3), symbol: symbolOf(file, `${name}#position().`) },
 ];
 
-it("writes the merged rows with the store's writer", () => {
+// cli.ts and kepler.test.ts make an Orbit and call position; the test also imports Camera,
+// which two forbidden rules, listed out of name order, both flag.
+function whole(): MergeInput {
   const TEST_TEXT = lines(
     'import { Orbit } from "./kepler";',
     'import { Camera } from "../sky/camera";',
@@ -165,7 +170,7 @@ it("writes the merged rows with the store's writer", () => {
       },
     },
   );
-  const input = {
+  return {
     ...base,
     rules: {
       schema: 1 as const,
@@ -176,9 +181,43 @@ it("writes the merged rows with the store's writer", () => {
           from: { path: "\\.test\\.ts$" },
           to: { path: "/sky/" },
         },
+        {
+          name: "no-camera-in-tests",
+          severity: "error" as const,
+          from: { path: "\\.test\\.ts$" },
+          to: { path: "camera" },
+        },
       ],
     },
   };
+}
+
+// The same input with every list an engine or the rules file gives in reverse order.
+function reversed(input: MergeInput): MergeInput {
+  const facts = input.astGrep as AstGrepFacts;
+  const compiled = input.scip as ScipFacts;
+  return {
+    ...input,
+    astGrep: {
+      ...facts,
+      defs: [...facts.defs].reverse(),
+      calls: [...facts.calls].reverse(),
+      imports: [...facts.imports].reverse(),
+    },
+    scip: {
+      ...compiled,
+      definitions: [...compiled.definitions].reverse(),
+      uses: [...compiled.uses].reverse(),
+    },
+    rules: {
+      schema: 1,
+      forbidden: [...(input.rules?.forbidden ?? [])].reverse(),
+    },
+  };
+}
+
+it("writes the merged rows with the store's writer", () => {
+  const input = whole();
   const merged = mergeFacts(input);
   const { content } = merged;
   const tables: Array<keyof MergedContent> = [
@@ -223,6 +262,19 @@ it("writes the merged rows with the store's writer", () => {
   } finally {
     store.close();
   }
+});
+
+it("gives the same rows whatever order the engines and the rules file list their facts in", () => {
+  const input = whole();
+  const merged = mergeFacts(input);
+  // two findings, sorted by rule name, so that a list taken as given is out of order
+  expect(merged.content.rule_findings.map((r) => r.rule)).toEqual([
+    "no-camera-in-tests",
+    "tests-not-sky",
+  ]);
+  expect(merged.content.call_sites.length).toBeGreaterThan(1);
+  expect(merged.content.refs.length).toBeGreaterThan(1);
+  expect(mergeFacts(reversed(input))).toEqual(merged);
 });
 
 it("builds coverage from the merge, the build's tiers and the export", () => {

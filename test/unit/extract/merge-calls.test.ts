@@ -568,6 +568,7 @@ it("attributes calls in anonymous callbacks to the nearest named definition, els
     "  function step(t: number) { return tick(t); }",
     "  return list.map((t) => step(t));",
     "}",
+    "function draw() {}render();",
   );
   const input = mergeInput(
     { [TEST]: TEXT },
@@ -593,6 +594,15 @@ it("attributes calls in anonymous callbacks to the nearest named definition, els
               [P(7, 12)],
               "function step(t: number) { return tick(t); }",
             ),
+            outlineDef(
+              TEST,
+              "draw",
+              "function",
+              P(10, 1),
+              P(10, 19),
+              [P(10, 10)],
+              "function draw() {}render();",
+            ),
           ],
           calls: [
             // a fact given twice is one site
@@ -603,14 +613,16 @@ it("attributes calls in anonymous callbacks to the nearest named definition, els
             callFact(TEST, spot(TEXT, 7, "tick"), "tick"),
             callFact(TEST, spot(TEXT, 8, "map"), "map", "list"),
             callFact(TEST, spot(TEXT, 8, "step"), "step"),
+            callFact(TEST, spot(TEXT, 10, "render"), "render"),
           ],
         }),
       },
     },
   );
   const { content } = mergeFacts(input);
-  // Definitions: 1 <module>, 2 check, 3 check.step. The it() blocks name nothing, so their
-  // calls are the module's; the callback inside check is check's; step holds tick
+  // Definitions: 1 <module>, 2 check, 3 check.step, 4 draw. The it() blocks name nothing, so
+  // their calls are the module's; the callback inside check is check's; step holds tick; a
+  // call that starts where draw ends, just past its closing brace, is the module's
   expect(content.call_sites).toEqual([
     site(1, 1, P(1, 1), 1, "describe"),
     site(2, 1, P(2, 3), 1, "it"),
@@ -618,6 +630,7 @@ it("attributes calls in anonymous callbacks to the nearest named definition, els
     site(4, 1, P(7, 37), 3, "tick"),
     site(5, 1, P(8, 15), 2, "map", "list"),
     site(6, 1, P(8, 26), 2, "step"),
+    site(7, 1, P(10, 19), 1, "render"),
   ]);
   expect(content.call_targets).toEqual([target(6, 3, "scoped")]);
 });
