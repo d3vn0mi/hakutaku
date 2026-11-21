@@ -240,6 +240,113 @@ it(
 );
 
 it(
+  "fires each stage at its fixed point: an engine running, the temporary store written, the gates and the swap still ahead",
+  async () => {
+    const dir = await exportOf(await oneCommit(SKY));
+    const out = storePath();
+    const tmpStore = join(dirname(out), `store.tmp-${process.pid}.sqlite`);
+    const seen: Array<{
+      stage: string;
+      attempt: string | undefined;
+      tmp: boolean;
+      store: boolean;
+    }> = [];
+    const r = await extractSnapshot(
+      { dir, out, sandbox: "none" },
+      {
+        onStage: (stage) =>
+          seen.push({
+            stage,
+            attempt: readAttempt(out)?.reason?.replace(/\(pid \d+\)/, "(pid)"),
+            tmp: existsSync(tmpStore),
+            store: existsSync(out),
+          }),
+      },
+    );
+    expect(r.result).toBe("built");
+    const stage = (name: string) =>
+      `interrupted or still running (pid): ${name}`;
+    expect(seen).toEqual([
+      {
+        stage: "engine:ast-grep",
+        attempt: stage("running ast-grep"),
+        tmp: false,
+        store: false,
+      },
+      {
+        stage: "engine:dependency-cruiser",
+        attempt: stage("running dependency-cruiser"),
+        tmp: false,
+        store: false,
+      },
+      {
+        stage: "engine:scip-typescript",
+        attempt: stage("running scip-typescript"),
+        tmp: false,
+        store: false,
+      },
+      {
+        stage: "write-store",
+        attempt: stage("writing the store"),
+        tmp: true,
+        store: false,
+      },
+      {
+        stage: "gates",
+        attempt: stage("checking the gates"),
+        tmp: true,
+        store: false,
+      },
+      {
+        stage: "swap",
+        attempt: stage("swapping the store"),
+        tmp: true,
+        store: false,
+      },
+    ]);
+    expect(existsSync(tmpStore)).toBe(false);
+    expect(readAttempt(out)?.result).toBe("built");
+  },
+  TIMEOUT,
+);
+
+it(
+  "skips scip-typescript at quick detail, and binds no call",
+  async () => {
+    const out = storePath();
+    const r = await extract(await exportOf(await oneCommit(SKY)), out, {
+      detail: "quick",
+    });
+    expect(r.result).toBe("built");
+    expect(r.gates.map((g) => g.ok)).toEqual(ALL_OK);
+    expect(r.gates[2]?.detail).toBe("scip-typescript did not run");
+    inStore(out, (s) => {
+      expect(s.meta.detail).toBe("quick");
+      expect(s.meta.coverage.tiers).toEqual({
+        "ast-grep": "ran",
+        "dependency-cruiser": "ran",
+        grimp: "skipped",
+        "scip-typescript": "skipped",
+      });
+      expect(
+        countOf(
+          s,
+          "SELECT COUNT(*) AS n FROM call_targets WHERE label = 'bound'",
+        ),
+      ).toBe(0);
+    });
+    expect(readBuildFacts(out)?.engines["scip-typescript"]).toEqual({
+      status: "skipped",
+      wallMs: 0,
+      cpuMs: null,
+      peakRssBytes: null,
+      exitCode: null,
+    });
+  },
+  TIMEOUT,
+);
+
+it(
   "keeps the previous store as store.prev.sqlite",
   async () => {
     const repo = await makeRepo({

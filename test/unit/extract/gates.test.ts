@@ -149,6 +149,28 @@ it("expects the TS and JS files TypeScript's include lists, each in indexed and 
   });
 });
 
+it("expects no config or doc file to be indexed, whatever its language", () => {
+  const files: File[] = [
+    ts("web/src/orbit.ts"),
+    py("sim/src/observatory/__init__.py"),
+    { path: "web/vite.config.ts", kind: "config", lang: "typescript" },
+    { path: "web/eslint.config.mjs", kind: "config", lang: "javascript" },
+    { path: "sim/src/observatory/conf.py", kind: "config", lang: "python" },
+    { path: "docs/example.ts", kind: "doc", lang: "typescript" },
+  ];
+  const results = runGates(
+    withFiles(files, {
+      python: { roots: ["sim/src"], singleFileModules: [] },
+      indexed: new Map([["typescript", new Set(["web/src/orbit.ts"])]]),
+    }),
+  );
+  expect(gate(results, "files-indexed")).toEqual({
+    gate: "files-indexed",
+    ok: true,
+    detail: "python 1/1, typescript 1/1",
+  });
+});
+
 it("expects the Python files an import statement can name, and the declared single-file modules", () => {
   const files: File[] = [
     // a package under the root: expected and named
