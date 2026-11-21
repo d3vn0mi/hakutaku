@@ -70,17 +70,18 @@ const OOM_SERVICE_PROBE =
 // What bubblewrap runs inner through: a shell that sets the core limit to 0 first.
 const NO_CORE = ["/bin/sh", "-c", 'ulimit -c 0 && exec "$@"', "sh"];
 // The properties that give a systemd-run service bubblewrap's file system and no network, before
-// its binds: every directory read-only, the home directories, /tmp, /dev and /dev/shm private,
-// no new privileges and no set-user-ID or set-group-ID files, the control groups read-only, and
-// no socket but a netlink one, so that no unix socket the read-only file system shows can be
-// reached.
+// the binds of its fields: an empty root with only the API file systems mounted in it, /tmp,
+// /dev and /dev/shm private, no new privileges and no set-user-ID or set-group-ID files, the
+// control groups read-only, and no socket but a netlink one, so that no unix socket a bound
+// directory holds can be reached; then bubblewrap's system directories, read-only, each but
+// /usr skipped where it is missing.
 const CONFINED = [
   "-p",
   "PrivateNetwork=yes",
   "-p",
-  "ProtectSystem=strict",
+  "TemporaryFileSystem=/",
   "-p",
-  "ProtectHome=tmpfs",
+  "MountAPIVFS=yes",
   "-p",
   "PrivateTmp=yes",
   "-p",
@@ -95,6 +96,20 @@ const CONFINED = [
   "ProtectControlGroups=yes",
   "-p",
   "RestrictAddressFamilies=AF_NETLINK",
+  "-p",
+  "BindReadOnlyPaths=/usr",
+  "-p",
+  "BindReadOnlyPaths=-/bin",
+  "-p",
+  "BindReadOnlyPaths=-/lib",
+  "-p",
+  "BindReadOnlyPaths=-/lib64",
+  "-p",
+  "BindReadOnlyPaths=-/sbin",
+  "-p",
+  "BindReadOnlyPaths=-/etc/ld.so.cache",
+  "-p",
+  "BindReadOnlyPaths=-/etc/alternatives",
 ];
 // The probe that takes systemd-run as the sandbox, as the stand-ins log it, up to the "--" that
 // starts its check: a service confined as a build's is, its one writable directory in a probe
@@ -403,26 +418,42 @@ it("falls back to systemd-run when bubblewrap fails, probing each once", async (
 });
 
 // A systemd-run stand-in that runs what follows "--" in place of a service, and exits 0 when
-// nothing does: in the host's network and file system, as a user manager that cannot make
-// namespaces runs a service; through bubblewrap with no network but the host's file system
-// writable; through bubblewrap with no network and only the directory BindPaths names writable,
-// but a unix socket there still reachable, as a user manager that drops the address-family
-// filter; or as that, with the probe's socket out of reach, as a confined service. HOME is a
-// fresh directory.
+// nothing does. Its service runs: in the host's network and file system, as a user manager that
+// cannot make namespaces runs one; through bubblewrap, with no network, and with the confinement
+// check's arguments in hand: the file it must write ($4), the probe's socket ($5), the file it
+// must not read ($6) and that file through /proc ($7). "writes outside" keeps the host's file
+// system writable; "sockets open" leaves the probe's socket in reach, as a user manager that drops
+// the address-family filter does; "reads outside" leaves the probe's unbound directory in view;
+// "reads through proc" hides it, but shows it again where the check looks through /proc; and
+// "confined" hides it and covers the socket with a file that is none. HOME is a fresh directory.
 function standInSystemdRun(
-  service: "host" | "network cut" | "sockets open" | "confined",
+  service:
+    | "host"
+    | "writes outside"
+    | "sockets open"
+    | "reads outside"
+    | "reads through proc"
+    | "confined",
 ): void {
   const bin = tmp();
   const file = join(bin, "systemd-run");
   const bwrap = BWRAP_PATH ?? "bwrap";
-  // the probe's socket, named after the file its check must write, covered by a file that is none
+  // PATH holds this stand-in alone, so a directory is cut from a path by the shell itself
   const noSocket = '--ro-bind /dev/null "$5"';
-  const run =
-    service === "host"
-      ? 'exec "$@"'
-      : service === "network cut"
-        ? `exec ${bwrap} --unshare-net --die-with-parent --bind / / --dev /dev ${noSocket} -- "$@"`
-        : `exec ${bwrap} --unshare-all --die-with-parent --ro-bind / / --dev /dev --bind "$bound" "$bound"${service === "confined" ? ` ${noSocket}` : ""} -- "$@"`;
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion, not a template
+  const unbound = '"${6%/*}"';
+  // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion, not a template
+  const throughProc = '"${7%/*}"';
+  const hideUnbound = `--tmpfs ${unbound}`;
+  const boundOnly = `${bwrap} --unshare-all --die-with-parent --ro-bind / / --dev /dev --bind "$bound" "$bound"`;
+  const run = {
+    host: 'exec "$@"',
+    "writes outside": `exec ${bwrap} --unshare-net --die-with-parent --bind / / --dev /dev ${hideUnbound} ${noSocket} -- "$@"`,
+    "sockets open": `exec ${boundOnly} ${hideUnbound} -- "$@"`,
+    "reads outside": `exec ${boundOnly} ${noSocket} -- "$@"`,
+    "reads through proc": `exec ${boundOnly} ${noSocket} --tmpfs /proc --ro-bind ${unbound} ${throughProc} ${hideUnbound} -- "$@"`,
+    confined: `exec ${boundOnly} ${hideUnbound} ${noSocket} -- "$@"`,
+  }[service];
   writeFileSync(
     file,
     [
@@ -572,7 +603,7 @@ it("says systemd-run cannot cut the network when its service runs in the host's 
 // on the host for what the service wrote.
 it("says systemd-run cannot confine a service's file system when its service writes outside its bound directory", async (ctx) => {
   requireInCI(ctx, bwrap);
-  standInSystemdRun("network cut");
+  standInSystemdRun("writes outside");
   const s = await freshSandbox();
   expect(await s.detectSandbox("linux")).toBeNull();
   expect(
@@ -613,7 +644,44 @@ it("says systemd-run cannot confine a service's file system when its service rea
   expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
 });
 
-it("takes systemd-run as the sandbox when its service has no network and writes only its bound directory", async (ctx) => {
+// A file system shown read-only is no allowlist: the probe writes a file on this machine, in a
+// directory the service is not given, and starts a process there, then the service must read
+// that file neither directly nor through the process's working directory under /proc.
+it.for<["reads outside" | "reads through proc", number, string]>([
+  [
+    "reads outside",
+    13,
+    "reads a file on this machine outside its bound directory",
+  ],
+  [
+    "reads through proc",
+    14,
+    "reads a file through the working directory of a process on this machine",
+  ],
+])(
+  "says systemd-run cannot confine a service's file system when its service %s",
+  async ([service, code, said], ctx) => {
+    requireInCI(ctx, bwrap);
+    standInSystemdRun(service);
+    const s = await freshSandbox();
+    expect(await s.detectSandbox("linux")).toBeNull();
+    expect(
+      (await s.sandboxProblems("linux")).map((p) => [
+        p.line,
+        s.evidenceLine(p.evidence),
+      ]),
+    ).toEqual([
+      ["bubblewrap is not installed", "bwrap: could not start: ENOENT"],
+      [
+        "systemd-run cannot confine a service's file system",
+        `systemd-run: exit code ${code}: ${said}`,
+      ],
+    ]);
+    expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
+  },
+);
+
+it("takes systemd-run as the sandbox when its service has no network, writes only its bound directory and reads nothing outside it", async (ctx) => {
   requireInCI(ctx, bwrap);
   standInSystemdRun("confined");
   const s = await freshSandbox();
@@ -741,8 +809,8 @@ const oomScope = commandProbe(
 );
 
 // A sandbox's directories under the OS temp directory, a file in the export, a directory
-// outside every bind, and the store's directory, which holds the work directory and is not
-// bound itself.
+// outside every bind holding a canary file, and the store's directory, which holds the work
+// directory and is not bound itself.
 function liveLayout(): { p: SandboxPaths; outside: string; storeDir: string } {
   const root = tmp();
   const storeDir = join(root, "store");
@@ -765,15 +833,36 @@ function liveLayout(): { p: SandboxPaths; outside: string; storeDir: string } {
   ])
     mkdirSync(d, { recursive: true });
   writeFileSync(join(p.exportDir, "export.json"), "{}\n");
+  writeFileSync(join(outside, "canary.txt"), "canary\n");
   return { p, outside, storeDir };
 }
 
+// A process of this machine that sleeps in dir, whose pid the test passes on; each is killed by
+// its pid after the test.
+const sleepers: number[] = [];
+afterEach(() => {
+  for (const pid of sleepers.splice(0)) process.kill(pid, "SIGKILL");
+});
+function sleeperIn(dir: string): number {
+  const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], {
+    cwd: dir,
+    stdio: "ignore",
+  });
+  if (child.pid === undefined) throw new Error("the sleeper did not start");
+  sleepers.push(child.pid);
+  return child.pid;
+}
+
 // A script that reports what it can see and write. It also writes beside the work directory,
-// in the store's directory, which only the host can say did not happen there.
-const report = (p: SandboxPaths, outside: string): string => `
+// in the store's directory, which only the host can say did not happen there, and reads the
+// canary outside every bind, directly and through the working directory of a process of this
+// machine sleeping there; a read that fails reports its error code.
+const report = (p: SandboxPaths, outside: string, sleeper: number): string => `
 const fs = require("node:fs");
 const os = require("node:os");
 const write = (dir) => { try { fs.writeFileSync(dir + "/probe", "x"); return "written"; } catch (e) { return e.code; } };
+const read = (path) => { try { return fs.readFileSync(path, "utf8"); } catch (e) { return e.code; } };
+const list = (dir) => { try { return fs.readdirSync(dir).sort(); } catch (e) { return e.code; } };
 write(${JSON.stringify(dirname(p.workDir))});
 console.log(JSON.stringify({
   env: Object.keys(process.env).sort(),
@@ -784,9 +873,16 @@ console.log(JSON.stringify({
   package: write(${JSON.stringify(p.packageRoot)}),
   work: write(${JSON.stringify(p.workDir)}),
   outside: fs.existsSync(${JSON.stringify(outside)}),
+  canary: read(${JSON.stringify(join(outside, "canary.txt"))}),
+  throughProc: read(${JSON.stringify(`/proc/${sleeper}/cwd/canary.txt`)}),
   network: Object.keys(os.networkInterfaces()).sort(),
   core: /^Max core file size +(\\S+) +(\\S+)/m.exec(fs.readFileSync("/proc/self/limits", "utf8")).slice(1).join(" "),
+  root: list("/"),
+  etc: list("/etc"),
 }));`;
+
+// An error code, never the canary's text.
+const REFUSED = expect.stringMatching(/^E[A-Z]+$/);
 
 const SEEN_IN_BUBBLEWRAP = {
   env: ["HOME", "LANG", "PWD"], // bubblewrap sets PWD itself
@@ -797,9 +893,39 @@ const SEEN_IN_BUBBLEWRAP = {
   package: "EROFS",
   work: "written",
   outside: false,
+  canary: "ENOENT",
+  throughProc: REFUSED,
   network: ["lo"],
   core: "0 0", // soft and hard: no core dumps, nor a way to turn them back on
 };
+
+// What an allowlist shows: at the root, bubblewrap's system directories, the API file systems,
+// /tmp and /var/tmp, and the first directory of each bound path, nothing else; in /etc, only the
+// two system files bound there, where this machine has them.
+function expectAllowlist(
+  p: SandboxPaths,
+  seen: { root: string[]; etc: string[] },
+): void {
+  const bound = [
+    p.nodePrefix,
+    p.packageRoot,
+    p.exportDir,
+    p.enginesDir,
+    p.workDir,
+    ...(p.pythonPrefix === null ? [] : [p.pythonPrefix]),
+  ];
+  const allowed = new Set([
+    ...["usr", "bin", "lib", "lib64", "sbin", "etc"],
+    ...["dev", "proc", "sys", "run", "tmp", "var"],
+    ...bound.map((path) => path.split("/")[1] ?? ""),
+  ]);
+  expect(seen.root.filter((name) => !allowed.has(name))).toEqual([]);
+  expect(seen.etc).toEqual(
+    ["alternatives", "ld.so.cache"].filter((name) =>
+      existsSync(join("/etc", name)),
+    ),
+  );
+}
 
 // What the host sees after the script: its file in the work directory, and none beside it.
 const writtenOnHost = (p: SandboxPaths, storeDir: string) => ({
@@ -815,53 +941,83 @@ const runArgv = (argv: string[]) => {
   return { status: r.status, out: r.stdout, err: r.stderr };
 };
 
-it("runs a command in bubblewrap that reads the export, writes only the work directory and has no network", (ctx) => {
+it("runs a command in bubblewrap that reads the export and nothing outside its binds, writes only the work directory and has no network", (ctx) => {
   requireInCI(ctx, bwrap);
   const { p, outside, storeDir } = liveLayout();
-  const r = runArgv(bwrapArgv(p, [process.execPath, "-e", report(p, outside)]));
+  const sleeper = sleeperIn(outside);
+  const r = runArgv(
+    bwrapArgv(p, [process.execPath, "-e", report(p, outside, sleeper)]),
+  );
   expect(r.err).toBe("");
   expect(r.status).toBe(0);
-  expect(JSON.parse(r.out)).toEqual(SEEN_IN_BUBBLEWRAP);
+  const { root, etc, ...seen } = JSON.parse(r.out);
+  expect(seen).toEqual(SEEN_IN_BUBBLEWRAP);
+  expectAllowlist(p, { root, etc });
   expect(writtenOnHost(p, storeDir)).toEqual({ work: true, beside: false });
 });
 
 it("runs bubblewrap inside a systemd-run scope", async (ctx) => {
   requireInCI(ctx, bwrap, userManager);
   const { p, outside, storeDir } = liveLayout();
+  const sleeper = sleeperIn(outside);
   const { argv, warnings } = await sandboxCommand("bubblewrap", p, [
     process.execPath,
     "-e",
-    report(p, outside),
+    report(p, outside, sleeper),
   ]);
   expect(argv[0]).toBe("systemd-run");
   expect(warnings).toEqual([]);
   const r = runArgv(argv);
   expect(r.status).toBe(0);
-  expect(JSON.parse(r.out)).toEqual(SEEN_IN_BUBBLEWRAP);
+  const { root, etc, ...seen } = JSON.parse(r.out);
+  expect(seen).toEqual(SEEN_IN_BUBBLEWRAP);
+  expectAllowlist(p, { root, etc });
   expect(writtenOnHost(p, storeDir)).toEqual({ work: true, beside: false });
 });
 
 // systemd-run has no view of its own of what it confines: the script reports what it can read
-// and write, and the host says where its writes landed.
-it("runs a command under systemd-run that reads the export, writes only the work directory and has no network", (ctx) => {
+// and write, and the host says where its writes landed. Its root is an empty file system that
+// holds only what is bound, as bubblewrap's is, and the host's processes, which it can see under
+// /proc, are not its user's to read.
+it("runs a command under systemd-run that reads the export and nothing outside its binds, writes only the work directory and has no network", (ctx) => {
   requireInCI(ctx, confiningManager);
   const { p, outside, storeDir } = liveLayout();
+  const sleeper = sleeperIn(outside);
   const r = runArgv(
-    systemdRunArgv(p, [process.execPath, "-e", report(p, outside)]),
+    systemdRunArgv(p, [process.execPath, "-e", report(p, outside, sleeper)]),
   );
   expect(r.status).toBe(0);
-  expect(JSON.parse(r.out)).toMatchObject({
+  const seen = JSON.parse(r.out);
+  expect(seen).toMatchObject({
     read: "{}\n",
     export: "EROFS",
     engines: "EROFS",
     package: "EROFS",
     work: "written",
     outside: false,
+    canary: "ENOENT",
+    throughProc: REFUSED,
     network: ["lo"],
     core: "0 0",
   });
+  expectAllowlist(p, seen);
   expect(writtenOnHost(p, storeDir)).toEqual({ work: true, beside: false });
 });
+
+// The control: the same script with no sandbox reads the canary both ways, and lists the root
+// and /etc whole.
+it.skipIf(process.platform !== "linux")(
+  "reads the canary directly and through a process's working directory without a sandbox",
+  () => {
+    const { p, outside } = liveLayout();
+    const sleeper = sleeperIn(outside);
+    const r = runArgv([process.execPath, "-e", report(p, outside, sleeper)]);
+    expect(r.status).toBe(0);
+    const seen = JSON.parse(r.out);
+    expect(seen).toMatchObject({ canary: "canary\n", throughProc: "canary\n" });
+    expect(seen.etc.length).toBeGreaterThan(2);
+  },
+);
 
 it("runs a command under systemd-run with no network, nice 19 and the memory cap", (ctx) => {
   requireInCI(ctx, confiningManager);

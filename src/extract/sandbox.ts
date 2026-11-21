@@ -1,14 +1,23 @@
 // The extraction sandbox. On Linux, extract re-runs itself inside bubblewrap or, where
-// bubblewrap does not work, inside a systemd-run --user service given bubblewrap's file system
-// and shown, from inside, to have no network, to reach no unix socket and to write nothing but
-// its work directory.
+// bubblewrap does not work, inside a systemd-run --user service given bubblewrap's file system:
+// an empty root holding only the paths bound into it. The service is shown, from inside, to have
+// no network, to reach no unix socket, to write nothing but its work directory, and to read
+// neither a file outside its binds nor one through the working directory of a process of this
+// machine.
 // detectSandbox finds which works, once per process; the argv builders write each command. Every
 // path in a command is absolute: the user manager's PATH may lack the running Node, and
 // systemd-run -p takes no %h. Neither sandbox lets an engine dump core, and where this systemd
 // takes OOMPolicy=continue, an engine the kernel kills at the memory cap stops only itself, so
 // the build goes on without it. Each probe keeps its evidence, and a failed one names its repair.
-import { spawn } from "node:child_process";
-import { lstatSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { type ChildProcess, spawn } from "node:child_process";
+import {
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer, type Server } from "node:net";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
@@ -52,12 +61,14 @@ const SYSTEMD_RUN_PROBE = [
 ];
 // The check the confinement probe runs inside its service: no network interface but loopback
 // (else exit NETWORK_SEEN), the file named first written (else exit 11), each file named after
-// the socket written where it can be, which the probe then looks for on this machine, and the
-// unix socket named second out of reach (else exit 12).
+// the fourth written where it can be, which the probe then looks for on this machine; the file
+// named third, outside every bind, not read (else exit 13), nor the same file through the
+// working directory of a process of this machine, named fourth (else exit 14); and the unix
+// socket named second out of reach (else exit 12).
 const NETWORK_SEEN = 10;
 const CONFINED_CHECK = [
   'const fs = require("node:fs");',
-  "const [inside, socket, ...elsewhere] = process.argv.slice(1);",
+  "const [inside, socket, unbound, throughProc, ...elsewhere] = process.argv.slice(1);",
   'if (!Object.keys(require("node:os").networkInterfaces()).every((n) => n === "lo")) {',
   '  console.error("sees a network interface besides loopback");',
   `  process.exit(${NETWORK_SEEN});`,
@@ -72,6 +83,22 @@ const CONFINED_CHECK = [
   "  try {",
   '    fs.writeFileSync(path, "");',
   "  } catch {}",
+  "}",
+  "const reads = (path) => {",
+  "  try {",
+  "    fs.readFileSync(path);",
+  "    return true;",
+  "  } catch {",
+  "    return false;",
+  "  }",
+  "};",
+  "if (reads(unbound)) {",
+  '  console.error("reads a file on this machine outside its bound directory");',
+  "  process.exit(13);",
+  "}",
+  "if (reads(throughProc)) {",
+  '  console.error("reads a file through the working directory of a process on this machine");',
+  "  process.exit(14);",
   "}",
   'const reached = require("node:net").connect(socket);',
   'reached.on("connect", () => {',
@@ -159,7 +186,8 @@ const isolationProbe = (): Promise<Probe> => {
 };
 
 // Whether systemd-run can be the sandbox, as detectSandbox decides it: a service confined as a
-// build's is that sees no network and writes nothing but its bound directory.
+// build's is that sees no network, reaches no unix socket, writes nothing but its bound
+// directory and reads nothing outside it.
 export async function confinementProbe(): Promise<{
   ok: boolean;
   evidence: ProbeEvidence;
@@ -169,15 +197,18 @@ export async function confinementProbe(): Promise<{
 }
 
 // The confinement probe: a service with systemd-run's sandbox properties, whose one writable
-// path is a directory in a probe directory of the home directory. Inside, it must see no network
-// interface but loopback, write its bound directory, and not reach the unix socket this process
-// listens on there, as a read-only file system would let it reach one under /run; on this
-// machine, only its file there may have landed, not the one it writes beside that directory, nor
-// the one in /dev/shm, and nothing may have reached the socket. A user manager that cannot make
-// the namespaces these need (unprivileged user namespaces refused) may still run the service, in
-// the host's network and file system, and exit 0, so neither systemd-run's exit code nor the
-// service's own view proves anything alone. The probe directory and the /dev/shm file are
-// removed after.
+// path is a directory in a probe directory of the home directory. Beside that directory, this
+// process writes a file in a directory the service is not given, and starts a sleeping process
+// there, through whose working directory it reads the file itself. Inside, the service must see
+// no network interface but loopback, write its bound directory, read that file neither directly
+// nor through /proc/<pid>/cwd of the sleeping process, and not reach the unix socket this process
+// listens on in its bound directory; on this machine, only its file there may have landed, not
+// the one it writes beside that directory, nor the one in /dev/shm, and nothing may have reached
+// the socket. A user manager that cannot make the namespaces these need (unprivileged user
+// namespaces refused) may still run the service, in the host's network and file system, and exit
+// 0, so neither systemd-run's exit code nor the service's own view proves anything alone. The
+// sleeping process is killed by its pid, and the probe directory and the /dev/shm file are
+// removed, after.
 async function confinedService(): Promise<Probe> {
   const failed = (errno: string | null, excerpt: string): Probe => ({
     ok: false,
@@ -200,17 +231,48 @@ async function confinedService(): Promise<Probe> {
   const bound = join(root, "work");
   const inside = join(bound, "inside");
   const socket = join(bound, "socket");
+  const unbound = join(root, "unbound");
+  const canary = join(unbound, "canary");
   const beside = join(root, "beside");
   const shm = join("/dev/shm", basename(root));
   let listening: { server: Server; reached: () => number } | undefined;
+  let sleeper: ChildProcess | undefined;
   try {
     mkdirSync(bound);
+    mkdirSync(unbound);
+    writeFileSync(canary, "");
     try {
       listening = await listenAt(socket);
     } catch (error) {
       return failed(
         (error as NodeJS.ErrnoException).code ?? "unknown error",
         "cannot listen on a probe socket in the home directory",
+      );
+    }
+    const started = spawn(
+      process.execPath,
+      ["-e", "setTimeout(() => {}, 60000)"],
+      { cwd: unbound, stdio: "ignore" },
+    );
+    sleeper = started;
+    if (started.pid === undefined) {
+      // without a pid the spawn failed, and says why on its error event
+      const error = await new Promise<NodeJS.ErrnoException>((done) =>
+        started.once("error", done),
+      );
+      return failed(
+        error.code ?? "unknown error",
+        "cannot start a process to look at through /proc",
+      );
+    }
+    // the service's failed read of it proves something only where this process reads it
+    const throughProc = `/proc/${started.pid}/cwd/${basename(canary)}`;
+    try {
+      readFileSync(throughProc);
+    } catch (error) {
+      return failed(
+        (error as NodeJS.ErrnoException).code ?? "unknown error",
+        "cannot read a file through /proc on this machine",
       );
     }
     let argv: string[];
@@ -232,6 +294,8 @@ async function confinedService(): Promise<Probe> {
         CONFINED_CHECK,
         inside,
         socket,
+        canary,
+        throughProc,
         beside,
         shm,
       ];
@@ -263,6 +327,7 @@ async function confinedService(): Promise<Probe> {
     }
     return probed;
   } finally {
+    if (sleeper?.pid !== undefined) sleeper.kill("SIGKILL");
     if (listening !== undefined) {
       const { server } = listening;
       await new Promise((done) => server.close(done));
@@ -319,8 +384,8 @@ export async function detectSandbox(
 // names its repair and the evidence of the probe that found it: bubblewrap not installed, or
 // refused the user namespaces it needs; systemd-run unable to reach a user manager, which also
 // leaves bubblewrap without a memory cap; and, where bubblewrap does not work, a systemd-run
-// service that still sees the host's network, or writes outside its bound directory. None off
-// Linux, where nothing is probed.
+// service that still sees the host's network, or that reaches a unix socket, writes outside its
+// bound directory or reads outside it. None off Linux, where nothing is probed.
 export async function sandboxProblems(
   platform: NodeJS.Platform = process.platform,
 ): Promise<SandboxProblem[]> {
@@ -422,8 +487,8 @@ export async function sandboxCommand(
   return { argv: bwrapArgv(p, inner), warnings: [NO_MEMORY_CAP] };
 }
 
-// What a dynamically linked program needs, read-only. Each but /usr may be missing, or be a link
-// into /usr, which the bind follows.
+// What a dynamically linked program needs, read-only, in both sandboxes. Each but /usr may be
+// missing, or be a link into /usr, which the bind follows.
 const SYSTEM_BINDS: ReadonlyArray<readonly [string, string]> = [
   ["--ro-bind", "/usr"],
   ["--ro-bind-try", "/bin"],
@@ -483,11 +548,11 @@ export function bwrapArgv(p: SandboxPaths, inner: string[]): string[] {
   ];
 }
 
-// systemd-run alone: a transient user service with no network, bubblewrap's file system (Node,
-// hakutaku, the pinned Python, the export and the engines read-only, and the work directory the
-// one writable path), the memory cap, no core dumps and a low priority, which hakutaku waits
-// for, its output piped through. oomContinue says this systemd's services take
-// OOMPolicy=continue.
+// systemd-run alone: a transient user service with no network, bubblewrap's file system (the
+// system directories, Node, hakutaku, the pinned Python, the export and the engines read-only,
+// and the work directory the one writable path, in an otherwise empty root), the memory cap, no
+// core dumps and a low priority, which hakutaku waits for, its output piped through. oomContinue
+// says this systemd's services take OOMPolicy=continue.
 export function systemdRunArgv(
   p: SandboxPaths,
   inner: string[],
@@ -523,13 +588,15 @@ export function systemdRunArgv(
 }
 
 // What gives a systemd-run service bubblewrap's file system and no network, where the user
-// manager can apply it: every directory read-only, the home directories, /tmp and /dev private
-// and empty but for what is bound, /dev/shm private too (a private /dev keeps the host's), no new
-// privileges and no set-user-ID or set-group-ID files; the control groups read-only, since the
-// service's own would let it lift its memory cap, and the user's other services' would let it
-// stop them; and no socket but a netlink one, which lists the network interfaces, since a unix
-// socket the read-only file system shows, such as one under /run, can still be reached. Then
-// the read-only binds, and the one writable bind. Each pair is the field a path comes from, which
+// manager can apply it: an empty root, which holds no file of this machine but what is bound in
+// it, beside the API file systems (/proc, /sys, /dev and an empty /run) and a private /tmp; /dev
+// private, /dev/shm private too (a private /dev keeps the host's), no new privileges and no
+// set-user-ID or set-group-ID files; the control groups read-only, since the service's own would
+// let it lift its memory cap, and the user's other services' would let it stop them; and no
+// socket but a netlink one, which lists the network interfaces, since a unix socket in a bound
+// directory can still be reached through a read-only bind. Then bubblewrap's system directories,
+// read-only, the '-' prefix skipping each that is missing, as --ro-bind-try does; the read-only
+// binds of the fields; and the one writable bind. Each pair is the field a path comes from, which
 // a refusal names, and the path.
 function confinement(
   readOnly: ReadonlyArray<readonly [string, string]>,
@@ -539,9 +606,9 @@ function confinement(
     "-p",
     "PrivateNetwork=yes",
     "-p",
-    "ProtectSystem=strict",
+    "TemporaryFileSystem=/",
     "-p",
-    "ProtectHome=tmpfs",
+    "MountAPIVFS=yes",
     "-p",
     "PrivateTmp=yes",
     "-p",
@@ -556,6 +623,10 @@ function confinement(
     "ProtectControlGroups=yes",
     "-p",
     "RestrictAddressFamilies=AF_NETLINK",
+    ...SYSTEM_BINDS.flatMap(([flag, path]) => [
+      "-p",
+      `BindReadOnlyPaths=${flag === "--ro-bind-try" ? "-" : ""}${path}`,
+    ]),
     ...readOnly.flatMap(([field, path]) => [
       "-p",
       `BindReadOnlyPaths=${quoted(field, path)}`,
