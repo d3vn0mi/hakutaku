@@ -216,11 +216,21 @@ in that order, or with `--all` every registered repo, by id. Each entry, in orde
 - `detail`: `quick`, `standard` or `deep`, the detail the store was built at, or the registered one
   when it is not built.
 - `snippets`: whether answers carry source lines, in `text` and from `code_snippet`.
-- `languages`: the code, test and test-support files indexed, per language.
-- `coverage`: `files` (every file the map holds), `indexed` (the same counts as `languages`),
-  `unresolvedImports` (relative imports that resolved to no file), `callSites` (the `bound`, `scoped`
-  and `unresolved` call sites) and `redactions` (the secret-shaped spans replaced).
+- `languages`: the code, test and test-support files per language, the same counts as the
+  `languages` of `code_overview` for the repo.
+- `coverage`: `files` (every file the map holds), `indexed` (below), `unresolvedImports` (relative
+  imports that resolved to no file), `callSites` (the `bound`, `scoped` and `unresolved` call sites)
+  and `redactions` (the secret-shaped spans replaced).
 - `engines`: the version of each engine that ran.
+
+`coverage.indexed` counts, per language, the files of `languages` whose imports their language's
+import engine read: for TypeScript and JavaScript, those dependency-cruiser read; for Python, those
+grimp read, from the packages under the profile's Python roots and the declared single-file modules;
+for shell, every file. Where that engine did not run, every file of the language counts. A file
+stored as metadata only never counts, and a language with no import engine is not listed, so
+`indexed` can be lower than `languages`. A TypeScript, JavaScript or Python file left out of
+`indexed` keeps its imports in the map, read by hakutaku's own resolver, unless it is stored as
+metadata only.
 
 A repo that is not built shows `null` commits and `builtAt`, zero counts and empty maps.
 
@@ -1046,9 +1056,10 @@ its `from` definition's:
   Python and shell
 - `shell callers are name matches in the file and the files that source it`, for shell
 - `<n> dynamic imports with a computed path are not followed; ask with labels ["unscoped"] to see name matches`,
-  for TypeScript and JavaScript. With `labels` that hold `unscoped`, it ends
-  `; the unscoped matches include calls made through them`, and for a file, or a path, it ends
-  after `not followed`.
+  for TypeScript and JavaScript, from `code_callers`. With `labels` that hold `unscoped`, it ends
+  `; the unscoped matches include calls made through them`. From `code_impact` on a definition,
+  which takes no `labels`, it ends `; code_callers lists name matches with labels ["unscoped"]`,
+  and for a file, or a path, it ends after `not followed`.
 - `compiler-bound uses that match no outline definition are counted in coverage only (<n>)`, for
   TypeScript, JavaScript and Python
 
