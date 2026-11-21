@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -9,6 +9,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createConnection, createServer } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
@@ -70,7 +71,9 @@ const OOM_SERVICE_PROBE =
 const NO_CORE = ["/bin/sh", "-c", 'ulimit -c 0 && exec "$@"', "sh"];
 // The properties that give a systemd-run service bubblewrap's file system and no network, before
 // its binds: every directory read-only, the home directories, /tmp, /dev and /dev/shm private,
-// no new privileges and no set-user-ID or set-group-ID files.
+// no new privileges and no set-user-ID or set-group-ID files, the control groups read-only, and
+// no socket but a netlink one, so that no unix socket the read-only file system shows can be
+// reached.
 const CONFINED = [
   "-p",
   "PrivateNetwork=yes",
@@ -88,6 +91,10 @@ const CONFINED = [
   "NoNewPrivileges=yes",
   "-p",
   "RestrictSUIDSGID=yes",
+  "-p",
+  "ProtectControlGroups=yes",
+  "-p",
+  "RestrictAddressFamilies=AF_NETLINK",
 ];
 // The probe that takes systemd-run as the sandbox, as the stand-ins log it, up to the "--" that
 // starts its check: a service confined as a build's is, its one writable directory in a probe
@@ -398,18 +405,24 @@ it("falls back to systemd-run when bubblewrap fails, probing each once", async (
 // A systemd-run stand-in that runs what follows "--" in place of a service, and exits 0 when
 // nothing does: in the host's network and file system, as a user manager that cannot make
 // namespaces runs a service; through bubblewrap with no network but the host's file system
-// writable; or through bubblewrap with no network and only the directory BindPaths names
-// writable, as a confined service. HOME is a fresh directory.
-function standInSystemdRun(service: "host" | "network cut" | "confined"): void {
+// writable; through bubblewrap with no network and only the directory BindPaths names writable,
+// but a unix socket there still reachable, as a user manager that drops the address-family
+// filter; or as that, with the probe's socket out of reach, as a confined service. HOME is a
+// fresh directory.
+function standInSystemdRun(
+  service: "host" | "network cut" | "sockets open" | "confined",
+): void {
   const bin = tmp();
   const file = join(bin, "systemd-run");
   const bwrap = BWRAP_PATH ?? "bwrap";
+  // the probe's socket, named after the file its check must write, covered by a file that is none
+  const noSocket = '--ro-bind /dev/null "$5"';
   const run =
     service === "host"
       ? 'exec "$@"'
       : service === "network cut"
-        ? `exec ${bwrap} --unshare-net --die-with-parent --bind / / --dev /dev -- "$@"`
-        : `exec ${bwrap} --unshare-all --die-with-parent --ro-bind / / --dev /dev --bind "$bound" "$bound" -- "$@"`;
+        ? `exec ${bwrap} --unshare-net --die-with-parent --bind / / --dev /dev ${noSocket} -- "$@"`
+        : `exec ${bwrap} --unshare-all --die-with-parent --ro-bind / / --dev /dev --bind "$bound" "$bound"${service === "confined" ? ` ${noSocket}` : ""} -- "$@"`;
   writeFileSync(
     file,
     [
@@ -575,6 +588,28 @@ it("says systemd-run cannot confine a service's file system when its service wri
     ],
   ]);
   // nothing of the probe is left in the home directory
+  expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
+});
+
+// A read-only file system still lets a unix socket in it be reached, so the probe listens on one
+// in the service's bound directory, which the service must not reach.
+it("says systemd-run cannot confine a service's file system when its service reaches a unix socket on this machine", async (ctx) => {
+  requireInCI(ctx, bwrap);
+  standInSystemdRun("sockets open");
+  const s = await freshSandbox();
+  expect(await s.detectSandbox("linux")).toBeNull();
+  expect(
+    (await s.sandboxProblems("linux")).map((p) => [
+      p.line,
+      s.evidenceLine(p.evidence),
+    ]),
+  ).toEqual([
+    ["bubblewrap is not installed", "bwrap: could not start: ENOENT"],
+    [
+      "systemd-run cannot confine a service's file system",
+      "systemd-run: exit code 12: reaches a unix socket on this machine",
+    ],
+  ]);
   expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
 });
 
@@ -857,6 +892,51 @@ it("runs systemd-run's service with no core dumps", (ctx) => {
   expect(r.status).toBe(0);
   expect(r.out.trim()).toBe("0 0");
 });
+
+// A unix socket is reached through a read-only file system too, as one under /run is, and the
+// service's own control group would let it lift its memory cap. The socket listens in the
+// engines directory, which the service sees read-only, and this process counts what reached it.
+it("keeps a systemd-run service from every unix socket on this machine, and from its own memory cap", async (ctx) => {
+  requireInCI(ctx, confiningManager);
+  const { p } = liveLayout();
+  const socket = join(p.enginesDir, "socket");
+  let reached = 0;
+  const server = createServer((c) => {
+    reached += 1;
+    c.destroy();
+  });
+  await new Promise<void>((done) => server.listen(socket, done));
+  try {
+    // the control: the socket listens, and this process reaches it
+    await new Promise<void>((done, fail) =>
+      createConnection(socket, () => done()).once("error", fail),
+    );
+    while (reached === 0) await new Promise((r) => setTimeout(r, 10));
+    const script = `
+const fs = require("node:fs");
+const cgroup = fs.readFileSync("/proc/self/cgroup", "utf8").trim().split("::")[1];
+let cap;
+try { fs.writeFileSync("/sys/fs/cgroup" + cgroup + "/memory.max", "max"); cap = "lifted"; } catch (e) { cap = e.code; }
+const s = require("node:net").connect(${JSON.stringify(socket)});
+s.on("connect", () => { console.log(JSON.stringify({ cap, socket: "reached" })); process.exit(0); });
+s.on("error", (e) => console.log(JSON.stringify({ cap, socket: e.code })));`;
+    const argv = systemdRunArgv(p, [process.execPath, "-e", script]);
+    const out = await new Promise<string>((done) => {
+      const child = spawn(argv[0] ?? "", argv.slice(1), {
+        stdio: ["ignore", "pipe", "inherit"],
+      });
+      let text = "";
+      child.stdout.on("data", (chunk: Buffer) => {
+        text += chunk.toString("utf8");
+      });
+      child.once("close", () => done(text));
+    });
+    expect(JSON.parse(out)).toEqual({ cap: "EROFS", socket: "EAFNOSUPPORT" });
+    expect(reached).toBe(1);
+  } finally {
+    await new Promise((done) => server.close(done));
+  }
+}, 60_000);
 
 // A process that starts a child which fills 400 MiB, then says how the child ended.
 const FILLS_PAST_THE_CAP = `

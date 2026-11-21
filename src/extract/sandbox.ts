@@ -1,6 +1,7 @@
 // The extraction sandbox. On Linux, extract re-runs itself inside bubblewrap or, where
 // bubblewrap does not work, inside a systemd-run --user service given bubblewrap's file system
-// and shown, from inside, to have no network and to write nothing but its work directory.
+// and shown, from inside, to have no network, to reach no unix socket and to write nothing but
+// its work directory.
 // detectSandbox finds which works, once per process; the argv builders write each command. Every
 // path in a command is absolute: the user manager's PATH may lack the running Node, and
 // systemd-run -p takes no %h. Neither sandbox lets an engine dump core, and where this systemd
@@ -8,6 +9,7 @@
 // the build goes on without it. Each probe keeps its evidence, and a failed one names its repair.
 import { spawn } from "node:child_process";
 import { lstatSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer, type Server } from "node:net";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { cleanReason } from "../redact/index.js";
@@ -49,26 +51,34 @@ const SYSTEMD_RUN_PROBE = [
   "true",
 ];
 // The check the confinement probe runs inside its service: no network interface but loopback
-// (else exit NETWORK_SEEN), the file named first written (else exit 11), then each other file
-// named written where it can be, which the probe then looks for on this machine.
+// (else exit NETWORK_SEEN), the file named first written (else exit 11), each file named after
+// the socket written where it can be, which the probe then looks for on this machine, and the
+// unix socket named second out of reach (else exit 12).
 const NETWORK_SEEN = 10;
 const CONFINED_CHECK = [
   'const fs = require("node:fs");',
+  "const [inside, socket, ...elsewhere] = process.argv.slice(1);",
   'if (!Object.keys(require("node:os").networkInterfaces()).every((n) => n === "lo")) {',
   '  console.error("sees a network interface besides loopback");',
   `  process.exit(${NETWORK_SEEN});`,
   "}",
   "try {",
-  '  fs.writeFileSync(process.argv[1], "");',
+  '  fs.writeFileSync(inside, "");',
   "} catch (e) {",
   '  console.error("cannot write its bound directory: " + e.code);',
   "  process.exit(11);",
   "}",
-  "for (const path of process.argv.slice(2)) {",
+  "for (const path of elsewhere) {",
   "  try {",
   '    fs.writeFileSync(path, "");',
   "  } catch {}",
   "}",
+  'const reached = require("node:net").connect(socket);',
+  'reached.on("connect", () => {',
+  '  console.error("reaches a unix socket on this machine");',
+  "  process.exit(12);",
+  "});",
+  'reached.on("error", () => {});',
 ].join("\n");
 // Whether this systemd takes OOMPolicy=continue: scopes took it only in later versions than
 // services did, and an older systemd-run refuses a property it does not know.
@@ -160,12 +170,14 @@ export async function confinementProbe(): Promise<{
 
 // The confinement probe: a service with systemd-run's sandbox properties, whose one writable
 // path is a directory in a probe directory of the home directory. Inside, it must see no network
-// interface but loopback, and write its bound directory; on this machine, only its file there may
-// have landed, not the one it writes beside that directory, nor the one in /dev/shm. A user
-// manager that cannot make the namespaces these need (unprivileged user namespaces refused) may
-// still run the service, in the host's network and file system, and exit 0, so neither
-// systemd-run's exit code nor the service's own view proves anything alone. The probe directory
-// and the /dev/shm file are removed after.
+// interface but loopback, write its bound directory, and not reach the unix socket this process
+// listens on there, as a read-only file system would let it reach one under /run; on this
+// machine, only its file there may have landed, not the one it writes beside that directory, nor
+// the one in /dev/shm, and nothing may have reached the socket. A user manager that cannot make
+// the namespaces these need (unprivileged user namespaces refused) may still run the service, in
+// the host's network and file system, and exit 0, so neither systemd-run's exit code nor the
+// service's own view proves anything alone. The probe directory and the /dev/shm file are
+// removed after.
 async function confinedService(): Promise<Probe> {
   const failed = (errno: string | null, excerpt: string): Probe => ({
     ok: false,
@@ -187,10 +199,20 @@ async function confinedService(): Promise<Probe> {
   }
   const bound = join(root, "work");
   const inside = join(bound, "inside");
+  const socket = join(bound, "socket");
   const beside = join(root, "beside");
   const shm = join("/dev/shm", basename(root));
+  let listening: { server: Server; reached: () => number } | undefined;
   try {
     mkdirSync(bound);
+    try {
+      listening = await listenAt(socket);
+    } catch (error) {
+      return failed(
+        (error as NodeJS.ErrnoException).code ?? "unknown error",
+        "cannot listen on a probe socket in the home directory",
+      );
+    }
     let argv: string[];
     try {
       argv = [
@@ -209,6 +231,7 @@ async function confinedService(): Promise<Probe> {
         "-e",
         CONFINED_CHECK,
         inside,
+        socket,
         beside,
         shm,
       ];
@@ -231,11 +254,37 @@ async function confinedService(): Promise<Probe> {
         excerpt: "it wrote outside its bound directory",
       };
     }
+    if (listening.reached() > 0) {
+      return {
+        ...probed,
+        ok: false,
+        excerpt: "it reached a unix socket on this machine",
+      };
+    }
     return probed;
   } finally {
+    if (listening !== undefined) {
+      const { server } = listening;
+      await new Promise((done) => server.close(done));
+    }
     rmSync(root, { recursive: true, force: true });
     rmSync(shm, { force: true });
   }
+}
+
+// A unix socket listening at path, and how many connections have reached it.
+function listenAt(
+  path: string,
+): Promise<{ server: Server; reached: () => number }> {
+  let reached = 0;
+  const server = createServer((connection) => {
+    reached += 1;
+    connection.destroy();
+  });
+  return new Promise((done, fail) => {
+    server.once("error", fail);
+    server.listen(path, () => done({ server, reached: () => reached }));
+  });
 }
 
 // Whether anything is at path, a link included, which is not followed.
@@ -476,8 +525,12 @@ export function systemdRunArgv(
 // What gives a systemd-run service bubblewrap's file system and no network, where the user
 // manager can apply it: every directory read-only, the home directories, /tmp and /dev private
 // and empty but for what is bound, /dev/shm private too (a private /dev keeps the host's), no new
-// privileges and no set-user-ID or set-group-ID files; then the read-only binds, and the one
-// writable bind. Each pair is the field a path comes from, which a refusal names, and the path.
+// privileges and no set-user-ID or set-group-ID files; the control groups read-only, since the
+// service's own would let it lift its memory cap, and the user's other services' would let it
+// stop them; and no socket but a netlink one, which lists the network interfaces, since a unix
+// socket the read-only file system shows, such as one under /run, can still be reached. Then
+// the read-only binds, and the one writable bind. Each pair is the field a path comes from, which
+// a refusal names, and the path.
 function confinement(
   readOnly: ReadonlyArray<readonly [string, string]>,
   writable: readonly [string, string],
@@ -499,6 +552,10 @@ function confinement(
     "NoNewPrivileges=yes",
     "-p",
     "RestrictSUIDSGID=yes",
+    "-p",
+    "ProtectControlGroups=yes",
+    "-p",
+    "RestrictAddressFamilies=AF_NETLINK",
     ...readOnly.flatMap(([field, path]) => [
       "-p",
       `BindReadOnlyPaths=${quoted(field, path)}`,
