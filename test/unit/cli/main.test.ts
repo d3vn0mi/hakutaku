@@ -89,6 +89,50 @@ it("prints the usage and one line per registered command on stdout for --help", 
   expect(c.err).toEqual([]);
 });
 
+it("aligns the summaries of --help in one column", async () => {
+  const c = capture();
+  const commands: Command[] = [
+    {
+      name: "telescope",
+      summary: "points the observatory",
+      run: async () => 0,
+    },
+    { name: "map", summary: "charts the sky", run: async () => 0 },
+  ];
+  const list = COMMANDS as Command[];
+  const real = list.splice(0, list.length, ...commands);
+  try {
+    expect(await main(["--help"], c.io)).toBe(0);
+  } finally {
+    list.splice(0, list.length, ...real);
+  }
+  expect(c.out.join("")).toBe(
+    [
+      "usage: hakutaku <command> [options]",
+      "  telescope  points the observatory",
+      "  map        charts the sky",
+      "",
+    ].join("\n"),
+  );
+});
+
+it("registers the commands in their fixed order, each summary in lower case", () => {
+  expect(COMMANDS.map((c) => c.name)).toEqual([
+    "map",
+    "mcp",
+    "query",
+    "list",
+    "profile",
+    "engines",
+    "export",
+    "extract",
+    "doctor",
+  ]);
+  for (const command of COMMANDS) {
+    expect(command.summary, command.name).toMatch(/^[a-z]/);
+  }
+});
+
 it("runs a registered command with the arguments after its name and returns its code", async () => {
   const c = capture();
   const seen: string[][] = [];

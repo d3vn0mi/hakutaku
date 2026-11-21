@@ -81,6 +81,6 @@ const detailOf = (err: unknown): string =>
 
 export const queryCommand: Command = {
   name: "query",
-  summary: "Any tool, from a shell. The JSON is the same as over MCP",
+  summary: "any tool, from a shell, with the same JSON as over MCP",
   run,
 };

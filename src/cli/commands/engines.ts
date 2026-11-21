@@ -11,6 +11,7 @@ import {
   verifyEngines,
 } from "../../engines/index.js";
 import { confirm } from "../prompt.js";
+import { formatTable } from "../table.js";
 import type { CliIO, Command } from "./index.js";
 
 // The first-run question, asked before anything is fetched.
@@ -60,6 +61,18 @@ async function install(
     io.stderr(`the engines are already installed in ${dir}\n`);
     return 0;
   }
+  return askToInstall(io, dir, deep, yes);
+}
+
+// Installs the engines into dir once the person agrees: --yes agrees for scripts, a terminal is
+// asked the question, and anything else is told to re-run with --yes. 0 once installed, 1 when
+// not agreed. hakutaku map calls it too, when the engines it needs are missing.
+export async function askToInstall(
+  io: CliIO,
+  dir: string,
+  deep: boolean,
+  yes: boolean,
+): Promise<number> {
   if (!yes) {
     if (!io.isTTY) {
       io.stderr(`${ENGINES_QUESTION}\nre-run with --yes\n`);
@@ -81,10 +94,9 @@ async function install(
   return 0;
 }
 
-// engine, version, min detail and installed, each column as wide as its widest cell and two
-// spaces apart, with nothing after the last.
+// engine, version, min detail and installed, as a table.
 function table(dir: string): string {
-  const rows = [
+  return formatTable([
     ["engine", "version", "min detail", "installed"],
     ...listEngines(dir).map((r) => [
       r.engine,
@@ -92,21 +104,7 @@ function table(dir: string): string {
       r.minDetail,
       r.installed ? "yes" : "no",
     ]),
-  ];
-  const widths =
-    rows[0]?.map((_, i) =>
-      Math.max(...rows.map((row) => (row[i] ?? "").length)),
-    ) ?? [];
-  return rows
-    .map((row) =>
-      row
-        .map((cell, i) =>
-          i === row.length - 1 ? cell : cell.padEnd(widths[i] ?? 0),
-        )
-        .join("  "),
-    )
-    .map((line) => `${line}\n`)
-    .join("");
+  ]);
 }
 
 async function run(argv: string[], io: CliIO): Promise<number> {

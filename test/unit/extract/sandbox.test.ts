@@ -593,9 +593,51 @@ it("finds no problem where bubblewrap and systemd-run both work, and none off Li
   const log = fakeTools({ bwrap: 0, "systemd-run": 0 });
   const s = await freshSandbox();
   expect(await s.sandboxProblems("linux")).toEqual([]);
-  // the network check matters only where bubblewrap does not work
-  expect(logged(log)).toEqual([BWRAP_PROBE, SYSTEMD_RUN_PROBE]);
+  // the network check matters only where bubblewrap does not work, and the scope that caps
+  // bubblewrap only where it does
+  expect(logged(log)).toEqual([BWRAP_PROBE, SYSTEMD_RUN_PROBE, SCOPE_PROBE]);
   expect(await s.sandboxProblems("darwin")).toEqual([]);
+});
+
+// A user manager may start a service and still refuse a scope: bubblewrap is still the sandbox,
+// but nothing caps its memory, and the problem names why.
+it("names the scope's repair where systemd-run starts a service but no scope", async () => {
+  const log = fakeTools({ bwrap: 0, "systemd-run": 0 }, { noScope: true });
+  const s = await freshSandbox();
+  expect(s.SANDBOX_REPAIRS.noScope).toBe("systemd-run cannot start a scope");
+  expect(
+    (await s.sandboxProblems("linux")).map((p) => [
+      p.line,
+      s.evidenceLine(p.evidence),
+    ]),
+  ).toEqual([
+    [
+      "systemd-run cannot start a scope",
+      "systemd-run: exit code 1: Failed to start transient scope unit: Access denied",
+    ],
+  ]);
+  expect(logged(log)).toEqual([BWRAP_PROBE, SYSTEMD_RUN_PROBE, SCOPE_PROBE]);
+  expect(await s.detectSandbox("linux")).toBe("bubblewrap");
+  // where no user manager answers at all, that one problem is named, not the scope's too
+  fakeTools({ bwrap: 0, "systemd-run": 1 }, { noScope: true });
+  const none = await freshSandbox();
+  expect((await none.sandboxProblems("linux")).map((p) => p.line)).toEqual([
+    "no user manager can be reached",
+  ]);
+});
+
+it("words the absence of a sandbox from the problems alone, as --sandbox require refuses", async () => {
+  fakeTools({ "systemd-run": 1 });
+  const s = await freshSandbox();
+  const problems = await s.sandboxProblems("linux");
+  expect(s.noSandboxText("linux", problems)).toBe(
+    await s.noSandboxReason("linux"),
+  );
+  expect(s.noSandboxText("linux", problems)).toBe(
+    "no sandbox: bubblewrap is not installed; no user manager can be reached",
+  );
+  expect(s.noSandboxText("linux", [])).toBe("no sandbox");
+  expect(s.noSandboxText("darwin", problems)).toBe("no sandbox on darwin");
 });
 
 it("says systemd-run cannot cut the network when its service runs in the host's network", async (ctx) => {

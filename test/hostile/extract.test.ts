@@ -16,7 +16,10 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { PassThrough } from "node:stream";
 import { afterAll, expect, it, vi } from "vitest";
+import type { CliIO } from "../../src/cli/commands/index.js";
+import { main } from "../../src/cli/main.js";
 import {
   defaultEnginesDir,
   readLock,
@@ -434,6 +437,25 @@ const FAILING_AST_GREP = [
   "",
 ].join("\n");
 
+// What one hakutaku command prints on stdout; it must exit 0 and print nothing on stderr.
+async function cli(argv: string[]): Promise<string> {
+  const c = { out: "", err: "" };
+  const io: CliIO = {
+    stdout: (s) => {
+      c.out += s;
+    },
+    stderr: (s) => {
+      c.err += s;
+    },
+    stdin: new PassThrough(),
+    env: process.env,
+    isTTY: false,
+  };
+  expect(await main(argv, io)).toBe(0);
+  expect(c.err).toBe("");
+  return c.out;
+}
+
 // No directory of this machine: not the temporary directory the fixtures, the export and the
 // store are made in, not the home directory, and not Node's.
 function expectNoHostPath(text: string): void {
@@ -548,10 +570,30 @@ it(
         ok: true,
         answer: { lastAttempt: { result: "failed", reason } },
       });
+      // and what a person gets from hakutaku list: its row, and its JSON
+      const listed = await cli(["list"]);
+      const listedJson = await cli(["list", "--json"]);
+      expect(JSON.parse(listedJson)).toEqual([
+        {
+          id,
+          ref: "main",
+          builtCommit: null,
+          headCommit: expect.stringMatching(/^[0-9a-f]{12}$/),
+          stale: true,
+          staleReason: `the last build failed: ${reason}`,
+          detail: "quick",
+          builtAt: null,
+        },
+      ]);
+      expect(listed).toContain(
+        `yes: the last build failed: ${reason?.replaceAll("\n", "; ")}`,
+      );
       for (const text of [
         readFileSync(join(dirname(out), "attempt.json"), "utf8"),
         JSON.stringify(repos),
         JSON.stringify(refresh),
+        listed,
+        listedJson,
       ]) {
         expect(text).not.toContain(token);
         expectNoHostPath(text);

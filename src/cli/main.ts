@@ -5,11 +5,13 @@ import { fileURLToPath } from "node:url";
 import { HAKUTAKU_VERSION } from "../version.js";
 import { type CliIO, COMMANDS } from "./commands/index.js";
 
-// The usage line, then one "  <name>  <summary>" line per command.
+// The usage line, then one line per command: its name, then its summary, every summary starting
+// in one column.
 function usage(): string {
+  const width = Math.max(0, ...COMMANDS.map((c) => c.name.length));
   const lines = [
     "usage: hakutaku <command> [options]",
-    ...COMMANDS.map((c) => `  ${c.name}  ${c.summary}`),
+    ...COMMANDS.map((c) => `  ${c.name.padEnd(width)}  ${c.summary}`),
   ];
   return `${lines.join("\n")}\n`;
 }

@@ -69,7 +69,7 @@ it("is registered as mcp, before query", () => {
   const names = COMMANDS.map((command) => command.name);
   expect(names.indexOf("mcp")).toBe(names.indexOf("query") - 1);
   expect(COMMANDS.find((command) => command.name === "mcp")?.summary).toBe(
-    "The MCP server over stdio, serving exactly the repos named",
+    "the MCP server over stdio, serving exactly the repos named",
   );
 });
 

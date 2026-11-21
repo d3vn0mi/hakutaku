@@ -75,6 +75,6 @@ async function run(argv: string[], io: CliIO): Promise<number> {
 
 export const mcpCommand: Command = {
   name: "mcp",
-  summary: "The MCP server over stdio, serving exactly the repos named",
+  summary: "the MCP server over stdio, serving exactly the repos named",
   run,
 };

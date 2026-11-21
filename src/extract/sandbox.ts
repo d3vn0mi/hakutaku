@@ -189,6 +189,7 @@ export const SANDBOX_REPAIRS = {
   noUserManager: "no user manager can be reached",
   noNetworkCut: "systemd-run cannot cut the network",
   noConfinement: "systemd-run cannot confine a service's file system",
+  noScope: "systemd-run cannot start a scope",
 } as const;
 
 export type SandboxRepair =
@@ -420,10 +421,11 @@ export async function detectSandbox(
 // What keeps this machine's sandbox from its strongest form, each problem with the line that
 // names its repair and the evidence of the probe that found it: bubblewrap not installed, or
 // refused the user namespaces it needs; systemd-run unable to reach a user manager, which also
-// leaves bubblewrap without a memory cap; and, where bubblewrap does not work, a systemd-run
-// service that still sees the host's network, or that reaches a unix socket, writes outside its
-// bound directory, reads outside it or can write its own control group. None off Linux, where
-// nothing is probed.
+// leaves bubblewrap without a memory cap; where bubblewrap works, a user manager that starts a
+// service but refuses the scope that caps bubblewrap's memory; and, where bubblewrap does not
+// work, a systemd-run service that still sees the host's network, or that reaches a unix socket,
+// writes outside its bound directory, reads outside it or can write its own control group. None
+// off Linux, where nothing is probed.
 export async function sandboxProblems(
   platform: NodeJS.Platform = process.platform,
 ): Promise<SandboxProblem[]> {
@@ -456,6 +458,14 @@ export async function sandboxProblems(
         evidence: evidenceOf(isolation),
       });
     }
+  } else {
+    const scope = await scopeProbe();
+    if (!scope.ok) {
+      problems.push({
+        line: SANDBOX_REPAIRS.noScope,
+        evidence: evidenceOf(scope),
+      });
+    }
   }
   return problems;
 }
@@ -478,8 +488,16 @@ export function evidenceLine(e: ProbeEvidence): string {
 export async function noSandboxReason(
   platform: NodeJS.Platform = process.platform,
 ): Promise<string> {
+  return noSandboxText(platform, await sandboxProblems(platform));
+}
+
+// noSandboxReason's words for problems already found, so that hakutaku doctor says no sandbox
+// in the words --sandbox require refuses with.
+export function noSandboxText(
+  platform: NodeJS.Platform,
+  problems: readonly SandboxProblem[],
+): string {
   if (platform !== "linux") return `no sandbox on ${platform}`;
-  const problems = await sandboxProblems(platform);
   return problems.length === 0
     ? "no sandbox"
     : `no sandbox: ${problems.map((p) => p.line).join("; ")}`;

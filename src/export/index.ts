@@ -270,7 +270,7 @@ const writeJson = (file: string, value: unknown): void => {
 // A checkout's top level holds .git: a file naming its git directory (git follows it, or
 // stops), or a git directory. A bare repo is a git directory. A git directory holds HEAD,
 // objects/ and refs/, as git checks before it takes one; without them git walks on up.
-function isRepoTop(repo: string): boolean {
+export function isRepoTop(repo: string): boolean {
   const dotGit = join(repo, ".git");
   const kind = kindOf(dotGit);
   if (kind === "file") return true;

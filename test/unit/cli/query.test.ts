@@ -42,7 +42,7 @@ it("is registered as query, right after mcp and before engines", () => {
   expect(names.indexOf("query")).toBe(names.indexOf("mcp") + 1);
   expect(names.indexOf("query")).toBeLessThan(names.indexOf("engines"));
   expect(COMMANDS.find((command) => command.name === "query")?.summary).toBe(
-    "Any tool, from a shell. The JSON is the same as over MCP",
+    "any tool, from a shell, with the same JSON as over MCP",
   );
 });
 
