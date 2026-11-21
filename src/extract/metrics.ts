@@ -4,8 +4,10 @@
 //
 // Production means kind code. Every window is anchored at the built commit's committer time t
 // and is open at its start: (t - window, t]. A commit touches the paths its files list, which
-// hold its deleted paths and a rename's new path.
+// hold its deleted paths and a rename's new path. The history lists every path git reports, so
+// only the store's own files are counted, and no rename naming a denied or refused path is kept.
 import type { History } from "../export/index.js";
+import { refuseReason } from "../export/paths.js";
 import {
   closingChain,
   comparePaths,
@@ -18,6 +20,7 @@ import {
   rankOrder,
   tarjan,
 } from "../model/index.js";
+import { isDenied } from "../redact/index.js";
 import type {
   CochangeRow,
   Coverage,
@@ -46,11 +49,13 @@ const COCHANGE_MAX_FILES = 30;
 const COCHANGE_MIN_SHARED = 2;
 const COCHANGE_TOP = 8;
 
-/** What the test-mention rule reads beyond the merged rows: how the build's engines ended,
- *  and ast-grep's import statements with the names each one binds. */
-export interface MentionInput {
+/** What the metrics read beyond the merged rows and the history: how the build's engines
+ *  ended and ast-grep's import statements, with the names each one binds, for the test-mention
+ *  rule; and the profile's denylist globs beyond the built-in ones, for the renames. */
+export interface MetricsInput {
   tiers: Coverage["tiers"];
   imports: readonly Pick<ImportFact, "file" | "names">[];
+  denylistExtra?: readonly string[];
 }
 
 export interface Metrics {
@@ -64,17 +69,17 @@ export interface Metrics {
   cycleDifferences: number;
 }
 
-const NO_MENTIONS: MentionInput = { tiers: {}, imports: [] };
+const NOTHING_MORE: MetricsInput = { tiers: {}, imports: [] };
 
 /** The metrics of a build. `depcruiseCircular` holds the files dependency-cruiser reports in a
- *  cycle, or null when it did not run; `mentions` defaults to no compiler tier and no imported
- *  names. */
+ *  cycle, or null when it did not run; `build` defaults to no compiler tier, no imported names
+ *  and no denylist globs beyond the built-in ones. */
 export function computeMetrics(
   content: MergedContent,
   history: History,
   commitTime: number,
   depcruiseCircular: ReadonlySet<string> | null,
-  mentions: MentionInput = NO_MENTIONS,
+  build: MetricsInput = NOTHING_MORE,
 ): Metrics {
   // the files table is in path order, so each node list is too, and ties go by path
   const onMap = content.files.filter((f) => isOnMap(f.kind));
@@ -119,11 +124,11 @@ export function computeMetrics(
 
   return {
     file_metrics,
-    def_metrics: defMetrics(content, mentions),
+    def_metrics: defMetrics(content, build),
     cochange: cochangeOf(history, commitTime, onMap),
     cycles: cycleRows(sets, runtime, lineOf, production),
     timeline: timelineOf(history, commitTime),
-    renames: renamesOf(history, commitTime),
+    renames: renamesOf(history, commitTime, build.denylistExtra ?? []),
     cycleDifferences:
       depcruiseCircular === null
         ? 0
@@ -313,7 +318,7 @@ function differencesOf(
 // a bound target or a reference. A test or test-support file with any of these mentions it.
 function defMetrics(
   content: MergedContent,
-  mentions: MentionInput,
+  build: MetricsInput,
 ): DefMetricRow[] {
   const files = new Map(content.files.map((f) => [f.id, f]));
   const fileOf = (id: number): FileRow => {
@@ -341,7 +346,7 @@ function defMetrics(
     use(fileId, target.def_id, target.label === "bound");
   }
   for (const ref of content.refs) use(ref.file_id, ref.def_id, true);
-  mentionByName(content, fileOf, mentions, mentioned);
+  mentionByName(content, fileOf, build, mentioned);
 
   return content.definitions
     .filter((d) => d.kind !== "module")
@@ -362,10 +367,10 @@ function defMetrics(
 function mentionByName(
   content: MergedContent,
   fileOf: (id: number) => FileRow,
-  mentions: MentionInput,
+  build: MetricsInput,
   mentioned: Set<number>,
 ): void {
-  const { tiers } = mentions;
+  const { tiers } = build;
   const compiled = (lang: Lang | null): boolean =>
     lang === "typescript" || lang === "javascript"
       ? tiers["scip-typescript"] === "ran"
@@ -381,7 +386,7 @@ function mentionByName(
       addTo(names, site.file_id, site.callee_name);
     }
   }
-  for (const fact of mentions.imports) {
+  for (const fact of build.imports) {
     const id = testSide.get(fact.file);
     if (id === undefined) continue;
     for (const name of fact.names) addTo(names, id, name);
@@ -474,12 +479,20 @@ function timelineOf(history: History, t: number): TimelineRow[] {
 }
 
 // The renames of the commits in (t - 180 days, t], in (old path, new path, commit) order, each
-// once.
-function renamesOf(history: History, t: number): RenameRow[] {
+// once. A rename is left out when either path is one export refuses or the denylist denies; a
+// path the tree lacks is kept, so that a chain of renames still leads to a stored file.
+function renamesOf(
+  history: History,
+  t: number,
+  denylistExtra: readonly string[],
+): RenameRow[] {
+  const kept = (path: string): boolean =>
+    refuseReason(path) === null && !isDenied(path, denylistExtra);
   const found: RenameRow[] = [];
   for (const commit of history.commits) {
     if (!inWindow(commit.time, t, COCHANGE_SECONDS)) continue;
     for (const { from, to } of commit.renames) {
+      if (!kept(from) || !kept(to)) continue;
       found.push({ old_path: from, new_path: to, commit_sha: commit.sha });
     }
   }

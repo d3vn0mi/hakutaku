@@ -717,6 +717,49 @@ it("counts co-change and renames inside (t - 180 days, t] only, each rename once
   expect(computeMetrics(content, twice, T, null).renames).toEqual(renames);
 });
 
+it("keeps no rename that names a denied or refused path, and keeps chains through paths the tree lacks", () => {
+  // export leaves denied and refused paths out of the tree, but the history lists them
+  const control = `web/a${String.fromCharCode(1)}b.ts`;
+  const h = commits(
+    [
+      T,
+      [A, "config/local.env", "private/x.md", B, "web/a1.ts"],
+      [
+        [".env.local", "config/local.env"],
+        ["notes/x.md", "private/x.md"],
+        [control, B],
+        ["web/a0.ts", "web/a1.ts"],
+      ],
+    ],
+    [
+      T - DAY,
+      [A, "web/db.ts", "web/c.ts"],
+      [
+        ["secrets/db.txt", "web/db.ts"],
+        ["web/a1.ts", A],
+        ["../outside.ts", "web/c.ts"],
+      ],
+    ],
+  );
+  const chain = [
+    { old_path: "web/a0.ts", new_path: "web/a1.ts", commit_sha: sha(1) },
+    { old_path: "web/a1.ts", new_path: A, commit_sha: sha(2) },
+  ];
+  // the profile's extra glob denies private/x.md
+  expect(
+    computeMetrics(content, h, T, null, {
+      tiers: {},
+      imports: [],
+      denylistExtra: ["private/**"],
+    }).renames,
+  ).toEqual(chain);
+  // the built-in denylist and the refused paths apply without one
+  expect(computeMetrics(content, h, T, null).renames).toEqual([
+    { old_path: "notes/x.md", new_path: "private/x.md", commit_sha: sha(1) },
+    ...chain,
+  ]);
+});
+
 it("writes 26 timeline rows with their bucket edges", () => {
   const m = computeMetrics(
     content,
@@ -957,11 +1000,10 @@ it("mentions a definition from a test by name and import when no compiler ran", 
     "web/units.ts#toRadians",
   ];
   const mentioned = (given?: Parameters<typeof computeMetrics>[4]) =>
-    computeMetrics(s.content, commits(), T, null, given).def_metrics.map(
-      (r) => [r.def_id, r.mentioned_by_tests],
-    );
+    computeMetrics(s.content, commits(), T, null, given).def_metrics;
+  // no site has a target, so no definition has a user
   const expected = (...flags: Array<0 | 1>) =>
-    named.map((name, k) => [s.def(name), flags[k]]);
+    named.map((name, k) => defRow(s.def(name), 0, 0, flags[k] ?? 0));
   expect(mentioned({ tiers: {}, imports })).toEqual(
     expected(1, 0, 1, 0, 1, 0, 1, 1, 1, 0),
   );
@@ -996,20 +1038,36 @@ it("sets last_change to the newest touching commit's time, and null when no comm
     [T - 100, [A]],
     [T - 10_000_000, ["web/d.test.ts"]],
   );
+  // no import: each production file ranks 1/3, by path; a and b carry half of it
   const expected = [
-    [s.file(A), T - 50],
-    [s.file(B), T - 50],
-    [s.file("web/c.ts"), null],
-    [s.file("web/d.test.ts"), T - 10_000_000],
+    fileRow(s.file(A), {
+      pagerank: expect.closeTo(1 / 3, 9),
+      dependents_rank: 1,
+      churn_90d: 2,
+      hotspot: 1,
+      core: 1,
+      last_change: T - 50,
+    }),
+    fileRow(s.file(B), {
+      pagerank: expect.closeTo(1 / 3, 9),
+      dependents_rank: 2,
+      churn_90d: 1,
+      hotspot: 0.71,
+      core: 1,
+      last_change: T - 50,
+    }),
+    fileRow(s.file("web/c.ts"), {
+      pagerank: expect.closeTo(1 / 3, 9),
+      dependents_rank: 3,
+      hotspot: 0,
+    }),
+    fileRow(s.file("web/d.test.ts"), { last_change: T - 10_000_000 }),
   ];
-  const lastChange = (given: History) =>
-    computeMetrics(s.content, given, T, null).file_metrics.map((r) => [
-      r.file_id,
-      r.last_change,
-    ]);
-  expect(lastChange(h)).toEqual(expected);
+  const fileMetrics = (given: History) =>
+    computeMetrics(s.content, given, T, null).file_metrics;
+  expect(fileMetrics(h)).toEqual(expected);
   // whatever order the history lists its commits in
-  expect(lastChange({ ...h, commits: [...h.commits].reverse() })).toEqual(
+  expect(fileMetrics({ ...h, commits: [...h.commits].reverse() })).toEqual(
     expected,
   );
 });
