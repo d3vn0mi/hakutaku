@@ -4,10 +4,11 @@ Thank you for your interest in hakutaku. This guide covers how to report a probl
 change, and how a change gets merged.
 
 > [!NOTE]
-> **hakutaku is pre-release: in design, with 0.1 in progress.** There is no code in the repository
-> yet, so the most useful contributions today are design feedback, use cases and questions, in
-> [Discussions](https://github.com/d3vn0mi/hakutaku/discussions). The set-up below is **planned for
-> 0.1**. It will be updated when the first code lands.
+> **hakutaku is pre-release, with 0.1 in progress.** Nothing is installable yet: 0.1 is not on npm.
+> The engine, the store, the 13 tools and the MCP server are built and tested in this repository,
+> and the viewer is next. The development set-up below works from a clone today. The most useful
+> contributions are still design feedback, use cases and questions, in
+> [Discussions](https://github.com/d3vn0mi/hakutaku/discussions).
 
 Everyone who takes part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
@@ -22,7 +23,7 @@ Everyone who takes part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 - **Agents first.** A change for people, in the viewer or the CLI, must never change, simplify or
   slow an agent's answer.
 
-## Development set-up (planned for 0.1)
+## Development set-up
 
 **You will need:**
 
@@ -42,7 +43,8 @@ git clone https://github.com/d3vn0mi/hakutaku.git
 cd hakutaku
 npm ci            # the lockfile is committed; always install with npm ci
 npm test          # the unit tests
-npm run ci:local  # the build, typecheck, Biome, unit and oracle tests, secret scan and tree check
+npm run ci:local  # the build, typecheck and Biome, then the unit, oracle, golden, hostile and MCP
+                  # tests, the secret scan and the tree check
 ```
 
 The analysis engines are not npm dependencies. They are pinned, with integrity hashes, in
@@ -65,7 +67,7 @@ plus a macOS smoke test:
 5. a determinism check: the three Node versions must build the sample to one content hash;
 6. the hostile-repository fixtures, first with no sandbox, since the no-execution controls must hold
    without one, then inside a working sandbox;
-7. MCP conformance;
+7. MCP conformance, and a latency check on a generated repository of 2,500 files;
 8. the viewer end to end, with Playwright: offline, keyboard only, an accessibility scan, and a
    performance smoke test on a generated large repository;
 9. an allowlist for what `npm pack` may contain;
@@ -73,26 +75,32 @@ plus a macOS smoke test:
 11. a secret scan;
 12. a check for home-directory paths and stray stores.
 
-## The planned layout
+## The layout
 
 ```text
 src/
-  cli/ export/ extract/ store/ model/ manifests/ profile/ redact/ query/ tools/ mcp/ viewer/
+  cli/ engines/ export/ extract/ store/ model/ manifests/ profile/ redact/ registry/ query/
+  tools/ mcp/          and viewer/, which is planned
 python/                the grimp driver
+ast-grep/              hakutaku's own ast-grep rules, one file per language
+scripts/               the maintainer's script that writes engines.lock.json
 fixtures/
   observatory/         the synthetic sample: the script that builds it, and its oracle
   hostile/             repositories that try to run code, leak secrets or inject markup
   scale/               a generator for a large synthetic repository
-test/                  unit tests, golden answers, MCP conformance, viewer end to end
-docs/                  design, tools, viewer and security notes
+test/                  unit, oracle, golden, hostile and MCP tests, and the repository checks;
+                       the viewer's end-to-end tests are planned
+docs/                  the tools reference; design, viewer and security notes are planned
 ```
 
 ## Tests come with changes
 
 - **Test first.** Write the failing test, watch it fail, then make it pass.
-- **Golden answers.** `fixtures/observatory/oracle.json` holds the expected answers for the synthetic
-  sample, written by hand. If your change alters an answer, update the golden file in the same pull
-  request, and say why in its description.
+- **Golden answers**, in two layers. `fixtures/observatory/oracle.json` holds the facts, written by
+  hand from the synthetic sample's source, that the sample's store and the tools are checked
+  against. `test/golden/<tool>/<name>.json` holds every tool's exact answers to a fixed set of calls
+  on the sample, written by `npm run golden:update` and compared byte for byte. If your change moves
+  an answer, regenerate the golden files, read the diff, and say why in the pull request.
 - **The `code_explain` contract is frozen.** Its fields are never renamed, removed or reordered. A
   minor version may add a field at the end, and documents it when it does.
 - **Determinism.** The same inputs must give the same store content, down to the row order. A test
@@ -116,7 +124,6 @@ When you report a bug:
 1. Reproduce it on the sample, and give the exact commands, tool calls and answers.
 2. If the sample cannot show it, write the smallest synthetic repository that does, and attach it or
    paste it inline.
-3. Until the sample lands, a public repository pinned by commit is fine.
 
 **Never paste private code**, private paths or hostnames, secrets, store files (`*.sqlite`), snapshots,
 or screenshots of a private repository. A store is as sensitive as the code it maps.
