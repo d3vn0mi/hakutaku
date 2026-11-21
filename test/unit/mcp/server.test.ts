@@ -139,6 +139,36 @@ describe("the session", () => {
   });
 });
 
+// The most bytes the tools/list result may take as the server writes it, JSON without spaces:
+// its size when this guard was set (11,087 bytes), rounded up to the next 4 KiB. A client reads
+// the whole list into its model's context in every session, so the list must not creep through
+// ever longer descriptions. Raising this number is a reviewed change of its own, made by hand
+// with the reason the surface grew; it is never rewritten along with expected answers.
+const TOOLS_LIST_BUDGET = 12288;
+// The longest any one tool description may be, in characters.
+const DESCRIPTION_MAX = 1200;
+
+describe("the size of the tool surface", () => {
+  it("keeps the tools/list answer within its budget, and every description within 1,200 characters", async () => {
+    const got = await rpc([
+      INIT,
+      { jsonrpc: "2.0", method: "notifications/initialized" },
+      { jsonrpc: "2.0", id: 2, method: "tools/list" },
+    ]);
+    const result = resultOf(got, 2);
+    expect(Buffer.byteLength(JSON.stringify(result))).toBeLessThanOrEqual(
+      TOOLS_LIST_BUDGET,
+    );
+    const tools = result.tools as Array<{ name: string; description: string }>;
+    expect(tools.map((t) => t.name)).toEqual(TOOL_SPECS.map((s) => s.name));
+    expect(
+      tools
+        .filter((t) => t.description.length > DESCRIPTION_MAX)
+        .map((t) => [t.name, t.description.length]),
+    ).toEqual([]);
+  });
+});
+
 describe("tools/call", () => {
   it("answers with runTool's JSON, and errors with isError", async () => {
     const got = await rpc([
