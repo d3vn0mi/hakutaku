@@ -42,16 +42,15 @@ export function markedUntrusted(result: ToolResult): boolean {
   );
 }
 
-// An exception inside runTool, which answers it as internal: the details go to stderr, the
-// host's log, and never into an answer or onto stdout, which carries only the protocol.
-function logInternal(err: unknown): void {
-  const detail =
-    err instanceof Error ? (err.stack ?? err.message) : String(err);
-  process.stderr.write(`hakutaku mcp: internal error: ${detail}\n`);
-}
-
-function callResult(host: Host, name: string, args: unknown) {
-  const result = runTool(host, null, name, args, logInternal);
+// A call's result. An exception inside runTool, which answers it as internal, goes to
+// onInternalError, never into an answer or onto stdout, which carries only the protocol.
+function callResult(
+  host: Host,
+  name: string,
+  args: unknown,
+  onInternalError: (err: unknown) => void,
+) {
+  const result = runTool(host, null, name, args, onInternalError);
   const json = result.ok ? result.answer : { error: result.error };
   const content = [
     { type: "text" as const, text: JSON.stringify(json, null, 2) },
@@ -66,6 +65,9 @@ export async function startMcpServer(opts: {
   host: Host;
   stdin?: NodeJS.ReadableStream;
   stdout?: NodeJS.WritableStream;
+  // Called with each exception inside a tool, whose details are the caller's to log: hakutaku
+  // mcp writes them on stderr, the host's log, each line made safe for a terminal.
+  onInternalError: (err: unknown) => void;
 }): Promise<{ close(): Promise<void> }> {
   const server = new Server(
     { name: "hakutaku", version: HAKUTAKU_VERSION },
@@ -73,7 +75,12 @@ export async function startMcpServer(opts: {
   );
   server.setRequestHandler(ListToolsRequestSchema, () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, (request) =>
-    callResult(opts.host, request.params.name, request.params.arguments),
+    callResult(
+      opts.host,
+      request.params.name,
+      request.params.arguments,
+      opts.onInternalError,
+    ),
   );
   // The transport reads with on, off, listenerCount and pause, and writes with write and once,
   // which every Node stream has, so either kind of stream serves.

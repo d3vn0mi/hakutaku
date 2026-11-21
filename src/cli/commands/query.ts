@@ -6,7 +6,7 @@
 import { parseArgs } from "node:util";
 import { registryHost, UnknownRepoError } from "../../registry/index.js";
 import { runTool } from "../../tools/index.js";
-import { printable, printableLines } from "../table.js";
+import { errorDetail, printable } from "../table.js";
 import type { CliIO, Command } from "./index.js";
 
 const USAGE = "usage: hakutaku query <tool> <id> [--args '<json>']\n";
@@ -49,9 +49,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     return 2;
   }
   const result = runTool(host, null, tool, withRepo(tool, id, given), (err) =>
-    io.stderr(
-      `hakutaku query: internal error: ${printableLines(detailOf(err))}\n`,
-    ),
+    io.stderr(`hakutaku query: internal error: ${errorDetail(err)}\n`),
   );
   if (result.ok) {
     io.stdout(`${JSON.stringify(result.answer, null, 2)}\n`);
@@ -78,9 +76,6 @@ function withRepo(tool: string, id: string, given: unknown): unknown {
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
-
-const detailOf = (err: unknown): string =>
-  err instanceof Error ? (err.stack ?? err.message) : String(err);
 
 export const queryCommand: Command = {
   name: "query",

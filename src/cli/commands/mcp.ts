@@ -8,7 +8,7 @@ import { Writable } from "node:stream";
 import { parseArgs } from "node:util";
 import { startMcpServer } from "../../mcp/index.js";
 import { registryHost, UnknownRepoError } from "../../registry/index.js";
-import { printable } from "../table.js";
+import { errorDetail, printable } from "../table.js";
 import type { CliIO, Command } from "./index.js";
 
 const USAGE = "usage: hakutaku mcp <id>... | --all [--allow-refresh]\n";
@@ -75,7 +75,13 @@ async function run(argv: string[], io: CliIO): Promise<number> {
       callback();
     },
   });
-  const server = await startMcpServer({ host, stdin: io.stdin, stdout });
+  const server = await startMcpServer({
+    host,
+    stdin: io.stdin,
+    stdout,
+    onInternalError: (err) =>
+      io.stderr(`hakutaku mcp: internal error: ${errorDetail(err)}\n`),
+  });
   await ended;
   await server.close();
   return 0;

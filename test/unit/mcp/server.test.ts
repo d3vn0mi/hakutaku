@@ -21,10 +21,12 @@ type Json = Record<string, unknown>;
 const tiny = tinyStore();
 
 // Writes each message to the server as one JSON line, collects every line it writes back until
-// each request has its response, then closes the server.
+// each request has its response, then closes the server. Each internal error goes to
+// onInternalError.
 async function rpc(
   messages: Json[],
   host: Host = fixedHost({ tiny }),
+  onInternalError: (err: unknown) => void = () => {},
 ): Promise<Json[]> {
   const input = new PassThrough();
   const output = new PassThrough();
@@ -35,7 +37,12 @@ async function rpc(
     rest = lines.pop() ?? "";
     for (const line of lines) if (line !== "") got.push(JSON.parse(line));
   });
-  const server = await startMcpServer({ host, stdin: input, stdout: output });
+  const server = await startMcpServer({
+    host,
+    stdin: input,
+    stdout: output,
+    onInternalError,
+  });
   for (const m of messages) input.write(`${JSON.stringify(m)}\n`);
   const requests = messages.filter((m) => "id" in m).length;
   await vi.waitFor(() =>
@@ -121,6 +128,7 @@ describe("the session", () => {
       host: fixedHost({ tiny }),
       stdin: input,
       stdout: output,
+      onInternalError: () => {},
     });
     input.write(`${JSON.stringify(INIT)}\n`);
     input.write(
@@ -246,25 +254,28 @@ describe("tools/call", () => {
     });
   });
 
-  it("logs internal errors to stderr, never stdout", async () => {
+  // hakutaku mcp writes them on its stderr, the host's log
+  it("hands internal errors to its caller, never to stdout or the process's stderr", async () => {
     const err = vi
       .spyOn(process.stderr, "write")
       .mockImplementation(() => true);
     try {
+      const disk = new Error("disk");
       const boom: Host = {
         ...fixedHost({ tiny }),
         open: () => {
-          throw new Error("disk");
+          throw disk;
         },
       };
+      const seen: unknown[] = [];
       const got = await rpc(
         [INIT, call(2, "code_overview", { repo: "tiny" })],
         boom,
+        (e) => seen.push(e),
       );
       expect(got.every((m) => m.jsonrpc === "2.0")).toBe(true);
-      expect(String(err.mock.calls.flat().join(""))).toContain(
-        "hakutaku mcp: internal error: Error: disk",
-      );
+      expect(seen).toEqual([disk]);
+      expect(String(err.mock.calls.flat().join(""))).not.toContain("disk");
       expect(resultOf(got, 2)).toEqual({
         isError: true,
         content: [

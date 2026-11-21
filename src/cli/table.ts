@@ -39,3 +39,11 @@ export function printableLines(text: string): string {
     .map((line) => printable(line))
     .join("\n");
 }
+
+// An exception a tool raised, as hakutaku query and hakutaku mcp print it on stderr: its stack,
+// or else its message, through printableLines(), since either can quote a repository's text.
+export function errorDetail(err: unknown): string {
+  return printableLines(
+    err instanceof Error ? (err.stack ?? err.message) : String(err),
+  );
+}

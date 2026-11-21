@@ -152,6 +152,45 @@ it("mcp names an unknown repo on one line safe for a terminal", async () => {
   expect(c.out).toBe("");
 });
 
+it("mcp writes an internal error's detail on its stderr, with its lines kept, each safe for a terminal", async () => {
+  const actual = await vi.importActual<RegistryModule>(
+    "../../../src/registry/index.js",
+  );
+  registryHost.mockImplementationOnce((opts) => ({
+    ...actual.registryHost(opts),
+    open: () => {
+      throw new Error(`disk ${HOSTILE}\r\nfull`);
+    },
+  }));
+  // what reaches the process's own stderr, around the command's
+  const processStderr = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation(() => true);
+  try {
+    const stdin = new PassThrough();
+    const { c, io } = capture(stdin);
+    const done = main(["mcp", "tiny"], io);
+    stdin.write(line(INIT));
+    stdin.write(line(call(2, "code_overview", { repo: "tiny" })));
+    await vi.waitFor(() => expect(messages(c.out)).toHaveLength(2));
+    stdin.end();
+    expect(await done).toBe(0);
+    const lines = c.err.split("\n");
+    expect(lines.slice(0, 2)).toEqual([
+      `hakutaku mcp: internal error: Error: disk ${HOSTILE_SHOWN}`,
+      "full",
+    ]);
+    // the stack's own lines follow, as they were
+    expect(lines[2]).toMatch(/^ {4}at /);
+    expect(rawLines(c.err)).toEqual([]);
+    expect(processStderr.mock.calls.flat().join("")).not.toContain(
+      "internal error",
+    );
+  } finally {
+    processStderr.mockRestore();
+  }
+});
+
 it("mcp serves until stdin ends and writes only protocol to stdout", async () => {
   const stdin = new PassThrough();
   const { c, io } = capture(stdin);
