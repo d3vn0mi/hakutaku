@@ -1,8 +1,10 @@
 // Engines directories for builds that lose an engine. Each is a fresh directory under the OS temp
 // directory, made of links to the installed engines directory (`hakutaku engines install`), and
-// removed after the last test of the file that made it.
+// removed after the last test of the file that made it; sandboxEnginesDir's is made of real
+// files instead.
 import {
   chmodSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -12,7 +14,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { afterAll } from "vitest";
 import {
   defaultEnginesDir,
@@ -111,4 +113,32 @@ export function enginesDirWithoutPython(): string {
       `${JSON.stringify({ ...record, python: null }, null, 2)}\n`,
     );
   });
+}
+
+// An engines directory for a build at quick detail inside a sandbox, made of real files and no
+// link: the sandbox shows the engines directory alone, so a link out of it cannot be followed
+// there. It holds installed.json without a Python, a copy of the installed ast-grep,
+// dependency-cruiser as the Node script given, and scip-typescript as an empty file, which
+// quick detail never runs.
+export function sandboxEnginesDir(depcruise: string): string {
+  const installed = resolve(defaultEnginesDir());
+  const dir = freshDir();
+  const record = JSON.parse(
+    readFileSync(join(installed, "installed.json"), "utf8"),
+  );
+  writeFileSync(
+    join(dir, "installed.json"),
+    `${JSON.stringify({ ...record, python: null }, null, 2)}\n`,
+  );
+  const at = (engine: EngineName): string => {
+    const bin = join(dir, ...binParts(engine));
+    mkdirSync(dirname(bin), { recursive: true });
+    return bin;
+  };
+  const astGrep = at("ast-grep");
+  copyFileSync(join(installed, ...binParts("ast-grep")), astGrep);
+  chmodSync(astGrep, 0o755);
+  writeFileSync(at("dependency-cruiser"), depcruise);
+  writeFileSync(at("scip-typescript"), "");
+  return dir;
 }

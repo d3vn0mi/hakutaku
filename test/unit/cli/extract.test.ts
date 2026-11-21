@@ -83,6 +83,16 @@ it.each<[string, string[], string]>([
     '--home must be an absolute path, not "astronomer"',
   ],
   [
+    "a current count of unresolved imports that is not a whole number",
+    ["a", "--out", "s.sqlite", "--current-unresolved", "1.5"],
+    '--current-unresolved must be a whole number, not "1.5"',
+  ],
+  [
+    "a current count of unresolved imports past the largest safe integer",
+    ["a", "--out", "s.sqlite", "--current-unresolved", "9007199254740993"],
+    '--current-unresolved must be a whole number, not "9007199254740993"',
+  ],
+  [
     "a memory cap systemd would take but Node's heap cannot follow",
     ["a", "--out", "s.sqlite", "--memory-max", "50%"],
     'scip-typescript: cannot read the memory cap "50%"',
@@ -124,6 +134,8 @@ it("passes the flags a sandboxed re-run is given, which the usage leaves out", a
         "--memory-capped",
         "--home",
         "/srv/astronomer",
+        "--current-unresolved",
+        "0",
       ],
       c.io,
     ),
@@ -136,8 +148,11 @@ it("passes the flags a sandboxed re-run is given, which the usage leaves out", a
     sandboxedBy: "bubblewrap",
     memoryCapped: true,
     home: "/srv/astronomer",
+    currentUnresolved: 0,
   });
-  expect(USAGE).not.toMatch(/--memory-capped|--home|--sandboxed-by/);
+  expect(USAGE).not.toMatch(
+    /--memory-capped|--home|--sandboxed-by|--current-unresolved/,
+  );
 });
 
 const GATES = [

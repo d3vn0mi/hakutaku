@@ -5,8 +5,10 @@
 import {
   chmodSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   statSync,
@@ -35,6 +37,7 @@ import {
 import {
   brokenEnginesDir,
   enginesDirWithoutPython,
+  sandboxEnginesDir,
   standInEnginesDir,
 } from "../../helpers/engines.js";
 import { git, makeRepo, type RepoSpec } from "../../helpers/git.js";
@@ -1111,6 +1114,150 @@ it(
       "the snapshot's sim/src/observatory/units.py is not a regular file";
     expect(readAttempt(out)).toMatchObject({ result: "failed", reason });
     expect(readdirSync(dirname(out))).toEqual(["attempt.json"]);
+  },
+  TIMEOUT,
+);
+
+// A dependency-cruiser that turns on the build: it overwrites a canary beside the store, and
+// plants a link named like the temporary store of the process that runs it, both beside the
+// store and in that process's own store directory, the parent of its work directory, which
+// engineEnv's HOME sits in. Then it fails, so the build would go on without it.
+function hostileEngine(storeDir: string): {
+  canary: string;
+  planted: string;
+  enginesDir: string;
+} {
+  const canary = join(storeDir, "canary.txt");
+  const planted = join(storeDir, "planted.sqlite");
+  mkdirSync(storeDir, { recursive: true });
+  writeFileSync(canary, "canary\n");
+  const enginesDir = sandboxEnginesDir(
+    [
+      'import { symlinkSync, writeFileSync } from "node:fs";',
+      'import { dirname, join } from "node:path";',
+      `try { writeFileSync(${JSON.stringify(canary)}, "overwritten\\n"); } catch {}`,
+      'const name = "store.tmp-" + process.ppid + ".sqlite";',
+      `for (const dir of [${JSON.stringify(storeDir)}, dirname(dirname(process.env.HOME))]) {`,
+      `  try { symlinkSync(${JSON.stringify(planted)}, join(dir, name)); } catch {}`,
+      "}",
+      "process.exit(1);",
+      "",
+    ].join("\n"),
+  );
+  return { canary, planted, enginesDir };
+}
+
+it(
+  "lets a hostile engine write only in the work directory: the canary beside the store stays, and its link is refused",
+  async (ctx) => {
+    requireInCI(ctx, bwrap);
+    const dir = await exportOf(await oneCommit(SKY));
+    // the temporary store sits in its build's store directory: inside the sandbox, the work
+    // directory this process made
+    const refusal =
+      /^writeStore: <store>\/store\.tmp-\d+\.sqlite already exists$/;
+
+    const out = storePath();
+    const h = hostileEngine(dirname(out));
+    await expect(
+      extract(dir, out, {
+        enginesDir: h.enginesDir,
+        detail: "quick",
+        sandbox: "require",
+      }),
+    ).rejects.toThrow(refusal);
+    expect(readFileSync(h.canary, "utf8")).toBe("canary\n");
+    expect(existsSync(h.planted)).toBe(false);
+    expect(readAttempt(out)).toMatchObject({
+      result: "failed",
+      reason: expect.stringMatching(refusal),
+    });
+    // no link beside the store, and no work directory left
+    expect(readdirSync(dirname(out)).sort()).toEqual([
+      "attempt.json",
+      "canary.txt",
+    ]);
+
+    // the control: without a sandbox, the same engine overwrites the canary, and its link at
+    // the temporary store's name is refused all the same
+    const plain = storePath();
+    const p = hostileEngine(dirname(plain));
+    await expect(
+      extract(dir, plain, { enginesDir: p.enginesDir, detail: "quick" }),
+    ).rejects.toThrow(refusal);
+    expect(readFileSync(p.canary, "utf8")).toBe("overwritten\n");
+    expect(existsSync(p.planted)).toBe(false);
+  },
+  TIMEOUT,
+);
+
+it(
+  "records how a sandboxed build that was stopped ended, and the stage it was at",
+  async (ctx) => {
+    requireInCI(ctx, bwrap);
+    const dir = await exportOf(await oneCommit(SKY));
+    const out = storePath();
+    // the engine stops the build that runs it, which therefore prints nothing
+    const enginesDir = sandboxEnginesDir(
+      'process.kill(process.ppid, "SIGTERM");\nsetTimeout(() => {}, 60000);\n',
+    );
+    const reason =
+      "the sandboxed extract failed while running dependency-cruiser: stopped by SIGTERM";
+    await expect(
+      extract(dir, out, { enginesDir, detail: "quick", sandbox: "require" }),
+    ).rejects.toThrow(reason);
+    expect(readAttempt(out)).toMatchObject({ result: "failed", reason });
+    expect(readdirSync(dirname(out))).toEqual(["attempt.json"]);
+  },
+  TIMEOUT,
+);
+
+it(
+  "fails the gate inside bubblewrap too when unresolved imports grow from the current store",
+  async (ctx) => {
+    requireInCI(ctx, bwrap);
+    const profile = {
+      ...DEFAULT_PROFILE,
+      gates: { maxUnresolvedRelativeImports: 1 },
+    };
+    const repo = await makeRepo({
+      commits: [
+        { date: DATE, files: SKY },
+        {
+          date: "2026-03-03T10:00:00Z",
+          files: {
+            "web/src/legend.ts": lines(
+              'import { label } from "./labels";',
+              "export const text = label(3);",
+            ),
+          },
+        },
+      ],
+    });
+    const out = storePath();
+    const sandboxed = { sandbox: "require", detail: "quick" } as const;
+    const before = await extract(
+      await exportOf(repo, { ref: "HEAD~1", profile }),
+      out,
+      sandboxed,
+    );
+    expect(before.result).toBe("built");
+    const after = await extract(
+      await exportOf(repo, { profile }),
+      out,
+      sandboxed,
+    );
+    expect(after).toMatchObject({
+      result: "gates-failed",
+      reason:
+        "unresolved-imports: 1 unresolved relative imports, up from 0 in the current store",
+    });
+    expect(inStore(out, (s) => s.run.contentHash)).toBe(before.contentHash);
+    expect(readdirSync(dirname(out)).sort()).toEqual([
+      "attempt.json",
+      "build.json",
+      "store.sqlite",
+    ]);
   },
   TIMEOUT,
 );

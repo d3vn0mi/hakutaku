@@ -14,7 +14,7 @@ export type Sandbox = "bubblewrap" | "systemd-run";
 export interface SandboxPaths {
   exportDir: string;
   enginesDir: string;
-  storeDir: string;
+  workDir: string; // the build's work directory: the one path the sandbox can write
   packageRoot: string;
   nodePrefix: string;
   pythonPrefix: string | null;
@@ -281,7 +281,8 @@ const NO_CORE = ["/bin/sh", "-c", 'ulimit -c 0 && exec "$@"', "sh"];
 
 // bubblewrap: no namespace shared, no environment kept, and nothing of the file system but the
 // system directories, Node, hakutaku, the pinned Python, the export and the engines, all
-// read-only, and the store's directory, the one writable path. inner runs with no core dumps.
+// read-only, and the build's work directory, the one writable path. inner runs with no core
+// dumps.
 export function bwrapArgv(p: SandboxPaths, inner: string[]): string[] {
   const binds: Array<[string, string]> = [
     ["--ro-bind", absolute(p, "nodePrefix")],
@@ -293,7 +294,7 @@ export function bwrapArgv(p: SandboxPaths, inner: string[]): string[] {
   binds.push(
     ["--ro-bind", absolute(p, "exportDir")],
     ["--ro-bind", absolute(p, "enginesDir")],
-    ["--bind", absolute(p, "storeDir")],
+    ["--bind", absolute(p, "workDir")],
   );
   // A mount hides whatever an earlier one put inside it, so each directory is bound before the
   // directories inside it; the sort is stable, so other binds keep their order.

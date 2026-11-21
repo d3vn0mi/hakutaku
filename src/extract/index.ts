@@ -3,7 +3,8 @@
 //  2. check the engines (a problem fails the build);
 //  3. the skip check: a current store with the same skip key is kept, and the attempt says so;
 //  4. the sandbox: unless this run is already inside one, re-run inside the strongest one the
-//     machine has, and answer with that run's result;
+//     machine has, building in this build's work directory, the one path the sandbox can write;
+//     then check what that run left there, and go on at the swap with its store;
 //  5. remove what dead builds left, and make this build's work directory;
 //  6. run the engines: ast-grep, dependency-cruiser, grimp, then scip-typescript, each when its
 //     detail and its input allow. A failed or timed-out engine degrades to its fallback, and an
@@ -17,7 +18,7 @@
 // explained. Any error removes this build's temporary files, records the attempt as failed,
 // and is thrown again. Every reason and warning the build writes is cleaned first: each of its
 // directories, and the home directory, named by token, and every secret redacted.
-import { mkdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, rmSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import {
   defaultEnginesDir,
@@ -54,7 +55,7 @@ import { runGates, storedTexts } from "./gates.js";
 import { regularPaths } from "./merge/files.js";
 import { coverageOf, type MergeInput, mergeFacts } from "./merge/index.js";
 import { computeMetrics } from "./metrics.js";
-import { extractInSandbox, SandboxedRunFailed } from "./rerun.js";
+import { extractInSandbox } from "./rerun.js";
 import {
   buildRoots,
   EngineFailure,
@@ -66,6 +67,7 @@ import {
   detectSandbox,
   noSandboxEvidence,
   noSandboxReason,
+  type Sandbox,
 } from "./sandbox.js";
 import { matchesStore, skipKey } from "./skip.js";
 import { cleanupStale, markStage, swapIn } from "./swap.js";
@@ -90,6 +92,10 @@ export interface ExtractOptions {
   // The user's home directory, which the build's texts name as ~: this process's when absent. A
   // sandboxed re-run is given the outer one's, since inside bubblewrap HOME is the sandbox's.
   home?: string;
+  // The current store's unresolved relative imports, which the unresolved-imports gate must not
+  // pass: read from the store at out when absent. A sandboxed re-run is given them, since it
+  // builds in a work directory and cannot read the store.
+  currentUnresolved?: number;
 }
 
 export interface ExtractResult {
@@ -105,8 +111,9 @@ export interface ExtractResult {
 // - write-store, once store.tmp-<pid>.sqlite is written;
 // - gates, once the stage reads "checking the gates", before any gate is acted on;
 // - swap, once the stage reads "swapping the store", right before the swap.
-// They fire in the process that builds: inside the sandbox when there is one, so a caller
-// that needs them passes sandbox "none".
+// The first three fire in the process that builds: inside the sandbox when there is one, so a
+// caller that needs them passes sandbox "none". swap fires in this process, which always does
+// the swap itself.
 export type ExtractStage =
   | `engine:${EngineName}`
   | "write-store"
@@ -150,12 +157,14 @@ interface Options {
   sandboxedBy: "bubblewrap" | "systemd-run" | undefined;
   memoryCapped: boolean;
   home: string | null;
+  currentUnresolved: number | null;
   tmp: string;
   work: string;
   clean: (text: string) => string; // a reason or a warning, as the build writes it
 }
 
-// What a build that reached the swap hands to its last step.
+// What a build that reached the swap hands to its last step. peakRssBytes is known when the
+// build ran in a sandbox; otherwise the last step reads it.
 interface Swapped {
   commit: string;
   ref: string;
@@ -164,6 +173,7 @@ interface Swapped {
   sandbox: BuildFacts["sandbox"];
   engines: BuildFacts["engines"];
   warnings: string[];
+  peakRssBytes?: number | null;
 }
 
 export async function extractSnapshot(
@@ -197,8 +207,7 @@ export async function extractSnapshot(
     } catch {
       // the next build's cleanupStale removes what is left
     }
-    // A sandboxed run that failed has recorded its own attempt.
-    if (known.commit !== null && !(error instanceof SandboxedRunFailed)) {
+    if (known.commit !== null) {
       try {
         writeAttempt(o.out, {
           at: new Date().toISOString(),
@@ -233,6 +242,15 @@ function optionsOf(opts: ExtractOptions): Options {
   const memoryMax = opts.memoryMax ?? DEFAULT_MEMORY_MAX;
   // the cap systemd takes must also give Node a heap: no percentage, no "infinity"
   heapMiB(memoryMax);
+  const currentUnresolved = opts.currentUnresolved ?? null;
+  if (
+    currentUnresolved !== null &&
+    !(Number.isSafeInteger(currentUnresolved) && currentUnresolved >= 0)
+  ) {
+    throw new Error(
+      `not a count of unresolved imports: ${JSON.stringify(currentUnresolved)}`,
+    );
+  }
   const out = resolve(opts.out);
   const beside = besideStore(out);
   const dir = resolve(opts.dir);
@@ -250,6 +268,7 @@ function optionsOf(opts: ExtractOptions): Options {
     sandboxedBy: opts.sandboxedBy,
     memoryCapped: opts.memoryCapped ?? false,
     home,
+    currentUnresolved,
     tmp: beside.tmp(process.pid),
     work,
     clean: textCleaner(
@@ -300,6 +319,8 @@ async function build(
     o.memoryMax,
   );
   const current = currentStore(o.out);
+  const currentUnresolved =
+    o.currentUnresolved ?? current?.meta.coverage.unresolvedImports ?? null;
   if (current !== null && matchesStore(key, current.meta)) {
     writeAttempt(o.out, {
       at: new Date().toISOString(),
@@ -324,16 +345,11 @@ async function build(
   } else {
     const found = await detectSandbox();
     if (found !== null) {
-      return await extractInSandbox({
-        sandbox: found,
-        dir: o.dir,
-        out: o.out,
-        enginesDir: o.enginesDir,
-        detail: o.detail,
-        noSource: o.noSource,
-        memoryMax: o.memoryMax,
+      return await buildInSandbox(o, hooks, found, {
+        commit,
+        ref: manifest.ref,
         pythonPath,
-        home: o.home,
+        currentUnresolved,
       });
     }
     const why = await noSandboxReason();
@@ -503,7 +519,7 @@ async function build(
         : { documents: scip.documents, duplicates: side.scipDuplicates },
     relative: side.relative,
     maxUnresolvedRelativeImports: profile.gates.maxUnresolvedRelativeImports,
-    currentUnresolved: current?.meta.coverage.unresolvedImports ?? null,
+    currentUnresolved,
     denylistExtra: profile.denylist.extra,
     redactions: side.redactions,
     texts: storedTexts(content),
@@ -566,9 +582,7 @@ async function build(
   }
 
   // 10.
-  markStage(o.out, commit, "swapping the store");
-  hooks.onStage?.("swap");
-  swapIn(o.tmp, o.out);
+  swapStage(o, hooks, commit, o.tmp);
   return {
     commit,
     ref: manifest.ref,
@@ -578,6 +592,84 @@ async function build(
     engines,
     warnings,
   };
+}
+
+// Steps 5 to 9 inside the sandbox, and step 10's swap here. This process makes the work
+// directory, the one path the sandbox can write, and the inner run builds its store there and
+// never sees the store's directory; extractInSandbox checks what it left, and the store is
+// swapped in from there. A run that failed is thrown as SandboxedRunFailed, whose message the
+// caller records as the attempt's reason.
+async function buildInSandbox(
+  o: Options,
+  hooks: ExtractHooks,
+  sandbox: Sandbox,
+  b: {
+    commit: string;
+    ref: string;
+    pythonPath: string | null;
+    currentUnresolved: number | null;
+  },
+): Promise<ExtractResult | Swapped> {
+  const storeDir = besideStore(o.out).dir;
+  mkdirSync(storeDir, { recursive: true });
+  cleanupStale(storeDir);
+  markStage(o.out, b.commit, `building in the ${sandbox} sandbox`);
+  makeWorkDir(o.work);
+  const built = await extractInSandbox({
+    sandbox,
+    dir: o.dir,
+    work: o.work,
+    commit: b.commit,
+    enginesDir: o.enginesDir,
+    detail: o.detail,
+    noSource: o.noSource,
+    memoryMax: o.memoryMax,
+    pythonPath: b.pythonPath,
+    home: o.home,
+    currentUnresolved: b.currentUnresolved,
+  });
+  if (built.result === "gates-failed") {
+    removeTree(o.work);
+    const reason = o.clean(built.inner.reason ?? "the gates failed");
+    writeAttempt(o.out, {
+      at: new Date().toISOString(),
+      commit: b.commit,
+      result: "gates-failed",
+      reason,
+    });
+    return { ...built.inner, reason };
+  }
+  swapStage(o, hooks, b.commit, built.store);
+  return {
+    commit: b.commit,
+    ref: b.ref,
+    contentHash: built.contentHash,
+    gates: built.inner.gates,
+    sandbox,
+    engines: built.engines,
+    warnings: built.warnings,
+    peakRssBytes: built.peakRssBytes,
+  };
+}
+
+// The build's work directory, made fresh for this user alone: never one that is already there,
+// which something else may have put in its place.
+function makeWorkDir(work: string): void {
+  mkdirSync(work, { mode: 0o700 });
+  chmodSync(work, 0o700);
+}
+
+// Step 10's swap: the stage is recorded and announced, then the store at tmp takes the current
+// one's place.
+function swapStage(
+  o: Options,
+  hooks: ExtractHooks,
+  commit: string,
+  tmp: string,
+): void {
+  markStage(o.out, commit, "swapping the store");
+  hooks.onStage?.("swap");
+  swapIn(tmp, o.out);
 }
 
 // After the swap the store is built, whatever happens next: a file that cannot be written is
@@ -596,7 +688,12 @@ function finish(
     startedAt: startedAt.toISOString(),
     finishedAt: finishedAt.toISOString(),
     wallMs: Math.round(performance.now() - started),
-    peakRssBytes: s.sandbox === "systemd-run" ? ownPeak() : null,
+    peakRssBytes:
+      s.peakRssBytes !== undefined
+        ? s.peakRssBytes
+        : s.sandbox === "systemd-run"
+          ? ownPeak()
+          : null,
     sandbox: s.sandbox,
     engines: s.engines,
     warnings: s.warnings.map(o.clean),

@@ -3,9 +3,10 @@
 // Builds one store from an export directory and prints the ExtractResult as one JSON line.
 // Exit codes: 0 built or skipped, 3 the gates failed (the previous store keeps serving), 1
 // failed (the message on stderr), 2 a usage error. --sandboxed-by bubblewrap|systemd-run,
-// --memory-capped and --home <path> are left out of the usage: extract passes them to itself
-// when it re-runs inside a sandbox, to say which one, whether it caps memory, and the home
-// directory the build's texts name as ~.
+// --memory-capped, --home <path> and --current-unresolved <n> are left out of the usage: extract
+// passes them to itself when it re-runs inside a sandbox, to say which one, whether it caps
+// memory, the home directory the build's texts name as ~, and the current store's unresolved
+// imports, which the re-run cannot read.
 import { isAbsolute } from "node:path";
 import { parseArgs } from "node:util";
 import { heapMiB } from "../../extract/drivers/scip-typescript.js";
@@ -27,6 +28,7 @@ const OPTIONS = {
   "sandboxed-by": { type: "string" },
   "memory-capped": { type: "boolean" },
   home: { type: "string" },
+  "current-unresolved": { type: "string" },
 } as const;
 
 const DETAILS = ["quick", "standard", "deep"] as const;
@@ -108,6 +110,17 @@ async function run(argv: string[], io: CliIO): Promise<number> {
       `--home must be an absolute path, not ${JSON.stringify(home)}`,
     );
   }
+  const unresolved = values["current-unresolved"];
+  let currentUnresolved: number | undefined;
+  if (unresolved !== undefined) {
+    currentUnresolved = Number(unresolved);
+    if (!/^\d+$/.test(unresolved) || !Number.isSafeInteger(currentUnresolved)) {
+      return usageError(
+        io,
+        `--current-unresolved must be a whole number, not ${JSON.stringify(unresolved)}`,
+      );
+    }
+  }
   const memoryMax = values["memory-max"];
   if (memoryMax !== undefined) {
     // systemd takes a percentage or "infinity", from which Node's heap cannot be worked out
@@ -132,6 +145,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
       ...(sandboxedBy === undefined ? {} : { sandboxedBy }),
       ...(values["memory-capped"] === true ? { memoryCapped: true } : {}),
       ...(home === undefined ? {} : { home }),
+      ...(currentUnresolved === undefined ? {} : { currentUnresolved }),
     });
   } catch (error) {
     // a sandboxed run that printed its own message, on the stderr passed through, is not

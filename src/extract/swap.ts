@@ -60,7 +60,8 @@ export function cleanupStale(storeDir: string): void {
 
 // Records the stage a build has reached as a failed attempt, so that a build that dies is
 // explained without anything written after it, and a running build reads as stale. The stages
-// are "running <engine>", "writing the store", "checking the gates" and "swapping the store".
+// are "running <engine>", "writing the store", "checking the gates" and "swapping the store",
+// and, while a sandbox builds, "building in the <sandbox> sandbox".
 export function markStage(
   storePath: string,
   commit: string,

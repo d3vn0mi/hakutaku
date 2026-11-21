@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -43,7 +44,7 @@ const tmp = (): string => {
 const paths: SandboxPaths = {
   exportDir: "/srv/observatory/export",
   enginesDir: "/srv/observatory/engines",
-  storeDir: "/srv/observatory/store",
+  workDir: "/srv/observatory/store/work.tmp-4242",
   packageRoot: "/opt/hakutaku",
   nodePrefix: "/opt/node",
   pythonPrefix: "/opt/python",
@@ -95,7 +96,7 @@ const userMounts = (a: string[]): string[][] => {
   return mounts;
 };
 
-it("binds the export and engines read-only and only the store writable", () => {
+it("binds the export and engines read-only and only the work directory writable", () => {
   const a = bwrapArgv(paths, ["node", "main.js"]);
   expect(a).toEqual(
     expect.arrayContaining([
@@ -111,7 +112,7 @@ it("binds the export and engines read-only and only the store writable", () => {
       [paths.enginesDir, paths.enginesDir],
     ]),
   );
-  expect(pairsAfter(a, "--bind")).toEqual([[paths.storeDir, paths.storeDir]]);
+  expect(pairsAfter(a, "--bind")).toEqual([[paths.workDir, paths.workDir]]);
   expect(a.slice(-2)).toEqual(["node", "main.js"]);
 });
 
@@ -149,7 +150,7 @@ it("writes the whole bubblewrap command, each path bound at its own path", () =>
     ...bind("--ro-bind", "/opt/python"),
     ...bind("--ro-bind", "/srv/observatory/export"),
     ...bind("--ro-bind", "/srv/observatory/engines"),
-    ...bind("--bind", "/srv/observatory/store"),
+    ...bind("--bind", "/srv/observatory/store/work.tmp-4242"),
     "--setenv",
     "HOME",
     "/tmp",
@@ -169,16 +170,16 @@ it("binds no Python prefix when there is none", () =>
     ["--ro-bind", "/opt/hakutaku"],
     ["--ro-bind", "/srv/observatory/export"],
     ["--ro-bind", "/srv/observatory/engines"],
-    ["--bind", "/srv/observatory/store"],
+    ["--bind", "/srv/observatory/store/work.tmp-4242"],
   ]));
 
-it("binds a directory before the directories inside it, so the writable store cannot cover a read-only one", () =>
+it("binds a directory before the directories inside it, so the writable work directory cannot cover a read-only one", () =>
   expect(
     userMounts(
       bwrapArgv(
         {
           ...paths,
-          storeDir: "/srv/observatory",
+          workDir: "/srv/observatory",
           exportDir: "/srv/observatory/export",
           enginesDir: "/srv/observatory/engines",
           pythonPrefix: null,
@@ -201,18 +202,18 @@ it("binds each path in its normal form", () =>
         {
           ...paths,
           enginesDir: "/srv/observatory/engines/",
-          storeDir: "/srv/observatory/x/../store",
+          workDir: "/srv/observatory/x/../work",
         },
         inner,
       ),
       "--bind",
     ),
-  ).toEqual([["/srv/observatory/store", "/srv/observatory/store"]]));
+  ).toEqual([["/srv/observatory/work", "/srv/observatory/work"]]));
 
 it.each([
   "exportDir",
   "enginesDir",
-  "storeDir",
+  "workDir",
   "packageRoot",
   "nodePrefix",
   "pythonPrefix",
@@ -578,14 +579,16 @@ it("checks for loopback only: true in a new network namespace, false in the host
   expect(onHost.status).toBe(1);
 });
 
-// A sandbox's directories under the OS temp directory, a file in the export, and a directory
-// outside every bind.
-function liveLayout(): { p: SandboxPaths; outside: string } {
+// A sandbox's directories under the OS temp directory, a file in the export, a directory
+// outside every bind, and the store's directory, which holds the work directory and is not
+// bound itself.
+function liveLayout(): { p: SandboxPaths; outside: string; storeDir: string } {
   const root = tmp();
+  const storeDir = join(root, "store");
   const p: SandboxPaths = {
     exportDir: join(root, "export"),
     enginesDir: join(root, "engines"),
-    storeDir: join(root, "store"),
+    workDir: join(storeDir, "work.tmp-1"),
     packageRoot: join(root, "package"),
     nodePrefix: dirname(dirname(process.execPath)),
     pythonPrefix: null,
@@ -595,20 +598,22 @@ function liveLayout(): { p: SandboxPaths; outside: string } {
   for (const d of [
     p.exportDir,
     p.enginesDir,
-    p.storeDir,
+    p.workDir,
     p.packageRoot,
     outside,
   ])
-    mkdirSync(d);
+    mkdirSync(d, { recursive: true });
   writeFileSync(join(p.exportDir, "export.json"), "{}\n");
-  return { p, outside };
+  return { p, outside, storeDir };
 }
 
-// A script that reports what it can see and write.
+// A script that reports what it can see and write. It also writes beside the work directory,
+// in the store's directory, which only the host can say did not happen there.
 const report = (p: SandboxPaths, outside: string): string => `
 const fs = require("node:fs");
 const os = require("node:os");
 const write = (dir) => { try { fs.writeFileSync(dir + "/probe", "x"); return "written"; } catch (e) { return e.code; } };
+write(${JSON.stringify(dirname(p.workDir))});
 console.log(JSON.stringify({
   env: Object.keys(process.env).sort(),
   home: process.env.HOME,
@@ -616,7 +621,7 @@ console.log(JSON.stringify({
   export: write(${JSON.stringify(p.exportDir)}),
   engines: write(${JSON.stringify(p.enginesDir)}),
   package: write(${JSON.stringify(p.packageRoot)}),
-  store: write(${JSON.stringify(p.storeDir)}),
+  work: write(${JSON.stringify(p.workDir)}),
   outside: fs.existsSync(${JSON.stringify(outside)}),
   network: Object.keys(os.networkInterfaces()).sort(),
   core: /^Max core file size +(\\S+) +(\\S+)/m.exec(fs.readFileSync("/proc/self/limits", "utf8")).slice(1).join(" "),
@@ -629,11 +634,17 @@ const SEEN_IN_BUBBLEWRAP = {
   export: "EROFS",
   engines: "EROFS",
   package: "EROFS",
-  store: "written",
+  work: "written",
   outside: false,
   network: ["lo"],
   core: "0 0", // soft and hard: no core dumps, nor a way to turn them back on
 };
+
+// What the host sees after the script: its file in the work directory, and none beside it.
+const writtenOnHost = (p: SandboxPaths, storeDir: string) => ({
+  work: existsSync(join(p.workDir, "probe")),
+  beside: existsSync(join(storeDir, "probe")),
+});
 
 const runArgv = (argv: string[]) => {
   const r = spawnSync(argv[0] ?? "", argv.slice(1), {
@@ -643,18 +654,19 @@ const runArgv = (argv: string[]) => {
   return { status: r.status, out: r.stdout, err: r.stderr };
 };
 
-it("runs a command in bubblewrap that reads the export, writes only the store and has no network", (ctx) => {
+it("runs a command in bubblewrap that reads the export, writes only the work directory and has no network", (ctx) => {
   requireInCI(ctx, bwrap);
-  const { p, outside } = liveLayout();
+  const { p, outside, storeDir } = liveLayout();
   const r = runArgv(bwrapArgv(p, [process.execPath, "-e", report(p, outside)]));
   expect(r.err).toBe("");
   expect(r.status).toBe(0);
   expect(JSON.parse(r.out)).toEqual(SEEN_IN_BUBBLEWRAP);
+  expect(writtenOnHost(p, storeDir)).toEqual({ work: true, beside: false });
 });
 
 it("runs bubblewrap inside a systemd-run scope", async (ctx) => {
   requireInCI(ctx, bwrap, userManager);
-  const { p, outside } = liveLayout();
+  const { p, outside, storeDir } = liveLayout();
   const { argv, warnings } = await sandboxCommand("bubblewrap", p, [
     process.execPath,
     "-e",
@@ -665,6 +677,7 @@ it("runs bubblewrap inside a systemd-run scope", async (ctx) => {
   const r = runArgv(argv);
   expect(r.status).toBe(0);
   expect(JSON.parse(r.out)).toEqual(SEEN_IN_BUBBLEWRAP);
+  expect(writtenOnHost(p, storeDir)).toEqual({ work: true, beside: false });
 });
 
 it("runs a command under systemd-run with no network, nice 19 and the memory cap", (ctx) => {
