@@ -1,0 +1,66 @@
+import { Orbit } from "../orbits/kepler";
+import { toRadians } from "../orbits/units";
+import { TtlCache } from "./cache";
+import { withRetry } from "./retry";
+import { parseRecords } from "./schema";
+import type { ClientConfig, ElementsRecord } from "./types";
+
+const DEFAULT_CONFIG: ClientConfig = {
+  baseUrl: "https://ephemeris.example.org/v1",
+  api_key: "__OBS_FAKE_KEY__",
+  timeoutMs: 5000,
+};
+
+const CACHE_MS = 60_000;
+
+// The host the positions come from, such as ephemeris.example.org, for the legend.
+export function describeSource(config: ClientConfig = DEFAULT_CONFIG): string {
+  return new URL(config.baseUrl).host;
+}
+
+// An Orbit from the service's record of a body's elements.
+export function toOrbit(record: ElementsRecord): Orbit {
+  return Object.assign(new Orbit(), {
+    name: record.name,
+    a: record.a,
+    e: record.e,
+    period: record.period,
+    m0: toRadians(record.m0),
+  });
+}
+
+// Fetches orbital elements from the ephemeris service, retrying a failed request and keeping
+// each answer for a minute.
+export class EphemerisClient {
+  private readonly cache = new TtlCache<Orbit[]>(CACHE_MS);
+
+  constructor(private readonly config: ClientConfig = DEFAULT_CONFIG) {}
+
+  async orbits(names: readonly string[]): Promise<Orbit[]> {
+    const key = [...names].sort().join(",");
+    const cached = this.cache.get(key);
+    if (cached !== undefined) return cached;
+    const url = `${this.config.baseUrl}/elements?bodies=${encodeURIComponent(key)}`;
+    const records = parseRecords(await withRetry(() => this.fetchJson(url)));
+    const orbits = records.map(toOrbit);
+    this.cache.set(key, orbits);
+    return orbits;
+  }
+
+  private async fetchJson(url: string): Promise<unknown> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    try {
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${this.config.api_key}` },
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`the ephemeris service answered HTTP ${response.status}`);
+      }
+      return await response.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+}

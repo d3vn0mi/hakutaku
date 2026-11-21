@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "observatory-sim"
+version = "0.4.0"
+description = "The observatory's ephemeris service."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+ephemeris = "observatory.ephemeris.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,27 @@
+{
+  "name": "@observatory/web",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "export-sky": "./dist/cli/export-sky.js"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "start": "next start",
+    "build": "next build && tsc -p tsconfig.json",
+    "catalog": "node scripts/build-catalog.mjs data/bright-stars.csv public/catalog.json",
+    "sync": "bash ../scripts/sync-sky.sh",
+    "test": "node scripts/run-tests.mjs"
+  },
+  "dependencies": {
+    "next": "15.5.4",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.13",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4"
+  }
+}

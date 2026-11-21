@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "components": [
+    "web/src/*",
+    "web/app",
+    "sim/src/observatory/*",
+    "sim/tests",
+    "scripts",
+    "plugins/*"
+  ],
+  "typescript": {
+    "aliases": {
+      "@obs/web/*": ["web/src/*"]
+    },
+    "tsconfigs": ["web/tsconfig.json"]
+  },
+  "python": {
+    "roots": ["sim/src"],
+    "singleFileModules": []
+  },
+  "tests": {
+    "extraPatterns": []
+  },
+  "launchManifests": [
+    { "glob": "plugins/*/plugin.json", "pointer": "/entry", "kind": "plugin" }
+  ],
+  "denylist": {
+    "extra": []
+  },
+  "gates": {
+    "maxUnresolvedRelativeImports": 0.005
+  },
+  "rules": "rules.json"
+}

@@ -1,0 +1,2 @@
+# The service needs nothing outside the standard library; the tests need pytest.
+pytest==8.3.3

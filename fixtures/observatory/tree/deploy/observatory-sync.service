@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync the observatory's sky data
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/observatory
+Environment=OBSERVATORY_DATA=/var/lib/observatory
+ExecStart=/opt/observatory/scripts/sync-sky.sh --quiet
+Nice=10

@@ -1,0 +1,5 @@
+{
+  "name": "aurora",
+  "description": "Shades the sky map where an aurora is likely tonight.",
+  "entry": "./index.ts"
+}

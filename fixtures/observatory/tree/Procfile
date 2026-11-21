@@ -1,0 +1,2 @@
+web: npm --prefix web run start
+ephemeris: python -m observatory serve --port $PORT

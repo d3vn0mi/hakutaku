@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "cycles": { "severity": "warn" },
+  "forbidden": [
+    {
+      "name": "sky-not-from-api",
+      "severity": "error",
+      "from": { "path": "^web/src/sky/" },
+      "to": { "path": "^web/src/api/" }
+    }
+  ]
+}
