@@ -1059,7 +1059,24 @@ it(
     expect(unsandboxed.result).toBe("built");
 
     const out = storePath();
-    const r = await extract(dir, out, { sandbox: "require" });
+    // Only the swap fires here: the other stages fire inside the sandbox. This process swaps the
+    // store in from its work directory, which only this user can enter.
+    const stages: string[] = [];
+    const work = join(dirname(out), `work.tmp-${process.pid}`);
+    const r = await extractSnapshot(
+      { dir, out, sandbox: "require" },
+      {
+        onStage: (stage) => {
+          stages.push(stage);
+          expect(statSync(work).mode & 0o777).toBe(0o700);
+          expect(readdirSync(work)).toContain("store.sqlite");
+          expect(readAttempt(out)?.reason).toBe(
+            `interrupted or still running (pid ${process.pid}): swapping the store`,
+          );
+        },
+      },
+    );
+    expect(stages).toEqual(["swap"]);
     expect(r).toEqual({ ...unsandboxed });
     const facts = readBuildFacts(out);
     expect(facts?.sandbox).toBe("bubblewrap");
