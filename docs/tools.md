@@ -121,8 +121,9 @@ tried in this order:
    is, and the component of that name.
 
 Resolution is string equality over what the map holds, and nothing is ever opened. One match
-resolves. Several answer `ambiguous`, and none answers `not_found`; both list candidates, and you pass
-a candidate's `id` back as it is.
+resolves. Several answer `ambiguous`, which lists them as candidates. None answers `not_found`,
+which lists near misses and renames as candidates when there are any. Pass a candidate's `id` back
+as it is.
 
 **Link tokens.** A link token is the URL fragment that opens a node in hakutaku's viewer. Every answer
 about one node ends with **`view`**: `#` and that node's token. These are `code_overview`,
@@ -331,7 +332,8 @@ found.
 
 - `id`; `kind`: `file`, or `test-file` for a test or a test-support file.
 - Freshness.
-- `component`: its component's path, without the trailing `/` (`.` for the root component).
+- `component`: its component's path, without the trailing `/`: `.` for the root component, and `""`
+  for a file in no component.
 - `lines`: its line count.
 - `entryPoint`: whether a manifest launches it.
 - `inImportCycle`: whether it is in an import cycle.
@@ -691,7 +693,8 @@ A build is the same sandboxed build as `hakutaku map`: one at a time, and at mos
 
 **Refusals:** `refresh_disabled` when the host offers no refresh, as `hakutaku mcp` without
 `--allow-refresh` and `hakutaku query` do; `rate_limited`, with `retryAfterSeconds`, within 10 minutes
-of the repo's last build.
+of the start of the last build that the host started for the repo, once that build has ended. While
+it runs, the answer is `building`.
 
 ## Two worked examples
 
@@ -894,8 +897,9 @@ item once, in order. The note takes these forms:
 - `items 1-20 of 57; call again with offset 20 for the next page`
 - `items 41-57 of 57; this is the last page`
 - `no items at offset 60; there are 57`, for an offset past the end
-- `characters 1-631 of 1701; call again with offset 631 for the next window`, and
-  `characters 632-1701 of 1701; this is the last window`, for a snippet's windows
+- `characters 1-631 of 1701; call again with offset 631 for the next window`,
+  `characters 632-1229 of 1701; call again with offset 1229 for the next window` and
+  `characters 1230-1701 of 1701; this is the last window`, for a snippet's windows
 
 What each tool pages over:
 
@@ -948,7 +952,7 @@ For example, `code_callers` with the bare name `position`:
 | `invalid_argument` | The tool name is unknown; the arguments break the input schema; a string is over 4,096 characters; a search text is under 3 characters; an ID belongs to another repo; or a target is of a kind the tool does not take | `field`, the argument at fault; `hint` |
 | `denied_file` | The target is a denylisted path, such as an `.env` file or a key, which the map never stores | nothing more |
 | `no_source` | The map stores no source text, snippets are off for the repo, or the file kept none, being over 1 MB, minified or generated | nothing more |
-| `rate_limited` | `code_refresh` came again within 10 minutes of the repo's last build | `retryAfterSeconds`, when the host knows it |
+| `rate_limited` | `code_refresh` came again within 10 minutes of the start of the last build the host started for the repo | `retryAfterSeconds`, when the host knows it |
 | `refresh_disabled` | The host offers no refresh | nothing more |
 | `internal` | Anything else. The message is always `internal error`, and the details go only to the host's log | nothing more |
 
@@ -992,8 +996,8 @@ instruction-shaped text.
   `_meta`.
 - **No tool opens a path, a glob or a URL that a model passes.** `repo` and every target resolve by
   string equality over what the map holds, and `path_glob` filters the stored paths and nothing else.
-  After it starts, the server starts no process and opens no socket, except for a refresh build under
-  `--allow-refresh`.
+  After it starts, the server starts no process and opens no network socket, except for a refresh
+  build under `--allow-refresh`.
 - **Answers never carry** absolute host paths, store paths, environment values or engine command
   lines.
 
