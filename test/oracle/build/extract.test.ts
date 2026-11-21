@@ -34,6 +34,7 @@ import { DEFAULT_PROFILE } from "../../../src/profile/load.js";
 import { compilerTier } from "../../../src/query/tiers.js";
 import {
   type BuildFacts,
+  besideStore,
   openStore,
   readAttempt,
   readBuildFacts,
@@ -51,6 +52,7 @@ import {
   type LiveProbe,
   requireInCI,
 } from "../../helpers/live.js";
+import { HOSTILE, rawLines } from "../../helpers/terminal.js";
 
 const TIMEOUT = 300_000;
 
@@ -616,6 +618,48 @@ it(
       ),
     ).rejects.toThrow(/^stopped at <snapshot>\/web$/);
     expect(readAttempt(out)?.reason).toBe("stopped at <snapshot>/web");
+  },
+  TIMEOUT,
+);
+
+it(
+  "names a file it could not write after the swap on a stderr line safe for a terminal, the store's path included",
+  async () => {
+    const repo = await oneCommit(SKY);
+    // the hostile name without its line separator, which ast-grep's output lines cannot hold
+    const name = HOSTILE.replace(String.fromCharCode(0x2028), "");
+    const out = join(tmp(), name, "store.sqlite");
+    const written: string[] = [];
+    const write = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((chunk: string | Uint8Array) => {
+        written.push(String(chunk));
+        return true;
+      });
+    let r: ExtractResult;
+    try {
+      // a directory where build.json goes, which its write cannot replace
+      r = await extractSnapshot(
+        { dir: await exportOf(repo), out, sandbox: "none" },
+        {
+          onStage: (stage) => {
+            if (stage === "swap") {
+              mkdirSync(join(besideStore(out).build, "taken"), {
+                recursive: true,
+              });
+            }
+          },
+        },
+      );
+    } finally {
+      write.mockRestore();
+    }
+    expect(r.result).toBe("built");
+    const text = written.join("");
+    expect(text).toMatch(
+      /^hakutaku: the store is built, but extract could not write build\.json: .*sky\?\[2J\?31m\?map/m,
+    );
+    expect(rawLines(text)).toEqual([]);
   },
   TIMEOUT,
 );

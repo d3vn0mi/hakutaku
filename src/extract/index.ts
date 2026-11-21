@@ -30,7 +30,7 @@ import {
 } from "../engines/index.js";
 import { removeTree } from "../export/index.js";
 import { type Detail, type EngineName, LANG_BY_EXT } from "../model/index.js";
-import { homeRoot, textCleaner } from "../redact/index.js";
+import { homeRoot, printable, textCleaner } from "../redact/index.js";
 import {
   type BuildFacts,
   besideStore,
@@ -693,7 +693,8 @@ function swapStage(
 }
 
 // After the swap the store is built, whatever happens next: a file that cannot be written is
-// reported on stderr, never recorded as a failed attempt over a store that is in place.
+// reported on stderr, on a line safe for a terminal, since the error names the store's path,
+// and never recorded as a failed attempt over a store that is in place.
 function finish(
   o: Options,
   s: Swapped,
@@ -736,7 +737,7 @@ function finish(
       step();
     } catch (error) {
       process.stderr.write(
-        `hakutaku: the store is built, but extract could not ${what}: ${messageOf(error)}\n`,
+        `hakutaku: the store is built, but extract could not ${what}: ${printable(messageOf(error))}\n`,
       );
     }
   }
