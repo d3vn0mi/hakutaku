@@ -1,5 +1,6 @@
 // installEngines without the network: npm and python3 are stand-in scripts on a PATH that holds
 // nothing else, which record how they were called.
+import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -81,6 +82,9 @@ interface FakePython {
   pip?: boolean; // python3 -m pip --version succeeds; true by default
   install?: boolean; // pip install succeeds; true by default
   imports?: boolean; // the real interpreter imports grimp; true by default
+  // The real interpreter is this machine's Python, which imports the grimp package pip wrote:
+  // a module with one line in it.
+  machine?: string;
 }
 
 // A stand-in python3 on PATH, and the real interpreter it names, under root/real/. The real one
@@ -91,9 +95,11 @@ function fakePython(
 ): { python3: string; real: string } {
   const real = writeScript(
     join(s.root, "real", "python3.12"),
-    p.imports === false
-      ? 'echo "ImportError: cannot import grimp" >&2; exit 1'
-      : `printf '%s\\n' "$@" > "${s.log}/import-args"; exit 0`,
+    p.machine !== undefined
+      ? `exec "${p.machine}" "$@"`
+      : p.imports === false
+        ? 'echo "ImportError: cannot import grimp" >&2; exit 1'
+        : `printf '%s\\n' "$@" > "${s.log}/import-args"; exit 0`,
   );
   const pip =
     p.pip === false
@@ -102,7 +108,7 @@ function fakePython(
   const install =
     p.install === false
       ? 'echo "ERROR: No matching distribution found for grimp" >&2; exit 1'
-      : "/bin/mkdir -p python/grimp; exit 0";
+      : "/bin/mkdir -p python/grimp; echo 'ORBIT = 1' > python/grimp/__init__.py; exit 0";
   const python3 = writeScript(
     join(s.bin, "python3"),
     [
@@ -243,9 +249,10 @@ it("installs grimp with pip from the hashed requirements, and records the interp
   expect(readFileSync(join(s.log, "requirements.txt"), "utf8")).toBe(
     readLock().lock.pip.requirements,
   );
+  // isolated, with no site-packages, and writing no bytecode beside grimp
   const imported = lines(join(s.log, "import-args"));
-  expect(imported.slice(0, 3)).toEqual(["-I", "-S", "-c"]);
-  expect(imported[4]).toBe(
+  expect(imported.slice(0, 4)).toEqual(["-I", "-S", "-B", "-c"]);
+  expect(imported[5]).toBe(
     join(s.root, `engines.tmp-${process.pid}`, "python"),
   );
   expect(installed(s).python).toBe(real);
@@ -256,6 +263,36 @@ it("installs grimp with pip from the hashed requirements, and records the interp
   ]);
   expect(readdirSync(join(s.dir, "python"))).toEqual(["grimp"]);
 });
+
+// A python3 on this machine's PATH, for the test that runs a real interpreter.
+const machinePython = (() => {
+  try {
+    return execFileSync(
+      "python3",
+      ["-c", "import sys; print(sys.executable)"],
+      { encoding: "utf8" },
+    ).trim();
+  } catch {
+    return null;
+  }
+})();
+
+// -I makes Python ignore PYTHONDONTWRITEBYTECODE, so only -B keeps the import check from
+// writing __pycache__ into the engines directory.
+it.skipIf(machinePython === null)(
+  "imports grimp for its check without writing bytecode into the engines directory",
+  async () => {
+    const s = stage();
+    const machine = realpathSync(machinePython ?? "");
+    const { real } = fakePython(s, { version: "3.12.3", machine });
+    expect(await install(s)).toEqual([]);
+    expect(installed(s).python).toBe(real);
+    expect(readdirSync(join(s.dir, "python"), { recursive: true })).toEqual([
+      "grimp",
+      join("grimp", "__init__.py"),
+    ]);
+  },
+);
 
 it("skips grimp, and keeps nothing of it, when pip fails", async () => {
   const s = stage();

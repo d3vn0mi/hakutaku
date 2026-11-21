@@ -52,7 +52,9 @@ const PIP_INSTALL = [
 const PROBE =
   'import json, os, sys; e = sys.executable; print(json.dumps({"version": "%d.%d.%d" % tuple(sys.version_info[:3]), "executable": os.path.realpath(e) if e else None}))';
 
-// Imports grimp from the directory given as the first argument, with no site-packages.
+// Imports grimp from the directory given as the first argument, with no site-packages. It runs
+// with -B: -I makes Python ignore PYTHONDONTWRITEBYTECODE, and the import would otherwise write
+// __pycache__ directories into the engines directory.
 const IMPORT_GRIMP =
   "import sys; sys.path.insert(0, sys.argv[1]); import grimp";
 
@@ -285,7 +287,7 @@ async function installGrimp(
   }
   const imported = await run(
     found.executable,
-    ["-I", "-S", "-c", IMPORT_GRIMP, target],
+    ["-I", "-S", "-B", "-c", IMPORT_GRIMP, target],
     work,
   );
   if (!succeeded(imported)) {

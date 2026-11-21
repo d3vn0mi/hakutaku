@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -137,7 +138,7 @@ it("skips grimp when the install has no Python", () => {
   });
 });
 
-it("runs grimp's version check isolated, with -I -S and python/ as its one path", () => {
+it("runs grimp's version check isolated, with -I -S -B and python/ as its one path", () => {
   const dir = fakeInstall();
   const args = join(tmp(), "args");
   const python = writeScript(
@@ -147,9 +148,9 @@ it("runs grimp's version check isolated, with -I -S and python/ as its one path"
   installedDir({ python }, dir);
   expect(verifyEngines(dir)).toEqual({ ok: true, problems: [] });
   const argv = readFileSync(args, "utf8").split("\n").slice(0, -1);
-  expect(argv).toHaveLength(5);
-  expect(argv.slice(0, 3)).toEqual(["-I", "-S", "-c"]);
-  expect(argv[4]).toBe(join(dir, "python"));
+  expect(argv).toHaveLength(6);
+  expect(argv.slice(0, 4)).toEqual(["-I", "-S", "-B", "-c"]);
+  expect(argv[5]).toBe(join(dir, "python"));
 });
 
 it("reports grimp missing when the pinned interpreter is gone", () => {
@@ -189,6 +190,27 @@ it.skipIf(python3 === null)(
     expect(verifyEngines(dir).problems).toEqual([
       `grimp reports nothing (exit code 1), expected ${pin("grimp")}`,
     ]);
+  },
+);
+
+// The engines directory is read, never written: verify's runs leave its listing as it was.
+it.skipIf(python3 === null)(
+  "leaves the engines directory's listing unchanged",
+  () => {
+    const dir = fakeInstall();
+    const info = join(dir, "python", `grimp-${pin("grimp")}.dist-info`);
+    mkdirSync(info);
+    writeFileSync(
+      join(info, "METADATA"),
+      `Metadata-Version: 2.1\nName: grimp\nVersion: ${pin("grimp")}\n`,
+    );
+    writeFileSync(join(dir, "python", "grimp", "__init__.py"), "ORBIT = 1\n");
+    installedDir({ python: realpathSync(python3 ?? "") }, dir);
+    const listing = () => readdirSync(dir, { recursive: true }).sort();
+    const before = listing();
+    expect(verifyEngines(dir)).toEqual({ ok: true, problems: [] });
+    expect(verifyEngines(dir, { deep: true }).ok).toBe(false);
+    expect(listing()).toEqual(before);
   },
 );
 

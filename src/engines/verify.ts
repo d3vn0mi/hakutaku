@@ -34,7 +34,8 @@ type InstalledRead =
 const VERSION_TIMEOUT_MS = 60_000;
 
 // Prints grimp's version, from the directory given as the first argument before anything else
-// on sys.path. Run with -I -S, so neither the environment nor any site-packages is read.
+// on sys.path. Run with -I -S, so neither the environment nor any site-packages is read, and -B,
+// so that nothing it imports writes bytecode into the engines directory.
 const GRIMP_VERSION =
   'import sys; sys.path.insert(0, sys.argv[1]); import importlib.metadata as m; print(m.version("grimp"))';
 
@@ -156,7 +157,7 @@ function engineProblem(
     return versionProblem(
       name,
       entry.version,
-      [python, "-I", "-S", "-c", GRIMP_VERSION, bin],
+      [python, "-I", "-S", "-B", "-c", GRIMP_VERSION, bin],
       dir,
     );
   }
