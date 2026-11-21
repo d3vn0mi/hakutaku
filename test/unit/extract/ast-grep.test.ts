@@ -228,6 +228,21 @@ it("gives ast-grep the same command line however many metadata-only files the sn
   expect(await argvOf(1000)).toEqual(await argvOf(0));
 });
 
+it("builds the view afresh, so a link left in the work directory is never followed", async () => {
+  const { ctx, runs, root } = standIn({
+    files: { "web/orbit.ts": "export function orbit() {}\n" },
+  });
+  const outside = join(root, "outside.ts");
+  writeFileSync(outside, "export function outside() {}\n");
+  const stale = join(ctx.workDir, "ast-grep", "web");
+  mkdirSync(stale, { recursive: true });
+  symlinkSync(outside, join(stale, "outside.ts"));
+  expect(await astGrepDriver.run(ctx)).toEqual(NO_FACTS);
+  expect(runs[0]?.links).toEqual({
+    "web/orbit.ts": join(ctx.snapshotDir, "web/orbit.ts"),
+  });
+});
+
 it("refuses a snapshot entry that is not what the tree says, rather than follow it, and runs nothing", async () => {
   const files = {
     "web/orbit.ts": "export function orbit() {}\n",

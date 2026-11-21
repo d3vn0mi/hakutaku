@@ -299,6 +299,25 @@ it("keeps a deeper root's top package its own when no __init__.py joins it to th
   ).toEqual({ file: "vendor/lib/parse.py" });
 });
 
+it("takes the module index's reading first, even where the repo top would name another file", () => {
+  // two roots, b before a, each holding a package sky: the index places sky.orbit in b
+  const twoRoots = new Map([
+    ["sky", "b/sky/__init__.py"],
+    ["sky.chart", "a/sky/chart.py"],
+    ["sky.orbit", "b/sky/orbit.py"],
+  ]);
+  const tree = new Set([
+    ...twoRoots.values(),
+    "__init__.py",
+    "a/__init__.py",
+    "a/sky/__init__.py",
+    "a/sky/orbit.py",
+  ]);
+  expect(
+    resolvePythonImport("a/sky/chart.py", ".orbit", twoRoots, tree),
+  ).toEqual({ file: "b/sky/orbit.py" });
+});
+
 it("reads an index built after an earlier call with another index", () => {
   const first = new Map([["sky", "a/sky/__init__.py"]]);
   const second = new Map([["sky", "b/sky/__init__.py"]]);
