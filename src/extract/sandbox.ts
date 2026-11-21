@@ -1,12 +1,15 @@
 // The extraction sandbox. On Linux, extract re-runs itself inside bubblewrap or, where
-// bubblewrap does not work, inside a systemd-run --user service shown to have no network.
+// bubblewrap does not work, inside a systemd-run --user service given bubblewrap's file system
+// and shown, from inside, to have no network and to write nothing but its work directory.
 // detectSandbox finds which works, once per process; the argv builders write each command. Every
 // path in a command is absolute: the user manager's PATH may lack the running Node, and
 // systemd-run -p takes no %h. Neither sandbox lets an engine dump core, and where this systemd
 // takes OOMPolicy=continue, an engine the kernel kills at the memory cap stops only itself, so
 // the build goes on without it. Each probe keeps its evidence, and a failed one names its repair.
 import { spawn } from "node:child_process";
-import { isAbsolute, resolve } from "node:path";
+import { lstatSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { cleanReason } from "../redact/index.js";
 
 export type Sandbox = "bubblewrap" | "systemd-run";
@@ -45,25 +48,28 @@ const SYSTEMD_RUN_PROBE = [
   "PrivateNetwork=yes",
   "true",
 ];
-// Whether systemd-run can be the sandbox: a check inside the service that it sees no network
-// interface but loopback. A user manager that cannot make a network namespace (unprivileged user
-// namespaces refused) may still run the service, in the host's network, and exit 0, so
-// systemd-run's own exit code proves nothing about the network.
-const ONLY_LOOPBACK =
-  'process.exit(Object.keys(require("node:os").networkInterfaces()).every((n)=>n==="lo")?0:1)';
-const SYSTEMD_RUN_ISOLATION_PROBE = [
-  "systemd-run",
-  "--user",
-  "--wait",
-  "--quiet",
-  "--collect",
-  "-p",
-  "PrivateNetwork=yes",
-  "--",
-  process.execPath,
-  "-e",
-  ONLY_LOOPBACK,
-];
+// The check the confinement probe runs inside its service: no network interface but loopback
+// (else exit NETWORK_SEEN), the file named first written (else exit 11), then each other file
+// named written where it can be, which the probe then looks for on this machine.
+const NETWORK_SEEN = 10;
+const CONFINED_CHECK = [
+  'const fs = require("node:fs");',
+  'if (!Object.keys(require("node:os").networkInterfaces()).every((n) => n === "lo")) {',
+  '  console.error("sees a network interface besides loopback");',
+  `  process.exit(${NETWORK_SEEN});`,
+  "}",
+  "try {",
+  '  fs.writeFileSync(process.argv[1], "");',
+  "} catch (e) {",
+  '  console.error("cannot write its bound directory: " + e.code);',
+  "  process.exit(11);",
+  "}",
+  "for (const path of process.argv.slice(2)) {",
+  "  try {",
+  '    fs.writeFileSync(path, "");',
+  "  } catch {}",
+  "}",
+].join("\n");
 // Whether this systemd takes OOMPolicy=continue: scopes took it only in later versions than
 // services did, and an older systemd-run refuses a property it does not know.
 const OOM_SCOPE_PROBE = [
@@ -109,6 +115,7 @@ export const SANDBOX_REPAIRS = {
   userNamespaces: "user namespaces are refused",
   noUserManager: "no user manager can be reached",
   noNetworkCut: "systemd-run cannot cut the network",
+  noConfinement: "systemd-run cannot confine a service's file system",
 } as const;
 
 export type SandboxRepair =
@@ -134,8 +141,107 @@ function probeOnce(argv: readonly string[]): Promise<Probe> {
 
 const bwrapProbe = (): Promise<Probe> => probeOnce(BWRAP_PROBE);
 const systemdRunProbe = (): Promise<Probe> => probeOnce(SYSTEMD_RUN_PROBE);
-const isolationProbe = (): Promise<Probe> =>
-  probeOnce(SYSTEMD_RUN_ISOLATION_PROBE);
+
+let isolation: Promise<Probe> | undefined;
+const isolationProbe = (): Promise<Probe> => {
+  isolation ??= confinedService();
+  return isolation;
+};
+
+// Whether systemd-run can be the sandbox, as detectSandbox decides it: a service confined as a
+// build's is that sees no network and writes nothing but its bound directory.
+export async function confinementProbe(): Promise<{
+  ok: boolean;
+  evidence: ProbeEvidence;
+}> {
+  const probed = await isolationProbe();
+  return { ok: probed.ok, evidence: evidenceOf(probed) };
+}
+
+// The confinement probe: a service with systemd-run's sandbox properties, whose one writable
+// path is a directory in a probe directory of the home directory. Inside, it must see no network
+// interface but loopback, and write its bound directory; on this machine, only its file there may
+// have landed, not the one it writes beside that directory, nor the one in /dev/shm. A user
+// manager that cannot make the namespaces these need (unprivileged user namespaces refused) may
+// still run the service, in the host's network and file system, and exit 0, so neither
+// systemd-run's exit code nor the service's own view proves anything alone. The probe directory
+// and the /dev/shm file are removed after.
+async function confinedService(): Promise<Probe> {
+  const failed = (errno: string | null, excerpt: string): Probe => ({
+    ok: false,
+    command: "systemd-run",
+    errno,
+    exitCode: null,
+    signal: null,
+    timedOut: false,
+    excerpt,
+  });
+  let root: string;
+  try {
+    root = mkdtempSync(join(homedir(), ".hakutaku-probe-"));
+  } catch (error) {
+    return failed(
+      (error as NodeJS.ErrnoException).code ?? "unknown error",
+      "cannot make a probe directory in the home directory",
+    );
+  }
+  const bound = join(root, "work");
+  const inside = join(bound, "inside");
+  const beside = join(root, "beside");
+  const shm = join("/dev/shm", basename(root));
+  try {
+    mkdirSync(bound);
+    let argv: string[];
+    try {
+      argv = [
+        "systemd-run",
+        "--user",
+        "--wait",
+        "--pipe",
+        "--quiet",
+        "--collect",
+        ...confinement(
+          [["nodePrefix", dirname(dirname(process.execPath))]],
+          ["probe directory", bound],
+        ),
+        "--",
+        process.execPath,
+        "-e",
+        CONFINED_CHECK,
+        inside,
+        beside,
+        shm,
+      ];
+    } catch (error) {
+      return failed(null, cleanReason((error as Error).message));
+    }
+    const probed = await probe(argv);
+    if (!probed.ok) return probed;
+    if (!exists(inside)) {
+      return {
+        ...probed,
+        ok: false,
+        excerpt: "its bound directory is not this machine's",
+      };
+    }
+    if (exists(beside) || exists(shm)) {
+      return {
+        ...probed,
+        ok: false,
+        excerpt: "it wrote outside its bound directory",
+      };
+    }
+    return probed;
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(shm, { force: true });
+  }
+}
+
+// Whether anything is at path, a link included, which is not followed.
+function exists(path: string): boolean {
+  return lstatSync(path, { throwIfNoEntry: false }) !== undefined;
+}
 
 async function bwrapWorks(): Promise<boolean> {
   return (await bwrapProbe()).ok;
@@ -149,8 +255,8 @@ async function systemdRunIsolates(): Promise<boolean> {
   return (await isolationProbe()).ok;
 }
 
-// The sandbox this machine has: bubblewrap, else a systemd-run service with no network, each
-// probed at most once per process, and only on Linux.
+// The sandbox this machine has: bubblewrap, else a systemd-run service with no network and
+// bubblewrap's file system, each probed at most once per process, and only on Linux.
 export async function detectSandbox(
   platform: NodeJS.Platform = process.platform,
 ): Promise<Sandbox | null> {
@@ -164,7 +270,8 @@ export async function detectSandbox(
 // names its repair and the evidence of the probe that found it: bubblewrap not installed, or
 // refused the user namespaces it needs; systemd-run unable to reach a user manager, which also
 // leaves bubblewrap without a memory cap; and, where bubblewrap does not work, a systemd-run
-// service that still sees the host's network. None off Linux, where nothing is probed.
+// service that still sees the host's network, or writes outside its bound directory. None off
+// Linux, where nothing is probed.
 export async function sandboxProblems(
   platform: NodeJS.Platform = process.platform,
 ): Promise<SandboxProblem[]> {
@@ -190,7 +297,10 @@ export async function sandboxProblems(
     const isolation = await isolationProbe();
     if (!isolation.ok) {
       problems.push({
-        line: SANDBOX_REPAIRS.noNetworkCut,
+        line:
+          isolation.exitCode === NETWORK_SEEN
+            ? SANDBOX_REPAIRS.noNetworkCut
+            : SANDBOX_REPAIRS.noConfinement,
         evidence: evidenceOf(isolation),
       });
     }
@@ -324,14 +434,27 @@ export function bwrapArgv(p: SandboxPaths, inner: string[]): string[] {
   ];
 }
 
-// systemd-run alone: a transient user service with no network, the memory cap, no core dumps
-// and a low priority, which hakutaku waits for, its output piped through. oomContinue says this
-// systemd's services take OOMPolicy=continue.
+// systemd-run alone: a transient user service with no network, bubblewrap's file system (Node,
+// hakutaku, the pinned Python, the export and the engines read-only, and the work directory the
+// one writable path), the memory cap, no core dumps and a low priority, which hakutaku waits
+// for, its output piped through. oomContinue says this systemd's services take
+// OOMPolicy=continue.
 export function systemdRunArgv(
   p: SandboxPaths,
   inner: string[],
   opts: { oomContinue?: boolean } = {},
 ): string[] {
+  const readOnly: Array<[string, string]> = [
+    ["nodePrefix", absolute(p, "nodePrefix")],
+    ["packageRoot", absolute(p, "packageRoot")],
+  ];
+  if (p.pythonPrefix !== null) {
+    readOnly.push(["pythonPrefix", absolute(p, "pythonPrefix")]);
+  }
+  readOnly.push(
+    ["exportDir", absolute(p, "exportDir")],
+    ["enginesDir", absolute(p, "enginesDir")],
+  );
   return [
     "systemd-run",
     "--user",
@@ -339,8 +462,7 @@ export function systemdRunArgv(
     "--pipe",
     "--quiet",
     "--collect",
-    "-p",
-    "PrivateNetwork=yes",
+    ...confinement(readOnly, ["workDir", absolute(p, "workDir")]),
     ...memoryCap(p, opts.oomContinue === true),
     "-p",
     "LimitCORE=0",
@@ -349,6 +471,57 @@ export function systemdRunArgv(
     "--",
     ...inner,
   ];
+}
+
+// What gives a systemd-run service bubblewrap's file system and no network, where the user
+// manager can apply it: every directory read-only, the home directories, /tmp and /dev private
+// and empty but for what is bound, /dev/shm private too (a private /dev keeps the host's), no new
+// privileges and no set-user-ID or set-group-ID files; then the read-only binds, and the one
+// writable bind. Each pair is the field a path comes from, which a refusal names, and the path.
+function confinement(
+  readOnly: ReadonlyArray<readonly [string, string]>,
+  writable: readonly [string, string],
+): string[] {
+  return [
+    "-p",
+    "PrivateNetwork=yes",
+    "-p",
+    "ProtectSystem=strict",
+    "-p",
+    "ProtectHome=tmpfs",
+    "-p",
+    "PrivateTmp=yes",
+    "-p",
+    "PrivateDevices=yes",
+    "-p",
+    "TemporaryFileSystem=/dev/shm",
+    "-p",
+    "NoNewPrivileges=yes",
+    "-p",
+    "RestrictSUIDSGID=yes",
+    ...readOnly.flatMap(([field, path]) => [
+      "-p",
+      `BindReadOnlyPaths=${quoted(field, path)}`,
+    ]),
+    "-p",
+    `BindPaths=${quoted(...writable)}`,
+  ];
+}
+
+// A path as a bind property reads it: in double quotes, which keep a space or a colon in it as
+// part of the path. A path holding a quote, a backslash or a control character is refused, since
+// a quote cannot carry it.
+function quoted(field: string, path: string): string {
+  const unquotable = [...path].some((c) => {
+    const code = c.charCodeAt(0);
+    return c === '"' || c === "\\" || code < 0x20 || code === 0x7f;
+  });
+  if (unquotable) {
+    throw new Error(
+      `sandbox: ${field} cannot be bound by systemd-run: ${JSON.stringify(path)}`,
+    );
+  }
+  return `"${path}"`;
 }
 
 // The scope bubblewrap runs in to have the memory cap. --collect unloads it even when the cap

@@ -2,6 +2,7 @@
 // --yes` once, and `npm run build` for the sandboxed run, before this file. Each repo is made
 // with makeRepo, exported with exportRepo, and extracted with sandbox "none" unless a test says
 // otherwise. Every build's engines are checked one by one, never through its result alone.
+import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -25,6 +26,10 @@ import {
   type ExtractResult,
   extractSnapshot,
 } from "../../../src/extract/index.js";
+import {
+  confinementProbe,
+  evidenceLine,
+} from "../../../src/extract/sandbox.js";
 import { DEFAULT_PROFILE } from "../../../src/profile/load.js";
 import { compilerTier } from "../../../src/query/tiers.js";
 import {
@@ -41,7 +46,11 @@ import {
   standInEnginesDir,
 } from "../../helpers/engines.js";
 import { git, makeRepo, type RepoSpec } from "../../helpers/git.js";
-import { commandProbe, requireInCI } from "../../helpers/live.js";
+import {
+  commandProbe,
+  type LiveProbe,
+  requireInCI,
+} from "../../helpers/live.js";
 
 const TIMEOUT = 300_000;
 
@@ -1257,6 +1266,109 @@ it(
       "attempt.json",
       "build.json",
       "store.sqlite",
+    ]);
+  },
+  TIMEOUT,
+);
+
+// Whether systemd-run can be the sandbox here, by the probe detectSandbox takes it on.
+const confined = await confinementProbe();
+const confiningManager: LiveProbe = {
+  name: "a systemd user manager that confines a service's network and file system",
+  ok: confined.ok,
+  evidence: evidenceLine(confined.evidence),
+};
+
+// Where systemd-run is, so that a PATH can hold it alone.
+const SYSTEMD_RUN_PATH = spawnSync(
+  "/bin/sh",
+  ["-c", "command -v systemd-run"],
+  {
+    encoding: "utf8",
+  },
+).stdout.trim();
+
+// extractSnapshot from a fresh copy of the module, with systemd-run alone on PATH: bubblewrap
+// cannot start, so systemd-run is the sandbox, probed afresh, as on a machine without
+// bubblewrap.
+async function withSystemdRunOnly<T>(
+  build: (extract: typeof extractSnapshot) => Promise<T>,
+): Promise<T> {
+  const bin = tmp();
+  symlinkSync(SYSTEMD_RUN_PATH, join(bin, "systemd-run"));
+  vi.stubEnv("PATH", bin);
+  try {
+    vi.resetModules();
+    const fresh = await import("../../../src/extract/index.js");
+    return await build(fresh.extractSnapshot);
+  } finally {
+    vi.unstubAllEnvs();
+  }
+}
+
+it(
+  "builds the same store under systemd-run, with only the work directory writable, and says so in build.json",
+  async (ctx) => {
+    requireInCI(ctx, confiningManager);
+    const dir = await exportOf(await oneCommit({ ...SKY, ...EPHEMERIS }));
+    const plain = storePath();
+    const unsandboxed = await extract(dir, plain);
+    expect(unsandboxed.result).toBe("built");
+
+    const out = storePath();
+    const r = await withSystemdRunOnly((build) =>
+      build({ dir, out, sandbox: "require" }),
+    );
+    expect(r).toEqual({ ...unsandboxed });
+    const facts = readBuildFacts(out);
+    expect(facts?.sandbox).toBe("systemd-run");
+    expect(statuses(facts)).toEqual({
+      "ast-grep": "ran",
+      "dependency-cruiser": "ran",
+      grimp: "ran",
+      "scip-typescript": "ran",
+    });
+    // read inside the service, from its own cgroup
+    expect(facts?.peakRssBytes).toBeGreaterThan(0);
+    expect(readAttempt(out)?.result).toBe("built");
+    expect(readdirSync(dirname(out)).sort()).toEqual([
+      "attempt.json",
+      "build.json",
+      "store.sqlite",
+    ]);
+  },
+  TIMEOUT,
+);
+
+it(
+  "lets a hostile engine write only in the work directory under systemd-run too",
+  async (ctx) => {
+    requireInCI(ctx, confiningManager);
+    const dir = await exportOf(await oneCommit(SKY));
+    const refusal =
+      /^writeStore: <store>\/store\.tmp-\d+\.sqlite already exists$/;
+    const out = storePath();
+    const h = hostileEngine(dirname(out));
+    await expect(
+      withSystemdRunOnly((build) =>
+        build({
+          dir,
+          out,
+          enginesDir: h.enginesDir,
+          detail: "quick",
+          sandbox: "require",
+        }),
+      ),
+    ).rejects.toThrow(refusal);
+    expect(readFileSync(h.canary, "utf8")).toBe("canary\n");
+    expect(existsSync(h.planted)).toBe(false);
+    expect(readAttempt(out)).toMatchObject({
+      result: "failed",
+      reason: expect.stringMatching(refusal),
+    });
+    expect(readdirSync(dirname(out)).sort()).toEqual([
+      "attempt.json",
+      "canary.txt",
     ]);
   },
   TIMEOUT,

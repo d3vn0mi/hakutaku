@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -13,7 +14,9 @@ import { dirname, join } from "node:path";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
 import {
   bwrapArgv,
+  confinementProbe,
   detectSandbox,
+  evidenceLine,
   type SandboxPaths,
   sandboxCommand,
   systemdRunArgv,
@@ -65,23 +68,35 @@ const OOM_SERVICE_PROBE =
   "systemd-run --user --wait --quiet --collect -p OOMPolicy=continue true";
 // What bubblewrap runs inner through: a shell that sets the core limit to 0 first.
 const NO_CORE = ["/bin/sh", "-c", 'ulimit -c 0 && exec "$@"', "sh"];
-// The probe that takes systemd-run as the sandbox: a check inside the service that it sees no
-// network interface but loopback. No element holds a space, so the log line splits back.
-const ONLY_LOOPBACK =
-  'process.exit(Object.keys(require("node:os").networkInterfaces()).every((n)=>n==="lo")?0:1)';
-const SYSTEMD_RUN_ISOLATION_PROBE = [
-  "systemd-run",
-  "--user",
-  "--wait",
-  "--quiet",
-  "--collect",
+// The properties that give a systemd-run service bubblewrap's file system and no network, before
+// its binds: every directory read-only, the home directories, /tmp, /dev and /dev/shm private,
+// no new privileges and no set-user-ID or set-group-ID files.
+const CONFINED = [
   "-p",
   "PrivateNetwork=yes",
-  "--",
-  process.execPath,
-  "-e",
-  ONLY_LOOPBACK,
+  "-p",
+  "ProtectSystem=strict",
+  "-p",
+  "ProtectHome=tmpfs",
+  "-p",
+  "PrivateTmp=yes",
+  "-p",
+  "PrivateDevices=yes",
+  "-p",
+  "TemporaryFileSystem=/dev/shm",
+  "-p",
+  "NoNewPrivileges=yes",
+  "-p",
+  "RestrictSUIDSGID=yes",
 ];
+// The probe that takes systemd-run as the sandbox, as the stand-ins log it, up to the "--" that
+// starts its check: a service confined as a build's is, its one writable directory in a probe
+// directory under the home directory.
+const ISOLATION_PROBE = expect.stringMatching(
+  new RegExp(
+    `^systemd-run --user --wait --pipe --quiet --collect ${CONFINED.join(" ")} -p BindReadOnlyPaths="[^"]+" -p BindPaths="[^"]+/\\.hakutaku-probe-\\w+/work" --$`,
+  ),
+);
 
 // The [source, destination] pair after each occurrence of flag.
 const pairsAfter = (a: string[], flag: string): string[][] =>
@@ -223,7 +238,7 @@ it.each([
   ),
 );
 
-it("writes the whole systemd-run command, with no swap beyond the memory cap and no core dumps", () => {
+it("writes the whole systemd-run command: bubblewrap's file system, only the work directory writable, no swap beyond the memory cap and no core dumps", () => {
   const head = [
     "systemd-run",
     "--user",
@@ -231,8 +246,19 @@ it("writes the whole systemd-run command, with no swap beyond the memory cap and
     "--pipe",
     "--quiet",
     "--collect",
+    ...CONFINED,
     "-p",
-    "PrivateNetwork=yes",
+    'BindReadOnlyPaths="/opt/node"',
+    "-p",
+    'BindReadOnlyPaths="/opt/hakutaku"',
+    "-p",
+    'BindReadOnlyPaths="/opt/python"',
+    "-p",
+    'BindReadOnlyPaths="/srv/observatory/export"',
+    "-p",
+    'BindReadOnlyPaths="/srv/observatory/engines"',
+    "-p",
+    'BindPaths="/srv/observatory/store/work.tmp-4242"',
     "-p",
     "MemoryMax=15G",
     "-p",
@@ -251,9 +277,43 @@ it("writes the whole systemd-run command, with no swap beyond the memory cap and
   ).toEqual([...head, "-p", "OOMPolicy=continue", ...tail]);
 });
 
+// systemd-run splits a bind at a space or a colon outside quotes, so each path is quoted, and a
+// path holding what a quote cannot carry is refused rather than bound wrong.
+it("quotes each path systemd-run binds, and refuses one a quote cannot carry", () => {
+  const argv = systemdRunArgv(
+    {
+      ...paths,
+      pythonPrefix: null,
+      exportDir: "/srv/sky charts:2026/export",
+      workDir: "/srv/sky charts:2026/store/work.tmp-4242",
+    },
+    inner,
+  );
+  expect(argv).toContain('BindReadOnlyPaths="/srv/sky charts:2026/export"');
+  expect(argv).toContain(
+    'BindPaths="/srv/sky charts:2026/store/work.tmp-4242"',
+  );
+  expect(argv).not.toContain('BindReadOnlyPaths="/opt/python"');
+  for (const workDir of [
+    '/srv/sky"/work',
+    "/srv/sky\\/work",
+    "/srv/sky\n/work",
+  ]) {
+    expect(() => systemdRunArgv({ ...paths, workDir }, inner)).toThrow(
+      `sandbox: workDir cannot be bound by systemd-run: ${JSON.stringify(workDir)}`,
+    );
+  }
+  expect(() =>
+    systemdRunArgv({ ...paths, exportDir: "export" }, inner),
+  ).toThrow('sandbox: exportDir is not an absolute path: "export"');
+});
+
 // Stand-ins for bwrap and systemd-run on a PATH holding nothing else. Each appends its name and
-// arguments to the log, writes what it is given to say on stderr, then exits with its code; a
-// tool given no code is not on the PATH. systemd-run fails a probe of OOMPolicy when told to.
+// arguments to the log, up to a "--" that starts the command it would run, writes what it is
+// given to say on stderr, then exits with its code; a tool given no code is not on the PATH.
+// systemd-run fails a probe of OOMPolicy when told to, and one that exits 0 writes the file the
+// confinement check names first, as a confined service does. HOME is a fresh directory, which
+// holds the confinement probe's directory.
 function fakeTools(
   codes: Partial<Record<"bwrap" | "systemd-run", number>>,
   opts: {
@@ -271,7 +331,9 @@ function fakeTools(
       file,
       [
         "#!/bin/sh",
-        `echo "${name} $*" >> "${log}"`,
+        `line="${name}"`,
+        'for a in "$@"; do line="$line $a"; [ "$a" = "--" ] && break; done',
+        `echo "$line" >> "${log}"`,
         ...(opts.noOomPolicy === true
           ? [
               'case "$*" in *OOMPolicy=*) echo "Unknown assignment: OOMPolicy=continue" >&2; exit 1;; esac',
@@ -280,6 +342,12 @@ function fakeTools(
         ...(said === undefined
           ? []
           : [`printf '%s\\n' ${JSON.stringify(said)} >&2`]),
+        ...(code === 0
+          ? [
+              'while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done',
+              '[ "$#" -ge 5 ] && : > "$5"',
+            ]
+          : []),
         `exit ${code}`,
         "",
       ].join("\n"),
@@ -287,6 +355,7 @@ function fakeTools(
     chmodSync(file, 0o755);
   }
   vi.stubEnv("PATH", bin);
+  vi.stubEnv("HOME", tmp());
   return log;
 }
 
@@ -323,24 +392,53 @@ it("falls back to systemd-run when bubblewrap fails, probing each once", async (
   const s = await freshSandbox();
   expect(await s.detectSandbox("linux")).toBe("systemd-run");
   expect(await s.detectSandbox("linux")).toBe("systemd-run");
-  expect(logged(log)).toEqual([
-    BWRAP_PROBE,
-    SYSTEMD_RUN_ISOLATION_PROBE.join(" "),
-  ]);
+  expect(logged(log)).toEqual([BWRAP_PROBE, ISOLATION_PROBE]);
 });
 
-// A systemd-run stand-in whose service shares the host's network, as a user manager that cannot
-// make a network namespace runs it: it runs what follows "--" right here, and exits 0 otherwise.
-function hostNetworkSystemdRun(): void {
+// A systemd-run stand-in that runs what follows "--" in place of a service, and exits 0 when
+// nothing does: in the host's network and file system, as a user manager that cannot make
+// namespaces runs a service; through bubblewrap with no network but the host's file system
+// writable; or through bubblewrap with no network and only the directory BindPaths names
+// writable, as a confined service. HOME is a fresh directory.
+function standInSystemdRun(service: "host" | "network cut" | "confined"): void {
   const bin = tmp();
   const file = join(bin, "systemd-run");
+  const bwrap = BWRAP_PATH ?? "bwrap";
+  const run =
+    service === "host"
+      ? 'exec "$@"'
+      : service === "network cut"
+        ? `exec ${bwrap} --unshare-net --die-with-parent --bind / / --dev /dev -- "$@"`
+        : `exec ${bwrap} --unshare-all --die-with-parent --ro-bind / / --dev /dev --bind "$bound" "$bound" -- "$@"`;
   writeFileSync(
     file,
-    '#!/bin/sh\nwhile [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done\n[ "$#" -gt 0 ] || exit 0\nshift\nexec "$@"\n',
+    [
+      "#!/bin/sh",
+      'bound=""',
+      'while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion, not a template
+      '  case "$1" in BindPaths=*) bound="${1#BindPaths=\\"}"; bound="${bound%\\"}";; esac',
+      "  shift",
+      "done",
+      '[ "$#" -gt 0 ] || exit 0',
+      "shift",
+      run,
+      "",
+    ].join("\n"),
   );
   chmodSync(file, 0o755);
   vi.stubEnv("PATH", bin);
+  vi.stubEnv("HOME", tmp());
 }
+const hostNetworkSystemdRun = (): void => standInSystemdRun("host");
+
+// Where bwrap is, for the stand-ins that run a service through it with PATH holding no bwrap.
+const BWRAP_PATH = (() => {
+  const r = spawnSync("/bin/sh", ["-c", "command -v bwrap"], {
+    encoding: "utf8",
+  });
+  return r.status === 0 ? r.stdout.trim() : null;
+})();
 // The tests of a service in the host's network need a host network that differs from loopback.
 const hostInterfaces = Object.keys(networkInterfaces());
 const hostNetwork: LiveProbe = {
@@ -384,7 +482,6 @@ it.each<[string, Partial<Record<"bwrap" | "systemd-run", number>>, string]>([
 });
 
 it("keeps each failed probe's evidence: its error code, its exit, and the last line it said, cleaned", async () => {
-  vi.stubEnv("HOME", "/srv/astronomer");
   // assembled here, never written whole
   const secret = ["gh", "p_", "Q7x2M4p9K3l8N5r6".repeat(3)].join("");
   fakeTools(
@@ -396,6 +493,7 @@ it("keeps each failed probe's evidence: its error code, its exit, and the last l
       },
     },
   );
+  vi.stubEnv("HOME", "/srv/astronomer");
   const s = await freshSandbox();
   const problems = await s.sandboxProblems("linux");
   expect(problems.map((p) => p.line)).toEqual([
@@ -450,8 +548,48 @@ it("says systemd-run cannot cut the network when its service runs in the host's 
     ]),
   ).toEqual([
     ["bubblewrap is not installed", "bwrap: could not start: ENOENT"],
-    ["systemd-run cannot cut the network", "systemd-run: exit code 1"],
+    [
+      "systemd-run cannot cut the network",
+      "systemd-run: exit code 10: sees a network interface besides loopback",
+    ],
   ]);
+});
+
+// The service's own view cannot tell a private file system from the host's, so the probe looks
+// on the host for what the service wrote.
+it("says systemd-run cannot confine a service's file system when its service writes outside its bound directory", async (ctx) => {
+  requireInCI(ctx, bwrap);
+  standInSystemdRun("network cut");
+  const s = await freshSandbox();
+  expect(await s.detectSandbox("linux")).toBeNull();
+  expect(
+    (await s.sandboxProblems("linux")).map((p) => [
+      p.line,
+      s.evidenceLine(p.evidence),
+    ]),
+  ).toEqual([
+    ["bubblewrap is not installed", "bwrap: could not start: ENOENT"],
+    [
+      "systemd-run cannot confine a service's file system",
+      "systemd-run: exit code 0: it wrote outside its bound directory",
+    ],
+  ]);
+  // nothing of the probe is left in the home directory
+  expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
+});
+
+it("takes systemd-run as the sandbox when its service has no network and writes only its bound directory", async (ctx) => {
+  requireInCI(ctx, bwrap);
+  standInSystemdRun("confined");
+  const s = await freshSandbox();
+  expect(await s.detectSandbox("linux")).toBe("systemd-run");
+  expect(await s.sandboxProblems("linux")).toEqual([
+    {
+      line: "bubblewrap is not installed",
+      evidence: expect.objectContaining({ errno: "ENOENT" }),
+    },
+  ]);
+  expect(readdirSync(process.env.HOME ?? "")).toEqual([]);
 });
 
 it("names the platform off Linux, running no probe", async () => {
@@ -536,7 +674,7 @@ it("runs systemd-run alone when it is the sandbox, with OOMPolicy where its serv
   });
   expect(logged(log)).toEqual([
     BWRAP_PROBE,
-    SYSTEMD_RUN_ISOLATION_PROBE.join(" "),
+    ISOLATION_PROBE,
     OOM_SERVICE_PROBE,
   ]);
   fakeTools({ bwrap: 1, "systemd-run": 0 }, { noOomPolicy: true });
@@ -554,30 +692,18 @@ const userManager = commandProbe(
   "a systemd user manager",
   SYSTEMD_RUN_PROBE.split(" "),
 );
-const isolatingManager = commandProbe(
-  "a systemd user manager that cuts a service's network",
-  SYSTEMD_RUN_ISOLATION_PROBE,
-);
+// The probe detectSandbox takes systemd-run on, run here as it is: a service with no network that
+// writes only its bound directory.
+const confined = await confinementProbe();
+const confiningManager: LiveProbe = {
+  name: "a systemd user manager that confines a service's network and file system",
+  ok: confined.ok,
+  evidence: evidenceLine(confined.evidence),
+};
 const oomScope = commandProbe(
   "OOMPolicy on a systemd-run scope",
   OOM_SCOPE_PROBE.split(" "),
 );
-
-// The isolation probe's check, on its own: it passes in a fresh network namespace and fails in the
-// host's, so a probe that passes proves the service had no network.
-it("checks for loopback only: true in a new network namespace, false in the host's", (ctx) => {
-  requireInCI(ctx, bwrap, hostNetwork);
-  const check = [process.execPath, "-e", ONLY_LOOPBACK];
-  const inNamespace = spawnSync(
-    "bwrap",
-    ["--unshare-all", "--die-with-parent", "--ro-bind", "/", "/", ...check],
-    { stdio: "ignore", timeout: 30_000 },
-  );
-  expect(inNamespace.status).toBe(0);
-  const [node = "", ...args] = check;
-  const onHost = spawnSync(node, args, { stdio: "ignore", timeout: 30_000 });
-  expect(onHost.status).toBe(1);
-});
 
 // A sandbox's directories under the OS temp directory, a file in the export, a directory
 // outside every bind, and the store's directory, which holds the work directory and is not
@@ -680,8 +806,30 @@ it("runs bubblewrap inside a systemd-run scope", async (ctx) => {
   expect(writtenOnHost(p, storeDir)).toEqual({ work: true, beside: false });
 });
 
+// systemd-run has no view of its own of what it confines: the script reports what it can read
+// and write, and the host says where its writes landed.
+it("runs a command under systemd-run that reads the export, writes only the work directory and has no network", (ctx) => {
+  requireInCI(ctx, confiningManager);
+  const { p, outside, storeDir } = liveLayout();
+  const r = runArgv(
+    systemdRunArgv(p, [process.execPath, "-e", report(p, outside)]),
+  );
+  expect(r.status).toBe(0);
+  expect(JSON.parse(r.out)).toMatchObject({
+    read: "{}\n",
+    export: "EROFS",
+    engines: "EROFS",
+    package: "EROFS",
+    work: "written",
+    outside: false,
+    network: ["lo"],
+    core: "0 0",
+  });
+  expect(writtenOnHost(p, storeDir)).toEqual({ work: true, beside: false });
+});
+
 it("runs a command under systemd-run with no network, nice 19 and the memory cap", (ctx) => {
-  requireInCI(ctx, isolatingManager);
+  requireInCI(ctx, confiningManager);
   const { p } = liveLayout();
   const script = `
 const fs = require("node:fs");
@@ -701,7 +849,7 @@ console.log(JSON.stringify({ nice: os.getPriority(), network: Object.keys(os.net
 });
 
 it("runs systemd-run's service with no core dumps", (ctx) => {
-  requireInCI(ctx, userManager);
+  requireInCI(ctx, confiningManager);
   const { p } = liveLayout();
   const script =
     'console.log(/^Max core file size +(\\S+) +(\\S+)/m.exec(require("node:fs").readFileSync("/proc/self/limits", "utf8")).slice(1).join(" "))';
