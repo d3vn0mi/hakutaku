@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { COMMANDS, type Command } from "../../../src/cli/commands/index.js";
-import { main } from "../../../src/cli/main.js";
+import { main, processIO } from "../../../src/cli/main.js";
 
 const capture = () => {
   const out: string[] = [];
@@ -25,6 +25,20 @@ it("prints the package version for --version", async () => {
   expect(c.out.join("")).toBe(
     `${JSON.parse(readFileSync("package.json", "utf8")).version}\n`,
   );
+});
+
+it("hands every error of the process's stdout to the listener a command registers", () => {
+  const listener = vi.fn();
+  processIO().onStdoutError?.(listener);
+  try {
+    // process.stdout stays writable after an error, so each later write can fail again
+    const epipe = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+    process.stdout.emit("error", epipe);
+    process.stdout.emit("error", epipe);
+    expect(listener.mock.calls).toEqual([[epipe], [epipe]]);
+  } finally {
+    process.stdout.off("error", listener);
+  }
 });
 
 it("exits 2 with the usage on stderr for an unknown command", async () => {

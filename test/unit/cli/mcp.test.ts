@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
 import { LATEST_PROTOCOL_VERSION } from "@modelcontextprotocol/sdk/types.js";
 import { afterEach, expect, it, vi } from "vitest";
@@ -65,6 +66,43 @@ const messages = (out: string): Array<Record<string, unknown>> =>
     .filter((l) => l !== "")
     .map((l) => JSON.parse(l));
 
+// A stdout whose reader goes away at close(), as when a client closes its read end. Like
+// process.stdout, each later write fails after it has returned, with an 'error' event that
+// throws when nothing listens, and the stream stays writable.
+function closableStdout(c: { out: string }, code: string) {
+  const events = new EventEmitter();
+  let gone = false;
+  return {
+    close: () => {
+      gone = true;
+    },
+    stdout: (s: string) => {
+      if (!gone) {
+        c.out += s;
+        return;
+      }
+      const error = Object.assign(new Error(`write ${code}`), { code });
+      setImmediate(() => events.emit("error", error));
+    },
+    onStdoutError: (listener: (error: Error) => void) => {
+      events.on("error", listener);
+    },
+  };
+}
+
+// What the promise settles to, or a note once ms have passed without it.
+async function within<T>(ms: number, promise: Promise<T>): Promise<T | string> {
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<string>((resolve) => {
+    timer = setTimeout(() => resolve(`still running after ${ms} ms`), ms);
+  });
+  try {
+    return await Promise.race([promise, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 it("is registered as mcp, before query", () => {
   const names = COMMANDS.map((command) => command.name);
   expect(names.indexOf("mcp")).toBe(names.indexOf("query") - 1);
@@ -118,6 +156,31 @@ it("mcp ends when stdin closes without ending", async () => {
   stdin.destroy();
   expect(await done).toBe(0);
   expect(stdin.listenerCount("data")).toBe(0);
+});
+
+it("mcp ends quietly, with exit 0, once stdout fails because the client closed its read end", async () => {
+  // EPIPE is what a closed read end gives; any other error on stdout ends the session the same way
+  for (const code of ["EPIPE", "EIO"]) {
+    const stdin = new PassThrough();
+    const { c, io } = capture(stdin);
+    const out = closableStdout(c, code);
+    const done = main(["mcp", "tiny"], {
+      ...io,
+      stdout: out.stdout,
+      onStdoutError: out.onStdoutError,
+    });
+    stdin.write(line(INIT));
+    await vi.waitFor(() => expect(c.out).toContain('"serverInfo"'));
+    out.close();
+    stdin.write(line({ jsonrpc: "2.0", id: 2, method: "tools/list" }));
+    stdin.write(line(call(3, "code_overview", { repo: "tiny" })));
+    stdin.write(line({ jsonrpc: "2.0", id: 4, method: "tools/list" }));
+    // stdin never ends: the failed stdout alone ends the server
+    expect([code, await within(5000, done)]).toEqual([code, 0]);
+    expect(c.err).toBe("");
+    expect(messages(c.out).map((m) => m.id)).toEqual([1]);
+    expect(stdin.listenerCount("data")).toBe(0);
+  }
 });
 
 it("mcp answers every request written before stdin ends", async () => {

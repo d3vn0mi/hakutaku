@@ -14,6 +14,11 @@ export interface CliIO {
   stdin: NodeJS.ReadableStream;
   env: NodeJS.ProcessEnv;
   isTTY: boolean;
+  // Calls listener with each error of the stream behind stdout, such as EPIPE once its reader
+  // has gone. Such an error comes after stdout has returned, so a command that must end on it
+  // listens here. On the process's own stdout, an error that nothing listens for ends the
+  // process.
+  onStdoutError?(listener: (error: Error) => void): void;
 }
 
 export interface Command {

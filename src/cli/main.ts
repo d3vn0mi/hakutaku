@@ -16,7 +16,8 @@ function usage(): string {
   return `${lines.join("\n")}\n`;
 }
 
-function processIO(): CliIO {
+// The process's own streams, environment and terminal.
+export function processIO(): CliIO {
   return {
     stdout: (s) => {
       process.stdout.write(s);
@@ -30,6 +31,11 @@ function processIO(): CliIO {
     },
     env: process.env,
     isTTY: isatty(0) && isatty(1),
+    // process.stdout stays writable after an error, so a later write can fail again; the
+    // listener stays for every one.
+    onStdoutError: (listener) => {
+      process.stdout.on("error", listener);
+    },
   };
 }
 
