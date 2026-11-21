@@ -64,10 +64,17 @@ const SPECIFIERS = [
   /\bimport\s*["']([^"']+)["']/g,
 ];
 
+// A string literal (kept, as group 1) or a comment. Read in one pass from the left, so a comment
+// never starts inside a string such as "secrets/**", and a quote inside a comment starts no
+// string. A quoted string ends at the end of its line.
+const LITERAL_OR_COMMENT =
+  /("(?:[^"\\\n]|\\[\s\S])*"|'(?:[^'\\\n]|\\[\s\S])*'|`(?:[^`\\]|\\[\s\S])*`)|\/\*[\s\S]*?\*\/|\/\/[^\n]*/g;
+
 function specifiersOf(source: string): string[] {
-  const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^\s*\/\/.*$/gm, "");
+  const code = source.replace(
+    LITERAL_OR_COMMENT,
+    (_match, literal: string | undefined) => literal ?? " ",
+  );
   return SPECIFIERS.flatMap((re) =>
     [...code.matchAll(re)].map((m) => m[1] ?? ""),
   );
@@ -98,6 +105,19 @@ const BUILD_CODE =
 const SDK = "node_modules/@modelcontextprotocol/sdk";
 const sdkVersion = (): string =>
   JSON.parse(readFileSync(`${SDK}/package.json`, "utf8")).version;
+
+it("drops comments, and never starts one inside a string such as a glob", () => {
+  const source = [
+    'const DENY = ["secrets/**"];',
+    'import { a } from "./a.js";',
+    '/* a comment that names "./b.js" */',
+    '// import "./c.js";',
+    'export { d } from "./d.js"; // and import("./e.js")',
+    "const url = 'https://example.com/*';",
+    'const f = import("./f.js");',
+  ].join("\n");
+  expect(specifiersOf(source)).toEqual(["./a.js", "./d.js", "./f.js"]);
+});
 
 it("exports the tool contract and the server instructions from '.'", async () => {
   const m = await import("../../../src/index.js");
