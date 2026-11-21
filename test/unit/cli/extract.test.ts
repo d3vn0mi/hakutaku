@@ -88,6 +88,11 @@ it.each<[string, string[], string]>([
     '--current-unresolved must be a whole number, not "1.5"',
   ],
   [
+    "a current count of unresolved imports written in another notation",
+    ["a", "--out", "s.sqlite", "--current-unresolved", "1e3"],
+    '--current-unresolved must be a whole number, not "1e3"',
+  ],
+  [
     "a current count of unresolved imports past the largest safe integer",
     ["a", "--out", "s.sqlite", "--current-unresolved", "9007199254740993"],
     '--current-unresolved must be a whole number, not "9007199254740993"',

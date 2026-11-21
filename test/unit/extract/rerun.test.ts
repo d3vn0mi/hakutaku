@@ -26,7 +26,9 @@ import {
   type BuildFacts,
   MAX_JSON_BYTES,
   openStore,
+  readBuildFacts,
   type Store,
+  type StoreContent,
   writeBuildFacts,
 } from "../../../src/store/index.js";
 import { emptyContent, miniStore } from "../../helpers/mini-store.js";
@@ -224,10 +226,14 @@ it("words how the sandboxed run ended when it printed nothing, naming the stage 
 
 // A work directory as a built inner run leaves it: the gated store, of the commit the store's
 // meta names, and its build facts.
-function builtWork(): { work: string; contentHash: string; commit: string } {
+function builtWork(content: StoreContent = emptyContent()): {
+  work: string;
+  contentHash: string;
+  commit: string;
+} {
   const work = join(tmp(), "work.tmp-4242");
   mkdirSync(work);
-  copyFileSync(miniStore(emptyContent()), join(work, "store.sqlite"));
+  copyFileSync(miniStore(content), join(work, "store.sqlite"));
   const store = openStore(join(work, "store.sqlite")) as Store;
   const { commit } = store.meta;
   const { contentHash } = store.run;
@@ -319,6 +325,19 @@ it.skipIf(process.platform === "win32")(
       "the sandboxed build's store.sqlite is refused: it is not the store the sandboxed extract reported",
     );
 
+    // a store whose gates did not all pass is never swapped in, whatever the run reported
+    const content = emptyContent();
+    const [meta] = content.meta;
+    if (meta === undefined) throw new Error("no meta row");
+    meta.gates = meta.gates.map((g) =>
+      g.gate === "denylist"
+        ? { ...g, ok: false, detail: "1 denied path in the store" }
+        : g,
+    );
+    expect(refusedFor(builtWork(content))).toBe(
+      "the sandboxed build's store.sqlite is refused: it is not the store the sandboxed extract reported",
+    );
+
     const broken = builtWork();
     writeFileSync(join(broken.work, "store.sqlite"), "not a store");
     expect(refusedFor(broken)).toBe(
@@ -358,6 +377,18 @@ it.skipIf(process.platform === "win32")(
     const other = builtWork();
     writeFileSync(join(other.work, "build.json"), "{}");
     expect(refusedFor(other)).toBe(
+      "the sandboxed build's build.json is refused: it is not the build facts of the store reported",
+    );
+
+    // the facts of another store of the same commit
+    const another = builtWork();
+    const read = readBuildFacts(join(another.work, "store.sqlite"));
+    if (read === null) throw new Error("no build facts");
+    writeBuildFacts(join(another.work, "store.sqlite"), {
+      ...read,
+      contentHash: "0".repeat(64),
+    });
+    expect(refusedFor(another)).toBe(
       "the sandboxed build's build.json is refused: it is not the build facts of the store reported",
     );
   },
