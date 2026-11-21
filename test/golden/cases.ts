@@ -17,7 +17,9 @@ import {
   type FindAnswer,
   type LibraryReferencesAnswer,
   measure,
+  type OverviewRepoAnswer,
   type PathAnswer,
+  type ReposAnswer,
   type RulesAnswer,
   type SearchTextAnswer,
   type SnippetAnswer,
@@ -140,7 +142,27 @@ const golden = (
 ): GoldenCase => ({ tool, name, detail: "standard", args, ...more });
 
 export const CASES: readonly GoldenCase[] = Object.freeze([
-  golden("code_repos", "all", {}),
+  golden(
+    "code_repos",
+    "all",
+    {},
+    {
+      // languages counts the code, test and test-support files, as code_overview's repo answer
+      // does; coverage.indexed counts those an import engine read, and grimp reads no Python
+      // file outside the packages, so the sample's Python tests are in the one and not the other
+      premise: (r, c) => {
+        const repo = answerOf<ReposAnswer>(r).repos[0];
+        const overview = answerOf<OverviewRepoAnswer>(
+          c.run("code_overview", {}),
+        );
+        expect(JSON.stringify(repo?.languages)).toBe(
+          JSON.stringify(overview.languages),
+        );
+        expect(repo?.coverage.indexed.python).toBe(24);
+        expect(repo?.languages.python).toBeGreaterThan(24);
+      },
+    },
+  ),
 
   golden("code_overview", "repo", {}),
   golden("code_overview", "component", { component: "web/src/orbits" }),

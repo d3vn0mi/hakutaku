@@ -1,4 +1,5 @@
 // code_repos: every repo this caller may ask about, with how fresh and how complete its store is.
+import { fileLanguages } from "../query/index.js";
 import type { Store } from "../store/index.js";
 import type { CallContext, Host, HostError, RepoEntry } from "./host.js";
 import type { ReposAnswer } from "./types.js";
@@ -41,7 +42,9 @@ function repoInfo(host: Host, ctx: CallContext, entry: RepoEntry): RepoInfo {
     // The detail the store was built at; the entry's own only when there is no store.
     detail: store === undefined ? entry.detail : store.meta.detail,
     snippets,
-    languages: { ...coverage?.indexed },
+    // every code, test and test-support file, where coverage.indexed counts only those an
+    // import engine read
+    languages: store === undefined ? {} : fileLanguages(store),
     coverage: {
       files: coverage?.files ?? 0,
       indexed: { ...coverage?.indexed },

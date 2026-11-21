@@ -15,6 +15,7 @@ export { queryExplain } from "./explain.js";
 export { queryFind } from "./find.js";
 export { matchGlob } from "./glob.js";
 export { queryImpact } from "./impact.js";
+export { fileLanguages } from "./languages.js";
 export { MATCH_LEVELS, type MatchLevel, matchLevel } from "./match.js";
 export { queryOverview } from "./overview.js";
 export { queryPath } from "./path.js";

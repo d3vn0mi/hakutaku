@@ -6,6 +6,7 @@ import {
   type Host,
   type ImpactAnswer,
   measure,
+  type OverviewRepoAnswer,
   type ReposAnswer,
   type RulesAnswer,
   runTool,
@@ -616,6 +617,28 @@ describe("code_repos", () => {
       message: "unknown repo tiny",
       known: ["tiny"],
     });
+  });
+
+  it("counts every code, test and test-support file in languages, as code_overview does, and keeps coverage.indexed as built", () => {
+    // a build whose import engines read fewer files than the store holds
+    const h = fixedHost({
+      tiny: tinyStore({
+        coverage: { indexed: { python: 1, typescript: 10 } },
+      }),
+    });
+    const entry = answer<ReposAnswer>(run("code_repos", {}, h)).repos[0];
+    expect(JSON.stringify(entry?.languages)).toBe(
+      JSON.stringify({ python: 2, shell: 1, typescript: 10 }),
+    );
+    expect(JSON.stringify(entry?.coverage.indexed)).toBe(
+      JSON.stringify({ python: 1, typescript: 10 }),
+    );
+    const overview = answer<OverviewRepoAnswer>(
+      run("code_overview", { repo: "tiny" }, h),
+    );
+    expect(JSON.stringify(entry?.languages)).toBe(
+      JSON.stringify(overview.languages),
+    );
   });
 
   it("hands out copies, never the store's own maps", () => {
