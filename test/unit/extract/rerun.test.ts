@@ -12,12 +12,13 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, expect, it } from "vitest";
+import { afterAll, expect, it, vi } from "vitest";
 import {
   fileProblem,
   innerArgv,
   innerFailure,
   type Rerun,
+  runInner,
   SandboxedRunFailed,
   takeBuilt,
 } from "../../../src/extract/rerun.js";
@@ -32,6 +33,7 @@ import {
   writeBuildFacts,
 } from "../../../src/store/index.js";
 import { emptyContent, miniStore } from "../../helpers/mini-store.js";
+import { HOSTILE, HOSTILE_SHOWN, rawLines } from "../../helpers/terminal.js";
 
 const made: string[] = [];
 afterAll(() => {
@@ -448,4 +450,47 @@ it("refuses a file another user owns, or one larger than its limit", () => {
     { uid: own.uid + 1 },
   );
   expect(fileProblem(theirs, 10)).toBe("is not owned by this user");
+});
+
+// What bubblewrap or systemd-run says can name a path of this machine, a repository's or a
+// store's, which can hold any character: the child here says HOSTILE in pieces, a character cut
+// in two between its writes, then a CRLF line and a last line with no line break.
+it("passes the sandbox's stderr on line by line, each line safe for a terminal, however its writes fall", async () => {
+  const child = [
+    'const hostile = Buffer.from("bwrap: cannot mount " + process.argv[1] + "\\n");',
+    "const cut = hostile.length - 6;",
+    "process.stderr.write(hostile.subarray(0, cut));",
+    "setTimeout(() => {",
+    "  process.stderr.write(hostile.subarray(cut));",
+    '  process.stderr.write("hakutaku: done\\r\\nno line break " + process.argv[1]);',
+    "}, 50);",
+  ].join("\n");
+  const written: string[] = [];
+  const write = vi
+    .spyOn(process.stderr, "write")
+    .mockImplementation((chunk: string | Uint8Array) => {
+      written.push(String(chunk));
+      return true;
+    });
+  let ended: Awaited<ReturnType<typeof runInner>>;
+  try {
+    ended = await runInner([process.execPath, "-e", child, HOSTILE], false);
+  } finally {
+    write.mockRestore();
+  }
+  expect(ended.code).toBe(0);
+  const text = written.join("");
+  expect(text).toBe(
+    [
+      `bwrap: cannot mount ${HOSTILE_SHOWN}`,
+      "hakutaku: done",
+      `no line break ${HOSTILE_SHOWN}`,
+      "",
+    ].join("\n"),
+  );
+  expect(rawLines(text)).toEqual([]);
+  // the tail an error quotes keeps the bytes as they came, for its message to make safe
+  expect(ended.stderrTail).toBe(
+    `bwrap: cannot mount ${HOSTILE}\nhakutaku: done\r\nno line break ${HOSTILE}`,
+  );
 });

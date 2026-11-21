@@ -9,9 +9,11 @@ import { spawn } from "node:child_process";
 import { lstatSync, type Stats, statSync } from "node:fs";
 import { constants } from "node:os";
 import { dirname, join } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import { ENGINE_ORDER } from "../engines/index.js";
 import type { Detail } from "../model/index.js";
+import { printable } from "../redact/index.js";
 import {
   type Attempt,
   type BuildFacts,
@@ -182,9 +184,34 @@ export interface Ended {
   oomKilled: boolean | null;
 }
 
+// Text that comes in pieces, passed on to write one whole line at a time, a CRLF's CR dropped
+// and the line made safe for a terminal by printable(); end() passes on a last line that has no
+// line break.
+function linesTo(write: (text: string) => void): {
+  add(text: string): void;
+  end(): void;
+} {
+  let partial = "";
+  const pass = (line: string): void =>
+    write(`${printable(line.replace(/\r$/, ""))}\n`);
+  return {
+    add(text) {
+      const lines = (partial + text).split("\n");
+      partial = lines.pop() ?? "";
+      for (const line of lines) pass(line);
+    },
+    end() {
+      if (partial !== "") pass(partial);
+      partial = "";
+    },
+  };
+}
+
 // Runs the sandbox command with this process's environment, which systemd-run needs to reach
-// the user manager. Its stderr is passed through as it comes.
-function runInner(argv: string[], watchScope: boolean): Promise<Ended> {
+// the user manager. Its stderr is passed on line by line, each line safe for a terminal, since
+// what bubblewrap and systemd-run say can name a path of this machine; the tail an error quotes
+// keeps the text as it came.
+export function runInner(argv: string[], watchScope: boolean): Promise<Ended> {
   const [command = "", ...args] = argv;
   return new Promise((done, fail) => {
     const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
@@ -209,10 +236,14 @@ function runInner(argv: string[], watchScope: boolean): Promise<Ended> {
           }, POLL_MS)
         : undefined;
     child.stdout?.on("data", (chunk: Buffer) => stdout.push(chunk));
-    child.stderr?.on("data", (chunk: Buffer) => {
-      process.stderr.write(chunk);
-      tail = (tail + chunk.toString("utf8")).slice(-STDERR_TAIL);
-    });
+    // a character cut in two between chunks is decoded once both halves are in
+    const decoder = new StringDecoder("utf8");
+    const passed = linesTo((text) => process.stderr.write(text));
+    const heard = (text: string): void => {
+      passed.add(text);
+      tail = (tail + text).slice(-STDERR_TAIL);
+    };
+    child.stderr?.on("data", (chunk: Buffer) => heard(decoder.write(chunk)));
     // Once bubblewrap has exited, no process of its sandbox is left, and the scope's count is
     // final while the scope is still there to read.
     child.once("exit", () => {
@@ -228,6 +259,8 @@ function runInner(argv: string[], watchScope: boolean): Promise<Ended> {
       );
     });
     child.once("close", (code, signal) => {
+      heard(decoder.end());
+      passed.end();
       if (settled) return;
       settled = true;
       clearInterval(poll);
