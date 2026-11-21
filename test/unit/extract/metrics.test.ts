@@ -482,6 +482,57 @@ it("counts a self-import as an importer, a ranked edge and a one-file cycle", ()
   ]);
 });
 
+it("counts a script run by path as an import edge for fan, rank and cycles", () => {
+  // a and b run each other by path, and c runs a
+  const s = sketch({
+    files: {
+      "scripts/a.sh": "code",
+      "scripts/b.sh": "code",
+      "scripts/c.sh": "code",
+    },
+    imports: [
+      ["scripts/a.sh", "scripts/b.sh", "exec", 2],
+      ["scripts/b.sh", "scripts/a.sh", "exec", 3],
+      ["scripts/c.sh", "scripts/a.sh", "exec", 4],
+    ],
+  });
+  const m = computeMetrics(s.content, commits(), T, null);
+  // PageRank over a <-> b and c -> a, with d = 0.85 and n = 3: c = 0.15 / 3,
+  // a = (0.05 + 2 * 0.85 * 0.05) / (1 - 0.85^2), b = 0.05 + 0.85 a, to the power
+  // iteration's tolerance
+  const a = 0.135 / 0.2775;
+  expect(m.file_metrics).toEqual([
+    fileRow(s.file("scripts/a.sh"), {
+      pagerank: expect.closeTo(a, 7),
+      dependents_rank: 1,
+      fan_in: 2,
+      fan_out: 1,
+      hotspot: 0,
+      cycle_id: 1,
+      core: 1,
+    }),
+    fileRow(s.file("scripts/b.sh"), {
+      pagerank: expect.closeTo(0.05 + 0.85 * a, 7),
+      dependents_rank: 2,
+      fan_in: 1,
+      fan_out: 1,
+      hotspot: 0,
+      cycle_id: 1,
+      core: 1,
+    }),
+    fileRow(s.file("scripts/c.sh"), {
+      pagerank: expect.closeTo(0.05, 7),
+      dependents_rank: 3,
+      fan_out: 1,
+      hotspot: 0,
+    }),
+  ]);
+  expect(m.cycles).toEqual([
+    { cycle_id: 1, ord: 0, file_id: s.file("scripts/a.sh"), line: 2 },
+    { cycle_id: 1, ord: 1, file_id: s.file("scripts/b.sh"), line: 3 },
+  ]);
+});
+
 it("counts churn inside (t - 90 days, t] only", () => {
   // a commit at T - 7776000 is out; one at T - 7775999 is in, and so is one at T
   const s = sketch({
