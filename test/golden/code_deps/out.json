@@ -1,0 +1,40 @@
+{
+  "call": {
+    "tool": "code_deps",
+    "args": {
+      "repo": "observatory",
+      "file": "web/src/orbits/kepler.ts",
+      "direction": "out"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "direction": "out",
+      "edges": [
+        {
+          "id": "observatory:web/src/orbits/constants.ts",
+          "kind": "static",
+          "line": 1,
+          "specifier": "./constants",
+          "text": "import { SOLVER_MAX_STEPS, SOLVER_TOLERANCE, TWO_PI } from \"./constants\";"
+        },
+        {
+          "id": "observatory:web/src/orbits/units.ts",
+          "kind": "static",
+          "line": 2,
+          "specifier": "./units",
+          "text": "import { normalizeAngle } from \"./units\";"
+        }
+      ],
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed",
+        "1 denylisted file is left out of the map, with its imports"
+      ],
+      "view": "#web~src~orbits~kepler.ts"
+    }
+  }
+}

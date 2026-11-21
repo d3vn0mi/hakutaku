@@ -1,0 +1,94 @@
+{
+  "call": {
+    "tool": "code_explain",
+    "args": {
+      "repo": "observatory",
+      "target": "web/src/orbits/kepler.ts"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts",
+      "kind": "file",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "component": "web/src/orbits",
+      "lines": 41,
+      "entryPoint": false,
+      "inImportCycle": false,
+      "metrics": {
+        "dependentsRank": 8,
+        "importedBy": 5,
+        "imports": 2,
+        "commits90d": 2,
+        "hotspot": 0.65
+      },
+      "importedBy": {
+        "total": 5,
+        "top": [
+          "observatory:web/src/sky/planets.ts",
+          "observatory:web/src/api/ephemeris-client.ts",
+          "observatory:web/src/sky/render.ts",
+          "observatory:web/src/sky/camera.ts",
+          "observatory:web/src/orbits/kepler.test.ts"
+        ]
+      },
+      "imports": {
+        "total": 2,
+        "top": [
+          "observatory:web/src/orbits/constants.ts",
+          "observatory:web/src/orbits/units.ts"
+        ]
+      },
+      "changesTogetherWith": [
+        {
+          "id": "observatory:web/src/sky/render.ts",
+          "commits": 3
+        },
+        {
+          "id": "observatory:web/src/orbits/kepler.test.ts",
+          "commits": 2
+        },
+        {
+          "id": "observatory:web/src/sky/camera.ts",
+          "commits": 2
+        },
+        {
+          "id": "observatory:web/src/sky/planets.ts",
+          "commits": 2
+        }
+      ],
+      "definitions": {
+        "total": 3,
+        "top": [
+          {
+            "id": "observatory:web/src/orbits/kepler.ts#Orbit",
+            "kind": "class",
+            "line": 26,
+            "exported": true,
+            "usedByFiles": 4,
+            "mentionedByTests": true
+          },
+          {
+            "id": "observatory:web/src/orbits/kepler.ts#solveKepler",
+            "kind": "function",
+            "line": 7,
+            "exported": true,
+            "usedByFiles": 1,
+            "mentionedByTests": true
+          },
+          {
+            "id": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+            "kind": "method",
+            "line": 34,
+            "exported": true,
+            "usedByFiles": 1,
+            "mentionedByTests": true
+          }
+        ]
+      },
+      "view": "#web~src~orbits~kepler.ts"
+    }
+  }
+}

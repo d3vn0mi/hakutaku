@@ -1,0 +1,15 @@
+{
+  "call": {
+    "tool": "code_refresh",
+    "args": {
+      "repo": "observatory"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "error": {
+      "code": "refresh_disabled",
+      "message": "this host offers no refresh"
+    }
+  }
+}

@@ -63,7 +63,7 @@ jobs:
       # The sample's content hash is written for the determinism job, which compares it across
       # the three Node versions, each bundling its own SQLite.
       - name: oracle and golden answers
-        run: npm run test:oracle
+        run: npm run test:oracle && npm run test:golden
         env:
           HAKUTAKU_HASH_OUT: ${{ runner.temp }}/sample-hash.txt
       - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0

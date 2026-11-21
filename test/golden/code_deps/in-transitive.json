@@ -1,0 +1,267 @@
+{
+  "call": {
+    "tool": "code_deps",
+    "args": {
+      "repo": "observatory",
+      "file": "web/src/orbits/constants.ts",
+      "direction": "in",
+      "transitive": true
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/constants.ts",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "direction": "in",
+      "edges": [
+        {
+          "id": "observatory:web/src/orbits/units.ts",
+          "kind": "static",
+          "line": 1,
+          "hop": 1,
+          "specifier": "./constants",
+          "text": "import { AU_KM, DAY_SECONDS, DEG, TWO_PI } from \"./constants\";"
+        },
+        {
+          "id": "observatory:web/src/orbits/kepler.ts",
+          "kind": "static",
+          "line": 1,
+          "hop": 1,
+          "specifier": "./constants",
+          "text": "import { SOLVER_MAX_STEPS, SOLVER_TOLERANCE, TWO_PI } from \"./constants\";"
+        },
+        {
+          "id": "observatory:web/src/time/julian.ts",
+          "kind": "static",
+          "line": 1,
+          "hop": 1,
+          "specifier": "../orbits/constants",
+          "text": "import { J2000 } from \"../orbits/constants\";"
+        },
+        {
+          "id": "observatory:web/src/orbits/precession.ts",
+          "kind": "static",
+          "line": 1,
+          "hop": 1,
+          "specifier": "./constants",
+          "text": "import { J2000, JULIAN_CENTURY_DAYS } from \"./constants\";"
+        },
+        {
+          "id": "observatory:web/src/orbits/precession.test.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 1,
+          "specifier": "./constants",
+          "text": "import { J2000 } from \"./constants\";"
+        },
+        {
+          "id": "observatory:web/src/sky/planets.ts",
+          "kind": "static",
+          "line": 3,
+          "hop": 2,
+          "specifier": "../orbits/units",
+          "text": "import { toRadians } from \"../orbits/units\";"
+        },
+        {
+          "id": "observatory:web/src/api/ephemeris-client.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 2,
+          "specifier": "../orbits/units",
+          "text": "import { toRadians } from \"../orbits/units\";"
+        },
+        {
+          "id": "observatory:web/src/sky/render.ts",
+          "kind": "static",
+          "line": 1,
+          "hop": 2,
+          "specifier": "../orbits/kepler",
+          "text": "import { type Orbit, solveKepler } from \"../orbits/kepler\";"
+        },
+        {
+          "id": "observatory:web/src/sky/camera.ts",
+          "kind": "static",
+          "line": 1,
+          "hop": 2,
+          "specifier": "../orbits/kepler",
+          "text": "import { Orbit } from \"../orbits/kepler\";"
+        },
+        {
+          "id": "observatory:web/src/sky/horizon.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 2,
+          "specifier": "../time/julian",
+          "text": "import { siderealDegrees } from \"../time/julian\";"
+        },
+        {
+          "id": "observatory:web/app/page.tsx",
+          "kind": "static",
+          "line": 13,
+          "hop": 2,
+          "specifier": "@obs/web/time/julian",
+          "text": "import { daysSinceJ2000, julianDay } from \"@obs/web/time/julian\";"
+        },
+        {
+          "id": "observatory:web/src/orbits/kepler.test.ts",
+          "kind": "static",
+          "line": 3,
+          "hop": 2,
+          "specifier": "./kepler",
+          "text": "import { Orbit, solveKepler } from \"./kepler\";"
+        },
+        {
+          "id": "observatory:web/src/orbits/units.test.ts",
+          "kind": "static",
+          "line": 9,
+          "hop": 2,
+          "specifier": "./units",
+          "text": "} from \"./units\";"
+        },
+        {
+          "id": "observatory:web/src/time/julian.test.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 2,
+          "specifier": "./julian",
+          "text": "import { daysSinceJ2000, fromJulianDay, julianDay, siderealDegrees } from \"./julian\";"
+        },
+        {
+          "id": "observatory:web/src/sky/catalog.ts",
+          "kind": "static",
+          "line": 1,
+          "hop": 3,
+          "specifier": "./planets",
+          "text": "import { PLANETS } from \"./planets\";"
+        },
+        {
+          "id": "observatory:web/src/sky/frame.ts",
+          "kind": "static",
+          "line": 4,
+          "hop": 3,
+          "specifier": "./render",
+          "text": "import { drawSky } from \"./render\";"
+        },
+        {
+          "id": "observatory:web/src/sky/legend.ts",
+          "kind": "static",
+          "line": 1,
+          "hop": 3,
+          "specifier": "../api/ephemeris-client",
+          "text": "import { describeSource } from \"../api/ephemeris-client\";"
+        },
+        {
+          "id": "observatory:web/src/api/ephemeris-client.test.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 3,
+          "specifier": "./ephemeris-client",
+          "text": "import { describeSource, toOrbit } from \"./ephemeris-client\";"
+        },
+        {
+          "id": "observatory:web/src/sky/camera.test.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 3,
+          "specifier": "./camera",
+          "text": "import { Camera } from \"./camera\";"
+        },
+        {
+          "id": "observatory:web/src/sky/frame.test.ts",
+          "kind": "static",
+          "line": 3,
+          "hop": 3,
+          "specifier": "./planets",
+          "text": "import { PLANETS } from \"./planets\";"
+        },
+        {
+          "id": "observatory:web/src/sky/horizon.test.ts",
+          "kind": "static",
+          "line": 3,
+          "hop": 3,
+          "specifier": "./horizon",
+          "text": "import { aboveHorizon, altitudeOf, isCircumpolar } from \"./horizon\";"
+        },
+        {
+          "id": "observatory:web/src/sky/planets.test.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 3,
+          "specifier": "./planets",
+          "text": "import { nakedEyePlanets, PLANETS, planetNamed } from \"./planets\";"
+        },
+        {
+          "id": "observatory:web/src/sky/starfield.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 4,
+          "specifier": "./catalog",
+          "text": "import { BRIGHT_STARS, type Star } from \"./catalog\";"
+        },
+        {
+          "id": "observatory:web/src/sky/constellations.ts",
+          "kind": "type-only",
+          "line": 1,
+          "hop": 4,
+          "specifier": "./catalog",
+          "text": "import type { Star } from \"./catalog\";"
+        },
+        {
+          "id": "observatory:web/app/api/stars/route.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 4,
+          "specifier": "@obs/web/sky/catalog",
+          "text": "import { Catalog } from \"@obs/web/sky/catalog\";"
+        },
+        {
+          "id": "observatory:web/src/cli/export-sky.ts",
+          "kind": "static",
+          "line": 3,
+          "hop": 4,
+          "specifier": "../sky/catalog",
+          "text": "import { Catalog } from \"../sky/catalog\";"
+        },
+        {
+          "id": "observatory:web/src/sky/catalog.test.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 4,
+          "specifier": "./catalog",
+          "text": "import { BRIGHT_STARS, Catalog, magnitudeLimit } from \"./catalog\";"
+        },
+        {
+          "id": "observatory:web/src/sky/legend.test.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 4,
+          "specifier": "./legend",
+          "text": "import { legendFor } from \"./legend\";"
+        },
+        {
+          "id": "observatory:web/src/sky/scene.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 5,
+          "specifier": "./starfield",
+          "text": "import { StarField } from \"./starfield\";"
+        },
+        {
+          "id": "observatory:web/src/cli/export-sky.test.ts",
+          "kind": "static",
+          "line": 2,
+          "hop": 5,
+          "specifier": "./export-sky",
+          "text": "import { exportSky } from \"./export-sky\";"
+        }
+      ],
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed",
+        "1 denylisted file is left out of the map, with its imports"
+      ],
+      "view": "#web~src~orbits~constants.ts"
+    }
+  }
+}

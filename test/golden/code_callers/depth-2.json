@@ -1,0 +1,107 @@
+{
+  "call": {
+    "tool": "code_callers",
+    "args": {
+      "repo": "observatory",
+      "symbol": "web/src/orbits/kepler.ts#solveKepler",
+      "depth": 2
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts#solveKepler",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "labels": [
+        "bound",
+        "scoped"
+      ],
+      "scope": "direct",
+      "depth": 2,
+      "counts": {
+        "files": 3,
+        "callers": 4,
+        "sites": 6,
+        "bound": 5,
+        "scoped": 1,
+        "unscoped": 0
+      },
+      "callers": [
+        {
+          "id": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+          "file": "observatory:web/src/orbits/kepler.ts",
+          "test": false,
+          "hop": 1,
+          "sites": [
+            {
+              "line": 36,
+              "col": 17,
+              "label": "bound",
+              "text": "const ecc = solveKepler(mean, this.e);"
+            }
+          ]
+        },
+        {
+          "id": "observatory:web/src/sky/render.ts#orbitTrail",
+          "file": "observatory:web/src/sky/render.ts",
+          "test": false,
+          "hop": 1,
+          "sites": [
+            {
+              "line": 43,
+              "col": 17,
+              "label": "bound",
+              "text": "const ecc = solveKepler((2 * Math.PI * i) / steps, orbit.e);"
+            }
+          ]
+        },
+        {
+          "id": "observatory:web/src/orbits/kepler.test.ts#<module>",
+          "file": "observatory:web/src/orbits/kepler.test.ts",
+          "test": true,
+          "hop": 1,
+          "sites": [
+            {
+              "line": 11,
+              "col": 12,
+              "label": "bound",
+              "text": "expect(solveKepler(1.2, 0)).toBeCloseTo(1.2);"
+            },
+            {
+              "line": 15,
+              "col": 17,
+              "label": "bound",
+              "text": "const ecc = solveKepler(0.5, 0.6);"
+            },
+            {
+              "line": 20,
+              "col": 18,
+              "label": "bound",
+              "text": "expect(() => solveKepler(1, 1)).toThrow(RangeError);"
+            }
+          ]
+        },
+        {
+          "id": "observatory:web/src/sky/render.ts#drawSky",
+          "file": "observatory:web/src/sky/render.ts",
+          "test": false,
+          "hop": 2,
+          "sites": [
+            {
+              "line": 23,
+              "col": 20,
+              "label": "scoped",
+              "text": "const p = body.position(t);"
+            }
+          ]
+        }
+      ],
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed; ask with labels [\"unscoped\"] to see name matches",
+        "compiler-bound uses that match no outline definition are counted in coverage only (36)"
+      ],
+      "view": "#web~src~orbits~kepler.ts--solveKepler"
+    }
+  }
+}

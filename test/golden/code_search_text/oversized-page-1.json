@@ -1,0 +1,151 @@
+{
+  "call": {
+    "tool": "code_search_text",
+    "args": {
+      "repo": "observatory",
+      "text": "import",
+      "limit": 200
+    },
+    "detail": "standard",
+    "maxResultChars": 4000
+  },
+  "result": {
+    "answer": {
+      "text": "import",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "offset": 0,
+      "returned": 24,
+      "total": 229,
+      "hasMore": true,
+      "nextOffset": 24,
+      "note": "items 1-24 of 229; call again with offset 24 for the next page",
+      "hits": [
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/timescale.py",
+          "line": 3,
+          "text": "from datetime import datetime, timezone"
+        },
+        {
+          "file": "observatory:web/src/sky/planets.ts",
+          "line": 1,
+          "text": "import { MEAN_ELEMENTS } from \"../orbits/elements\";"
+        },
+        {
+          "file": "observatory:web/src/sky/planets.ts",
+          "line": 2,
+          "text": "import { Orbit } from \"../orbits/kepler\";"
+        },
+        {
+          "file": "observatory:web/src/sky/planets.ts",
+          "line": 3,
+          "text": "import { toRadians } from \"../orbits/units\";"
+        },
+        {
+          "file": "observatory:web/src/sky/planets.ts",
+          "line": 4,
+          "text": "import type { Body } from \"./body\";"
+        },
+        {
+          "file": "observatory:web/src/sky/planets.ts",
+          "line": 5,
+          "text": "import { magnitudeLimit } from \"./catalog\";"
+        },
+        {
+          "file": "observatory:web/src/sky/catalog.ts",
+          "line": 1,
+          "text": "import { PLANETS } from \"./planets\";"
+        },
+        {
+          "file": "observatory:web/src/orbits/units.ts",
+          "line": 1,
+          "text": "import { AU_KM, DAY_SECONDS, DEG, TWO_PI } from \"./constants\";"
+        },
+        {
+          "file": "observatory:web/src/orbits/kepler.ts",
+          "line": 1,
+          "text": "import { SOLVER_MAX_STEPS, SOLVER_TOLERANCE, TWO_PI } from \"./constants\";"
+        },
+        {
+          "file": "observatory:web/src/orbits/kepler.ts",
+          "line": 2,
+          "text": "import { normalizeAngle } from \"./units\";"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/service.py",
+          "line": 3,
+          "text": "from observatory.ephemeris import timescale"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/service.py",
+          "line": 4,
+          "text": "from observatory.ephemeris.planets import MEAN_ELEMENTS, heliocentric_xy"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/service.py",
+          "line": 5,
+          "text": "from observatory.ephemeris.table import EphemerisTable, Row"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/service.py",
+          "line": 7,
+          "text": "from .interpolate import lagrange"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/planets.py",
+          "line": 3,
+          "text": "import math"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/planets.py",
+          "line": 5,
+          "text": "from .timescale import J2000"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/loader.py",
+          "line": 3,
+          "text": "from observatory.catalog import magnitudes"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/loader.py",
+          "line": 4,
+          "text": "from observatory.catalog.stars import load_catalog"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/magnitudes.py",
+          "line": 3,
+          "text": "import math"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/stars.py",
+          "line": 3,
+          "text": "import csv"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/stars.py",
+          "line": 4,
+          "text": "from dataclasses import dataclass"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/stars.py",
+          "line": 5,
+          "text": "from pathlib import Path"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 3,
+          "text": "import argparse"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 4,
+          "text": "import sys"
+        }
+      ],
+      "blindSpots": [
+        "1 denylisted file is left out of the map",
+        "secret-shaped text is redacted (1 span across the map), so it cannot be found"
+      ]
+    }
+  }
+}

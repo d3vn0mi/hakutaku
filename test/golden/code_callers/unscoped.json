@@ -1,0 +1,39 @@
+{
+  "call": {
+    "tool": "code_callers",
+    "args": {
+      "repo": "observatory",
+      "symbol": "web/src/orbits/kepler.ts#Orbit.position",
+      "labels": [
+        "unscoped"
+      ]
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "labels": [
+        "unscoped"
+      ],
+      "scope": "direct",
+      "depth": 1,
+      "counts": {
+        "files": 0,
+        "callers": 0,
+        "sites": 0,
+        "bound": 0,
+        "scoped": 0,
+        "unscoped": 0
+      },
+      "callers": [],
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed; the unscoped matches include calls made through them",
+        "compiler-bound uses that match no outline definition are counted in coverage only (36)"
+      ],
+      "view": "#web~src~orbits~kepler.ts--Orbit.position"
+    }
+  }
+}

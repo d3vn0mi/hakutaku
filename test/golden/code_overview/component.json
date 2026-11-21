@@ -1,0 +1,44 @@
+{
+  "call": {
+    "tool": "code_overview",
+    "args": {
+      "repo": "observatory",
+      "component": "web/src/orbits"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/",
+      "kind": "component",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "files": 5,
+      "tests": 4,
+      "core": [
+        {
+          "id": "observatory:web/src/orbits/constants.ts",
+          "importedBy": 5
+        },
+        {
+          "id": "observatory:web/src/orbits/units.ts",
+          "importedBy": 5
+        },
+        {
+          "id": "observatory:web/src/orbits/kepler.ts",
+          "importedBy": 5
+        },
+        {
+          "id": "observatory:web/src/orbits/elements.ts",
+          "importedBy": 2
+        },
+        {
+          "id": "observatory:web/src/orbits/precession.ts",
+          "importedBy": 2
+        }
+      ],
+      "entryPoints": [],
+      "view": "#web~src~orbits~"
+    }
+  }
+}

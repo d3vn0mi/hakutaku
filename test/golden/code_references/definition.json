@@ -1,0 +1,113 @@
+{
+  "call": {
+    "tool": "code_references",
+    "args": {
+      "repo": "observatory",
+      "symbol": "web/src/orbits/kepler.ts#Orbit"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts#Orbit",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "references": [
+        {
+          "in": "observatory:web/src/sky/planets.ts#<module>",
+          "file": "observatory:web/src/sky/planets.ts",
+          "line": 2,
+          "col": 10,
+          "role": "import",
+          "test": false,
+          "text": "import { Orbit } from \"../orbits/kepler\";"
+        },
+        {
+          "in": "observatory:web/src/api/ephemeris-client.ts#<module>",
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 1,
+          "col": 10,
+          "role": "import",
+          "test": false,
+          "text": "import { Orbit } from \"../orbits/kepler\";"
+        },
+        {
+          "in": "observatory:web/src/api/ephemeris-client.ts#toOrbit",
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 22,
+          "col": 50,
+          "role": "read",
+          "test": false,
+          "text": "export function toOrbit(record: ElementsRecord): Orbit {"
+        },
+        {
+          "in": "observatory:web/src/api/ephemeris-client.ts#EphemerisClient",
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 35,
+          "col": 41,
+          "role": "read",
+          "test": false,
+          "text": "private readonly cache = new TtlCache<Orbit[]>(CACHE_MS);"
+        },
+        {
+          "in": "observatory:web/src/api/ephemeris-client.ts#EphemerisClient.orbits",
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 39,
+          "col": 51,
+          "role": "read",
+          "test": false,
+          "text": "async orbits(names: readonly string[]): Promise<Orbit[]> {"
+        },
+        {
+          "in": "observatory:web/src/sky/render.ts#<module>",
+          "file": "observatory:web/src/sky/render.ts",
+          "line": 1,
+          "col": 15,
+          "role": "import",
+          "test": false,
+          "text": "import { type Orbit, solveKepler } from \"../orbits/kepler\";"
+        },
+        {
+          "in": "observatory:web/src/sky/render.ts#orbitTrail",
+          "file": "observatory:web/src/sky/render.ts",
+          "line": 36,
+          "col": 10,
+          "role": "read",
+          "test": false,
+          "text": "orbit: Orbit,"
+        },
+        {
+          "in": "observatory:web/src/sky/camera.ts#<module>",
+          "file": "observatory:web/src/sky/camera.ts",
+          "line": 1,
+          "col": 10,
+          "role": "import",
+          "test": false,
+          "text": "import { Orbit } from \"../orbits/kepler\";"
+        },
+        {
+          "in": "observatory:web/src/sky/camera.ts#Camera.frameOrbit",
+          "file": "observatory:web/src/sky/camera.ts",
+          "line": 29,
+          "col": 21,
+          "role": "read",
+          "test": false,
+          "text": "frameOrbit(orbit: Orbit): void {"
+        },
+        {
+          "in": "observatory:web/src/orbits/kepler.test.ts#<module>",
+          "file": "observatory:web/src/orbits/kepler.test.ts",
+          "line": 3,
+          "col": 10,
+          "role": "import",
+          "test": true,
+          "text": "import { Orbit, solveKepler } from \"./kepler\";"
+        }
+      ],
+      "blindSpots": [
+        "compiler-bound uses that match no outline definition are counted in coverage only (36)"
+      ],
+      "view": "#web~src~orbits~kepler.ts--Orbit"
+    }
+  }
+}

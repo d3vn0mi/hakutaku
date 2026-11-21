@@ -1,0 +1,71 @@
+{
+  "call": {
+    "tool": "code_explain",
+    "args": {
+      "repo": "observatory",
+      "target": "web/src/orbits/kepler.ts#solveKepler"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts#solveKepler",
+      "kind": "function",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "definedIn": "observatory:web/src/orbits/kepler.ts",
+      "line": 7,
+      "usedByFiles": 1,
+      "mentionedByTests": true,
+      "label": "bound",
+      "note": "every counted file has a compiler-bound use; code_callers lists each use with its line",
+      "component": "web/src/orbits",
+      "lines": 41,
+      "entryPoint": false,
+      "inImportCycle": false,
+      "metrics": {
+        "dependentsRank": 8,
+        "importedBy": 5,
+        "imports": 2,
+        "commits90d": 2,
+        "hotspot": 0.65
+      },
+      "importedBy": {
+        "total": 5,
+        "top": [
+          "observatory:web/src/sky/planets.ts",
+          "observatory:web/src/api/ephemeris-client.ts",
+          "observatory:web/src/sky/render.ts",
+          "observatory:web/src/sky/camera.ts",
+          "observatory:web/src/orbits/kepler.test.ts"
+        ]
+      },
+      "imports": {
+        "total": 2,
+        "top": [
+          "observatory:web/src/orbits/constants.ts",
+          "observatory:web/src/orbits/units.ts"
+        ]
+      },
+      "changesTogetherWith": [
+        {
+          "id": "observatory:web/src/sky/render.ts",
+          "commits": 3
+        },
+        {
+          "id": "observatory:web/src/orbits/kepler.test.ts",
+          "commits": 2
+        },
+        {
+          "id": "observatory:web/src/sky/camera.ts",
+          "commits": 2
+        },
+        {
+          "id": "observatory:web/src/sky/planets.ts",
+          "commits": 2
+        }
+      ],
+      "view": "#web~src~orbits~kepler.ts--solveKepler"
+    }
+  }
+}

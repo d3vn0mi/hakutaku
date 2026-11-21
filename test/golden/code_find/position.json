@@ -1,0 +1,37 @@
+{
+  "call": {
+    "tool": "code_find",
+    "args": {
+      "repo": "observatory",
+      "name": "position"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "query": "position",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "matches": [
+        {
+          "id": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+          "kind": "method",
+          "match": "exact",
+          "line": 34,
+          "container": "observatory:web/src/orbits/kepler.ts#Orbit",
+          "exported": true,
+          "usedByFiles": 1
+        },
+        {
+          "id": "observatory:web/src/sky/camera.ts#Camera.position",
+          "kind": "method",
+          "match": "exact",
+          "line": 15,
+          "container": "observatory:web/src/sky/camera.ts#Camera",
+          "exported": true,
+          "usedByFiles": 0
+        }
+      ]
+    }
+  }
+}

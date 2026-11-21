@@ -1,0 +1,81 @@
+{
+  "call": {
+    "tool": "code_impact",
+    "args": {
+      "repo": "observatory",
+      "target": "web/src/orbits/kepler.ts#solveKepler",
+      "depth": 3
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts#solveKepler",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "depth": 3,
+      "byHop": [
+        {
+          "hop": 1,
+          "definitions": [
+            {
+              "id": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+              "label": "bound"
+            },
+            {
+              "id": "observatory:web/src/sky/render.ts#<module>",
+              "label": "reference"
+            },
+            {
+              "id": "observatory:web/src/sky/render.ts#orbitTrail",
+              "label": "bound"
+            }
+          ],
+          "files": [
+            "observatory:web/src/sky/render.ts"
+          ],
+          "tests": [
+            "observatory:web/src/orbits/kepler.test.ts"
+          ]
+        },
+        {
+          "hop": 2,
+          "definitions": [
+            {
+              "id": "observatory:web/src/sky/render.ts#drawSky",
+              "label": "scoped"
+            }
+          ],
+          "files": [],
+          "tests": []
+        },
+        {
+          "hop": 3,
+          "definitions": [
+            {
+              "id": "observatory:web/src/sky/frame.ts#<module>",
+              "label": "scoped"
+            },
+            {
+              "id": "observatory:web/src/sky/frame.ts#drawFrame",
+              "label": "scoped"
+            }
+          ],
+          "files": [
+            "observatory:web/src/sky/frame.ts"
+          ],
+          "tests": []
+        }
+      ],
+      "counts": {
+        "definitions": 6,
+        "files": 2,
+        "tests": 1
+      },
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed; ask with labels [\"unscoped\"] to see name matches",
+        "compiler-bound uses that match no outline definition are counted in coverage only (36)"
+      ]
+    }
+  }
+}

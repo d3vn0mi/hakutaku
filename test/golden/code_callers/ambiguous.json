@@ -1,0 +1,29 @@
+{
+  "call": {
+    "tool": "code_callers",
+    "args": {
+      "repo": "observatory",
+      "symbol": "position"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "error": {
+      "code": "ambiguous",
+      "message": "2 definitions are named position",
+      "candidates": [
+        {
+          "id": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+          "kind": "method",
+          "line": 34
+        },
+        {
+          "id": "observatory:web/src/sky/camera.ts#Camera.position",
+          "kind": "method",
+          "line": 15
+        }
+      ],
+      "hint": "pass one candidate id as symbol"
+    }
+  }
+}

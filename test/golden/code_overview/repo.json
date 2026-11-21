@@ -1,0 +1,379 @@
+{
+  "call": {
+    "tool": "code_overview",
+    "args": {
+      "repo": "observatory"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:",
+      "kind": "repo",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "files": 71,
+      "tests": 38,
+      "lines": 2815,
+      "languages": {
+        "javascript": 3,
+        "python": 37,
+        "shell": 4,
+        "typescript": 65
+      },
+      "coreSet": {
+        "files": 29,
+        "ofFiles": 71,
+        "share": 0.5,
+        "top": [
+          {
+            "id": "observatory:web/src/orbits/constants.ts",
+            "dependentsRank": 1,
+            "importedBy": 5
+          },
+          {
+            "id": "observatory:sim/src/observatory/ephemeris/timescale.py",
+            "dependentsRank": 2,
+            "importedBy": 11
+          },
+          {
+            "id": "observatory:web/src/sky/planets.ts",
+            "dependentsRank": 3,
+            "importedBy": 4
+          },
+          {
+            "id": "observatory:web/src/sky/catalog.ts",
+            "dependentsRank": 4,
+            "importedBy": 9
+          },
+          {
+            "id": "observatory:web/src/orbits/units.ts",
+            "dependentsRank": 5,
+            "importedBy": 5
+          },
+          {
+            "id": "observatory:scripts/lib/common.sh",
+            "dependentsRank": 6,
+            "importedBy": 3
+          },
+          {
+            "id": "observatory:web/src/sky/canvas.ts",
+            "dependentsRank": 7,
+            "importedBy": 5
+          },
+          {
+            "id": "observatory:web/src/orbits/kepler.ts",
+            "dependentsRank": 8,
+            "importedBy": 5
+          },
+          {
+            "id": "observatory:sim/src/observatory/ephemeris/interpolate.py",
+            "dependentsRank": 9,
+            "importedBy": 3
+          },
+          {
+            "id": "observatory:sim/src/observatory/ephemeris/service.py",
+            "dependentsRank": 10,
+            "importedBy": 4
+          },
+          {
+            "id": "observatory:web/src/sky/projection.ts",
+            "dependentsRank": 11,
+            "importedBy": 5
+          },
+          {
+            "id": "observatory:web/src/api/types.ts",
+            "dependentsRank": 12,
+            "importedBy": 2
+          }
+        ]
+      },
+      "components": {
+        "total": 19,
+        "top": [
+          {
+            "id": "observatory:web/src/orbits/",
+            "files": 5,
+            "tests": 4,
+            "coreFiles": 3,
+            "entryPoints": 0
+          },
+          {
+            "id": "observatory:sim/src/observatory/ephemeris/",
+            "files": 9,
+            "tests": 0,
+            "coreFiles": 4,
+            "entryPoints": 1
+          },
+          {
+            "id": "observatory:web/src/sky/",
+            "files": 16,
+            "tests": 7,
+            "coreFiles": 6,
+            "entryPoints": 0
+          },
+          {
+            "id": "observatory:scripts/",
+            "files": 4,
+            "tests": 0,
+            "coreFiles": 1,
+            "entryPoints": 2
+          },
+          {
+            "id": "observatory:web/src/api/",
+            "files": 5,
+            "tests": 4,
+            "coreFiles": 1,
+            "entryPoints": 0
+          },
+          {
+            "id": "observatory:sim/src/observatory/catalog/",
+            "files": 4,
+            "tests": 0,
+            "coreFiles": 3,
+            "entryPoints": 0
+          },
+          {
+            "id": "observatory:web/src/time/",
+            "files": 2,
+            "tests": 2,
+            "coreFiles": 1,
+            "entryPoints": 0
+          },
+          {
+            "id": "observatory:web/src/plugins/",
+            "files": 2,
+            "tests": 2,
+            "coreFiles": 1,
+            "entryPoints": 0
+          },
+          {
+            "id": "observatory:plugins/aurora/",
+            "files": 2,
+            "tests": 1,
+            "coreFiles": 1,
+            "entryPoints": 1
+          },
+          {
+            "id": "observatory:web/src/format/",
+            "files": 2,
+            "tests": 2,
+            "coreFiles": 1,
+            "entryPoints": 0
+          },
+          {
+            "id": "observatory:sim/src/observatory/",
+            "files": 3,
+            "tests": 0,
+            "coreFiles": 1,
+            "entryPoints": 1
+          },
+          {
+            "id": "observatory:sim/src/observatory/sky/",
+            "files": 5,
+            "tests": 0,
+            "coreFiles": 1,
+            "entryPoints": 0
+          }
+        ]
+      },
+      "dependsOn": {
+        "total": 19,
+        "top": [
+          {
+            "from": "observatory:web/app/",
+            "to": "observatory:web/src/sky/",
+            "imports": 8
+          },
+          {
+            "from": "observatory:web/src/sky/",
+            "to": "observatory:web/src/orbits/",
+            "imports": 6
+          },
+          {
+            "from": "observatory:sim/src/observatory/sky/",
+            "to": "observatory:sim/src/observatory/ephemeris/",
+            "imports": 3
+          },
+          {
+            "from": "observatory:sim/src/observatory/tools/",
+            "to": "observatory:sim/src/observatory/ephemeris/",
+            "imports": 2
+          },
+          {
+            "from": "observatory:web/app/",
+            "to": "observatory:web/src/format/",
+            "imports": 2
+          },
+          {
+            "from": "observatory:web/src/api/",
+            "to": "observatory:web/src/orbits/",
+            "imports": 2
+          },
+          {
+            "from": "observatory:web/src/cli/",
+            "to": "observatory:web/src/format/",
+            "imports": 2
+          },
+          {
+            "from": "observatory:sim/src/observatory/",
+            "to": "observatory:sim/src/observatory/ephemeris/",
+            "imports": 1
+          },
+          {
+            "from": "observatory:sim/src/observatory/ephemeris/",
+            "to": "observatory:sim/src/observatory/",
+            "imports": 1
+          },
+          {
+            "from": "observatory:sim/src/observatory/ephemeris/",
+            "to": "observatory:sim/src/observatory/sky/",
+            "imports": 1
+          },
+          {
+            "from": "observatory:sim/src/observatory/sky/",
+            "to": "observatory:sim/src/observatory/catalog/",
+            "imports": 1
+          },
+          {
+            "from": "observatory:sim/src/observatory/tools/",
+            "to": "observatory:sim/src/observatory/catalog/",
+            "imports": 1
+          }
+        ]
+      },
+      "entryPoints": {
+        "total": 14,
+        "top": [
+          {
+            "id": "observatory:sim/src/observatory/ephemeris/cli.py#main",
+            "kind": "console-script",
+            "via": "observatory:sim/pyproject.toml",
+            "line": 13
+          },
+          {
+            "id": "observatory:sim/src/observatory/ephemeris/cli.py",
+            "kind": "container",
+            "via": "observatory:sim/Dockerfile",
+            "line": 10
+          },
+          {
+            "id": "observatory:scripts/check-sky.sh",
+            "kind": "ci",
+            "via": "observatory:.github/workflows/sky.yml",
+            "line": 16
+          },
+          {
+            "id": "observatory:plugins/aurora/index.ts",
+            "kind": "plugin",
+            "via": "observatory:plugins/aurora/plugin.json",
+            "line": 4
+          },
+          {
+            "id": "observatory:scripts/sync-sky.sh",
+            "kind": "executable",
+            "via": "observatory:scripts/sync-sky.sh",
+            "line": 1
+          },
+          {
+            "id": "observatory:scripts/sync-sky.sh",
+            "kind": "script",
+            "via": "observatory:web/package.json",
+            "line": 14
+          },
+          {
+            "id": "observatory:scripts/sync-sky.sh",
+            "kind": "unit",
+            "via": "observatory:deploy/observatory-sync.service",
+            "line": 10
+          },
+          {
+            "id": "observatory:sim/src/observatory/__main__.py",
+            "kind": "main-guard",
+            "via": "observatory:sim/src/observatory/__main__.py",
+            "line": 1
+          },
+          {
+            "id": "observatory:sim/src/observatory/__main__.py",
+            "kind": "procfile",
+            "via": "observatory:Procfile",
+            "line": 2
+          },
+          {
+            "id": "observatory:sim/src/observatory/tools/rebuild.py",
+            "kind": "main-guard",
+            "via": "observatory:sim/src/observatory/tools/rebuild.py",
+            "line": 42
+          },
+          {
+            "id": "observatory:web/app/api/stars/route.ts",
+            "kind": "route",
+            "via": "observatory:web/app/api/stars/route.ts",
+            "line": 1
+          },
+          {
+            "id": "observatory:web/app/page.tsx",
+            "kind": "route",
+            "via": "observatory:web/app/page.tsx",
+            "line": 1
+          }
+        ]
+      },
+      "hotspots": {
+        "total": 15,
+        "top": [
+          {
+            "id": "observatory:web/src/orbits/constants.ts",
+            "hotspot": 1,
+            "commits90d": 2
+          },
+          {
+            "id": "observatory:web/src/sky/planets.ts",
+            "hotspot": 0.79,
+            "commits90d": 2
+          },
+          {
+            "id": "observatory:web/src/sky/catalog.ts",
+            "hotspot": 0.75,
+            "commits90d": 2
+          },
+          {
+            "id": "observatory:scripts/lib/common.sh",
+            "hotspot": 0.69,
+            "commits90d": 2
+          },
+          {
+            "id": "observatory:web/src/orbits/kepler.ts",
+            "hotspot": 0.65,
+            "commits90d": 2
+          },
+          {
+            "id": "observatory:sim/src/observatory/ephemeris/service.py",
+            "hotspot": 0.61,
+            "commits90d": 2
+          },
+          {
+            "id": "observatory:sim/src/observatory/ephemeris/cli.py",
+            "hotspot": 0.5,
+            "commits90d": 2
+          },
+          {
+            "id": "observatory:sim/src/observatory/ephemeris/table.py",
+            "hotspot": 0.46,
+            "commits90d": 2
+          }
+        ]
+      },
+      "cycles": {
+        "total": 1,
+        "top": [
+          [
+            "observatory:web/src/sky/catalog.ts",
+            "observatory:web/src/sky/planets.ts"
+          ]
+        ]
+      },
+      "view": "#"
+    }
+  }
+}

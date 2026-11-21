@@ -1,0 +1,147 @@
+{
+  "call": {
+    "tool": "code_search_text",
+    "args": {
+      "repo": "observatory",
+      "text": "import",
+      "limit": 200,
+      "offset": 24
+    },
+    "detail": "standard",
+    "maxResultChars": 4000
+  },
+  "result": {
+    "answer": {
+      "text": "import",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "offset": 24,
+      "returned": 23,
+      "total": 229,
+      "hasMore": true,
+      "nextOffset": 47,
+      "note": "items 25-47 of 229; call again with offset 47 for the next page",
+      "hits": [
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 5,
+          "text": "from datetime import datetime, timedelta, timezone"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 7,
+          "text": "from observatory.config import load_settings"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 8,
+          "text": "from observatory.ephemeris import moon"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 9,
+          "text": "from observatory.ephemeris.service import EphemerisService"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 10,
+          "text": "from observatory.ephemeris.timescale import julian_day"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 11,
+          "text": "from observatory.sky.tonight import tonight"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 63,
+          "text": "from observatory.ephemeris.server import serve"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/table.py",
+          "line": 3,
+          "text": "from bisect import bisect_right"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/table.py",
+          "line": 4,
+          "text": "from dataclasses import dataclass"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/table.py",
+          "line": 6,
+          "text": "from .interpolate import lagrange, linear"
+        },
+        {
+          "file": "observatory:web/src/sky/layer.ts",
+          "line": 1,
+          "text": "import type { Canvas } from \"./canvas\";"
+        },
+        {
+          "file": "observatory:web/src/sky/layer.ts",
+          "line": 2,
+          "text": "import type { Viewport } from \"./projection\";"
+        },
+        {
+          "file": "observatory:web/src/sky/starfield.ts",
+          "line": 1,
+          "text": "import type { Canvas } from \"./canvas\";"
+        },
+        {
+          "file": "observatory:web/src/sky/starfield.ts",
+          "line": 2,
+          "text": "import { BRIGHT_STARS, type Star } from \"./catalog\";"
+        },
+        {
+          "file": "observatory:web/src/sky/starfield.ts",
+          "line": 3,
+          "text": "import { DEFAULT_COLOR } from \"./colors\";"
+        },
+        {
+          "file": "observatory:web/src/sky/starfield.ts",
+          "line": 4,
+          "text": "import { FIGURES, segmentsOf } from \"./constellations\";"
+        },
+        {
+          "file": "observatory:web/src/sky/starfield.ts",
+          "line": 5,
+          "text": "import { project, type Viewport } from \"./projection\";"
+        },
+        {
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 1,
+          "text": "import { Orbit } from \"../orbits/kepler\";"
+        },
+        {
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 2,
+          "text": "import { toRadians } from \"../orbits/units\";"
+        },
+        {
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 3,
+          "text": "import { TtlCache } from \"./cache\";"
+        },
+        {
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 4,
+          "text": "import { withRetry } from \"./retry\";"
+        },
+        {
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 5,
+          "text": "import { parseRecords } from \"./schema\";"
+        },
+        {
+          "file": "observatory:web/src/api/ephemeris-client.ts",
+          "line": 6,
+          "text": "import type { ClientConfig, ElementsRecord } from \"./types\";"
+        }
+      ],
+      "blindSpots": [
+        "1 denylisted file is left out of the map",
+        "secret-shaped text is redacted (1 span across the map), so it cannot be found"
+      ]
+    }
+  }
+}

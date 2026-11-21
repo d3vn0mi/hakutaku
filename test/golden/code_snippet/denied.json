@@ -1,0 +1,16 @@
+{
+  "call": {
+    "tool": "code_snippet",
+    "args": {
+      "repo": "observatory",
+      "file": "sim/.env"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "error": {
+      "code": "denied_file",
+      "message": "sim/.env is denylisted and was never stored"
+    }
+  }
+}

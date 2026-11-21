@@ -1,0 +1,32 @@
+{
+  "call": {
+    "tool": "code_references",
+    "args": {
+      "repo": "observatory",
+      "symbol": "observatory:npm:vitest"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:npm:vitest",
+      "kind": "library",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "importedBy": {
+        "total": 25,
+        "top": [
+          "observatory:web/vitest.config.ts",
+          "observatory:plugins/aurora/forecast.test.ts",
+          "observatory:web/src/api/cache.test.ts",
+          "observatory:web/src/api/ephemeris-client.test.ts",
+          "observatory:web/src/api/retry.test.ts",
+          "observatory:web/src/api/schema.test.ts",
+          "observatory:web/src/cli/csv.test.ts",
+          "observatory:web/src/cli/export-sky.test.ts"
+        ]
+      },
+      "view": "#npm:vitest"
+    }
+  }
+}

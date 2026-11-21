@@ -1,0 +1,53 @@
+{
+  "call": {
+    "tool": "code_rules",
+    "args": {
+      "repo": "observatory"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "findings": [
+        {
+          "kind": "violation",
+          "id": "observatory:web/src/sky/legend.ts",
+          "severity": "error",
+          "rule": "sky-not-from-api",
+          "from": "observatory:web/src/sky/legend.ts",
+          "to": "observatory:web/src/api/ephemeris-client.ts",
+          "chain": [
+            {
+              "from": "observatory:web/src/sky/legend.ts",
+              "to": "observatory:web/src/api/ephemeris-client.ts",
+              "line": 1
+            }
+          ]
+        },
+        {
+          "kind": "cycle",
+          "id": "observatory:web/src/sky/catalog.ts",
+          "severity": "warn",
+          "files": [
+            "observatory:web/src/sky/catalog.ts",
+            "observatory:web/src/sky/planets.ts"
+          ],
+          "chain": [
+            {
+              "from": "observatory:web/src/sky/catalog.ts",
+              "to": "observatory:web/src/sky/planets.ts",
+              "line": 1
+            },
+            {
+              "from": "observatory:web/src/sky/planets.ts",
+              "to": "observatory:web/src/sky/catalog.ts",
+              "line": 5
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

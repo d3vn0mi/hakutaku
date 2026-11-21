@@ -1,0 +1,18 @@
+{
+  "call": {
+    "tool": "code_explain",
+    "args": {
+      "repo": "observatory",
+      "target": "observatory:web/src/orbits/"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "error": {
+      "code": "invalid_argument",
+      "message": "target is a component; code_explain takes a code file or a definition",
+      "field": "target",
+      "hint": "code_overview describes repos and components"
+    }
+  }
+}

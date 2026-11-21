@@ -1,0 +1,53 @@
+{
+  "call": {
+    "tool": "code_search_text",
+    "args": {
+      "repo": "observatory",
+      "text": "position("
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "text": "position(",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "hits": [
+        {
+          "file": "observatory:web/src/orbits/kepler.ts",
+          "line": 34,
+          "text": "position(t: number): [number, number] {"
+        },
+        {
+          "file": "observatory:web/src/sky/body.ts",
+          "line": 5,
+          "text": "position(t: number): [number, number];"
+        },
+        {
+          "file": "observatory:web/src/sky/render.ts",
+          "line": 23,
+          "text": "const p = body.position(t);"
+        },
+        {
+          "file": "observatory:web/src/sky/camera.ts",
+          "line": 15,
+          "text": "position(): [number, number] {"
+        },
+        {
+          "file": "observatory:web/src/orbits/kepler.test.ts",
+          "line": 26,
+          "text": "expect(orbit.position(0)).toEqual([1, 0]);"
+        },
+        {
+          "file": "observatory:web/src/orbits/kepler.test.ts",
+          "line": 32,
+          "text": "expect(o.position(HALF)[0]).toBeCloseTo(-1);"
+        }
+      ],
+      "blindSpots": [
+        "1 denylisted file is left out of the map",
+        "secret-shaped text is redacted (1 span across the map), so it cannot be found"
+      ]
+    }
+  }
+}

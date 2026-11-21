@@ -1,0 +1,47 @@
+{
+  "call": {
+    "tool": "code_find",
+    "args": {
+      "repo": "observatory",
+      "name": "kep"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "query": "kep",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "matches": [
+        {
+          "id": "observatory:web/src/orbits/kepler.ts",
+          "kind": "file",
+          "match": "prefix"
+        },
+        {
+          "id": "observatory:web/src/orbits/kepler.test.ts",
+          "kind": "test-file",
+          "match": "prefix"
+        },
+        {
+          "id": "observatory:web/src/orbits/kepler.ts#solveKepler",
+          "kind": "function",
+          "match": "substring",
+          "line": 7,
+          "container": "observatory:web/src/orbits/kepler.ts",
+          "exported": true,
+          "usedByFiles": 1
+        },
+        {
+          "id": "observatory:sim/tests/test_planets.py#test_eccentric_anomaly_solves_keplers_equation",
+          "kind": "function",
+          "match": "substring",
+          "line": 9,
+          "container": "observatory:sim/tests/test_planets.py",
+          "exported": false,
+          "usedByFiles": 0
+        }
+      ]
+    }
+  }
+}

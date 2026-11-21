@@ -1,0 +1,51 @@
+{
+  "call": {
+    "tool": "code_repos",
+    "args": {},
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "repos": [
+        {
+          "id": "observatory",
+          "ref": "HEAD",
+          "builtCommit": "5f7b72a77e7a",
+          "headCommit": "5f7b72a77e7a",
+          "stale": false,
+          "builtAt": "<builtAt>",
+          "detail": "standard",
+          "snippets": true,
+          "languages": {
+            "javascript": 3,
+            "python": 24,
+            "shell": 4,
+            "typescript": 65
+          },
+          "coverage": {
+            "files": 142,
+            "indexed": {
+              "javascript": 3,
+              "python": 24,
+              "shell": 4,
+              "typescript": 65
+            },
+            "unresolvedImports": 0,
+            "callSites": {
+              "bound": 191,
+              "scoped": 160,
+              "unresolved": 775
+            },
+            "redactions": 1
+          },
+          "engines": {
+            "ast-grep": "0.51.1",
+            "dependency-cruiser": "17.4.3",
+            "grimp": "3.18",
+            "scip-typescript": "0.5.2"
+          }
+        }
+      ]
+    }
+  }
+}

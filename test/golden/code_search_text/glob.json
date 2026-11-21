@@ -1,0 +1,280 @@
+{
+  "call": {
+    "tool": "code_search_text",
+    "args": {
+      "repo": "observatory",
+      "text": "import",
+      "path_glob": "sim/**"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "text": "import",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "offset": 0,
+      "returned": 50,
+      "total": 90,
+      "hasMore": true,
+      "nextOffset": 50,
+      "note": "items 1-50 of 90; call again with offset 50 for the next page",
+      "hits": [
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/timescale.py",
+          "line": 3,
+          "text": "from datetime import datetime, timezone"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/service.py",
+          "line": 3,
+          "text": "from observatory.ephemeris import timescale"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/service.py",
+          "line": 4,
+          "text": "from observatory.ephemeris.planets import MEAN_ELEMENTS, heliocentric_xy"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/service.py",
+          "line": 5,
+          "text": "from observatory.ephemeris.table import EphemerisTable, Row"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/service.py",
+          "line": 7,
+          "text": "from .interpolate import lagrange"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/planets.py",
+          "line": 3,
+          "text": "import math"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/planets.py",
+          "line": 5,
+          "text": "from .timescale import J2000"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/loader.py",
+          "line": 3,
+          "text": "from observatory.catalog import magnitudes"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/loader.py",
+          "line": 4,
+          "text": "from observatory.catalog.stars import load_catalog"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/magnitudes.py",
+          "line": 3,
+          "text": "import math"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/stars.py",
+          "line": 3,
+          "text": "import csv"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/stars.py",
+          "line": 4,
+          "text": "from dataclasses import dataclass"
+        },
+        {
+          "file": "observatory:sim/src/observatory/catalog/stars.py",
+          "line": 5,
+          "text": "from pathlib import Path"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 3,
+          "text": "import argparse"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 4,
+          "text": "import sys"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 5,
+          "text": "from datetime import datetime, timedelta, timezone"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 7,
+          "text": "from observatory.config import load_settings"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 8,
+          "text": "from observatory.ephemeris import moon"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 9,
+          "text": "from observatory.ephemeris.service import EphemerisService"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 10,
+          "text": "from observatory.ephemeris.timescale import julian_day"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 11,
+          "text": "from observatory.sky.tonight import tonight"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/cli.py",
+          "line": 63,
+          "text": "from observatory.ephemeris.server import serve"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/table.py",
+          "line": 3,
+          "text": "from bisect import bisect_right"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/table.py",
+          "line": 4,
+          "text": "from dataclasses import dataclass"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/table.py",
+          "line": 6,
+          "text": "from .interpolate import lagrange, linear"
+        },
+        {
+          "file": "observatory:sim/src/observatory/config.py",
+          "line": 3,
+          "text": "import os"
+        },
+        {
+          "file": "observatory:sim/src/observatory/config.py",
+          "line": 4,
+          "text": "from dataclasses import dataclass"
+        },
+        {
+          "file": "observatory:sim/src/observatory/config.py",
+          "line": 5,
+          "text": "from pathlib import Path"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/moon.py",
+          "line": 3,
+          "text": "import math"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/moon.py",
+          "line": 5,
+          "text": "from .timescale import J2000"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/server.py",
+          "line": 3,
+          "text": "import json"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/server.py",
+          "line": 4,
+          "text": "from datetime import datetime, timezone"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/server.py",
+          "line": 5,
+          "text": "from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/server.py",
+          "line": 6,
+          "text": "from urllib.parse import parse_qs, urlparse"
+        },
+        {
+          "file": "observatory:sim/src/observatory/ephemeris/server.py",
+          "line": 8,
+          "text": "from observatory.ephemeris.service import EphemerisService"
+        },
+        {
+          "file": "observatory:sim/src/observatory/sky/tonight.py",
+          "line": 3,
+          "text": "from observatory.catalog.loader import CatalogView"
+        },
+        {
+          "file": "observatory:sim/src/observatory/sky/tonight.py",
+          "line": 4,
+          "text": "from observatory.ephemeris.timescale import julian_day"
+        },
+        {
+          "file": "observatory:sim/src/observatory/sky/tonight.py",
+          "line": 5,
+          "text": "from observatory.sky.coordinates import altitude_azimuth, local_sidereal_degrees, sun_ra_dec"
+        },
+        {
+          "file": "observatory:sim/src/observatory/sky/tonight.py",
+          "line": 6,
+          "text": "from observatory.sky.refraction import apparent_altitude"
+        },
+        {
+          "file": "observatory:sim/src/observatory/sky/tonight.py",
+          "line": 7,
+          "text": "from observatory.sky.twilight import twilight_phase"
+        },
+        {
+          "file": "observatory:sim/src/observatory/sky/coordinates.py",
+          "line": 3,
+          "text": "import math"
+        },
+        {
+          "file": "observatory:sim/src/observatory/sky/coordinates.py",
+          "line": 5,
+          "text": "from observatory.ephemeris.planets import heliocentric_xy"
+        },
+        {
+          "file": "observatory:sim/src/observatory/sky/coordinates.py",
+          "line": 6,
+          "text": "from observatory.ephemeris.timescale import J2000"
+        },
+        {
+          "file": "observatory:sim/src/observatory/sky/refraction.py",
+          "line": 3,
+          "text": "import math"
+        },
+        {
+          "file": "observatory:sim/src/observatory/__main__.py",
+          "line": 3,
+          "text": "from observatory.ephemeris.cli import main"
+        },
+        {
+          "file": "observatory:sim/src/observatory/tools/export.py",
+          "line": 3,
+          "text": "import csv"
+        },
+        {
+          "file": "observatory:sim/src/observatory/tools/export.py",
+          "line": 4,
+          "text": "import sys"
+        },
+        {
+          "file": "observatory:sim/src/observatory/tools/export.py",
+          "line": 6,
+          "text": "from observatory.catalog.loader import CatalogView"
+        },
+        {
+          "file": "observatory:sim/src/observatory/tools/rebuild.py",
+          "line": 6,
+          "text": "import argparse"
+        },
+        {
+          "file": "observatory:sim/src/observatory/tools/rebuild.py",
+          "line": 7,
+          "text": "import json"
+        }
+      ],
+      "blindSpots": [
+        "1 denylisted file is left out of the map",
+        "secret-shaped text is redacted (1 span across the map), so it cannot be found"
+      ]
+    }
+  }
+}

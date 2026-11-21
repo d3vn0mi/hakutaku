@@ -1,0 +1,27 @@
+{
+  "call": {
+    "tool": "code_path",
+    "args": {
+      "repo": "observatory",
+      "from": "web/src/orbits/constants.ts",
+      "to": "web/src/orbits/kepler.test.ts"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "from": "observatory:web/src/orbits/constants.ts",
+      "to": "observatory:web/src/orbits/kepler.test.ts",
+      "via": "imports",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "found": false,
+      "hops": [],
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed",
+        "1 denylisted file is left out of the map, with its imports"
+      ],
+      "view": "#web~src~orbits~constants.ts"
+    }
+  }
+}

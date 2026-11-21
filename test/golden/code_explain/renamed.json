@@ -1,0 +1,24 @@
+{
+  "call": {
+    "tool": "code_explain",
+    "args": {
+      "repo": "observatory",
+      "target": "web/src/orbits/orbit.ts"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "error": {
+      "code": "not_found",
+      "message": "target web/src/orbits/orbit.ts is not in the store",
+      "field": "target",
+      "candidates": [
+        {
+          "id": "observatory:web/src/orbits/kepler.ts",
+          "kind": "file"
+        }
+      ],
+      "hint": "pass one candidate id as target"
+    }
+  }
+}

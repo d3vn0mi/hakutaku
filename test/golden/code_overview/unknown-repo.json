@@ -1,0 +1,18 @@
+{
+  "call": {
+    "tool": "code_overview",
+    "args": {
+      "repo": "nope"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "error": {
+      "code": "unknown_repo",
+      "message": "unknown repo nope",
+      "known": [
+        "observatory"
+      ]
+    }
+  }
+}

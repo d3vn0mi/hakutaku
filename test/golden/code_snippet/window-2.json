@@ -1,0 +1,53 @@
+{
+  "call": {
+    "tool": "code_snippet",
+    "args": {
+      "repo": "observatory",
+      "file": "web/src/orbits/kepler.ts",
+      "from": 1,
+      "to": 120,
+      "offset": 631
+    },
+    "detail": "standard",
+    "maxResultChars": 1200
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts",
+      "file": "observatory:web/src/orbits/kepler.ts",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "offset": 631,
+      "returned": 598,
+      "total": 1701,
+      "hasMore": true,
+      "nextOffset": 1229,
+      "note": "characters 632-1229 of 1701; call again with offset 1229 for the next window",
+      "from": 1,
+      "to": 41,
+      "lines": [
+        "",
+        "  for (let step = 0; step < SOLVER_MAX_STEPS; step++) {",
+        "    const delta = (ecc - e * Math.sin(ecc) - m) / (1 - e * Math.cos(ecc));",
+        "    ecc -= delta;",
+        "    if (Math.abs(delta) < SOLVER_TOLERANCE) break;",
+        "  }",
+        "  return ecc;",
+        "}",
+        "",
+        "// A body on an elliptical orbit around the Sun, in the plane of its orbit, with the Sun at the",
+        "// origin and the perihelion on the +x axis. Set its elements once it is made:",
+        "//",
+        "//   const mars = Object.assign(new Orbit(), { name: \"Mars\", a: 1.524, e: 0.0934, period: 687 });",
+        "export class Orbit {",
+        "  name = \"unnamed\";",
+        "  a = 1; // semi-major axis, in astronomical units",
+        "  e = 0;"
+      ],
+      "truncated": false,
+      "redactions": 0,
+      "untrusted": true,
+      "view": "#web~src~orbits~kepler.ts"
+    }
+  }
+}

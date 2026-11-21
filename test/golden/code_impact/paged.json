@@ -1,0 +1,46 @@
+{
+  "call": {
+    "tool": "code_impact",
+    "args": {
+      "repo": "observatory",
+      "target": "web/src/orbits/units.ts",
+      "limit": 3
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/units.ts",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "offset": 0,
+      "returned": 3,
+      "total": 16,
+      "hasMore": true,
+      "nextOffset": 3,
+      "note": "items 1-3 of 16; call again with offset 3 for the next page",
+      "depth": 2,
+      "byHop": [
+        {
+          "hop": 1,
+          "definitions": [],
+          "files": [
+            "observatory:web/src/sky/planets.ts",
+            "observatory:web/src/orbits/kepler.ts",
+            "observatory:web/src/api/ephemeris-client.ts"
+          ],
+          "tests": []
+        }
+      ],
+      "counts": {
+        "definitions": 0,
+        "files": 10,
+        "tests": 6
+      },
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed",
+        "compiler-bound uses that match no outline definition are counted in coverage only (36)"
+      ]
+    }
+  }
+}

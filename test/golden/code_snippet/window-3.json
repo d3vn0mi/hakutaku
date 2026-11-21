@@ -1,0 +1,48 @@
+{
+  "call": {
+    "tool": "code_snippet",
+    "args": {
+      "repo": "observatory",
+      "file": "web/src/orbits/kepler.ts",
+      "from": 1,
+      "to": 120,
+      "offset": 1229
+    },
+    "detail": "standard",
+    "maxResultChars": 1200
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts",
+      "file": "observatory:web/src/orbits/kepler.ts",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "offset": 1229,
+      "returned": 472,
+      "total": 1701,
+      "hasMore": false,
+      "note": "characters 1230-1701 of 1701; this is the last window",
+      "from": 1,
+      "to": 41,
+      "lines": [
+        " // eccentricity",
+        "  period = 365.25; // sidereal period, in days",
+        "  m0 = 0; // mean anomaly at t = 0, in radians",
+        "",
+        "  // Where the body is t days after t = 0, as [x, y] in astronomical units.",
+        "  position(t: number): [number, number] {",
+        "    const mean = this.m0 + (TWO_PI * t) / this.period;",
+        "    const ecc = solveKepler(mean, this.e);",
+        "    const x = this.a * (Math.cos(ecc) - this.e);",
+        "    const y = this.a * Math.sqrt(1 - this.e * this.e) * Math.sin(ecc);",
+        "    return [x, y];",
+        "  }",
+        "}"
+      ],
+      "truncated": false,
+      "redactions": 0,
+      "untrusted": true,
+      "view": "#web~src~orbits~kepler.ts"
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "call": {
+    "tool": "code_path",
+    "args": {
+      "repo": "observatory",
+      "from": "web/src/orbits/kepler.ts",
+      "to": "web/src/orbits/nope.ts"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "error": {
+      "code": "not_found",
+      "message": "to web/src/orbits/nope.ts is not in the store",
+      "field": "to",
+      "hint": "code_find searches by name"
+    }
+  }
+}

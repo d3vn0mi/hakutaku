@@ -1,0 +1,52 @@
+{
+  "call": {
+    "tool": "code_explain",
+    "args": {
+      "repo": "observatory",
+      "target": "observatory:sim/src/observatory/catalog/loader.py#CatalogView.__init__"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:sim/src/observatory/catalog/loader.py#CatalogView.__init__",
+      "kind": "method",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "definedIn": "observatory:sim/src/observatory/catalog/loader.py",
+      "line": 10,
+      "usedByFiles": 0,
+      "mentionedByTests": false,
+      "label": "scoped",
+      "note": "no other production file uses it by name in files that import its module; no compiler ran for Python in this build (below deep detail), so check code_callers' unscoped matches",
+      "component": "sim/src/observatory/catalog",
+      "lines": 21,
+      "entryPoint": false,
+      "inImportCycle": false,
+      "metrics": {
+        "dependentsRank": 15,
+        "importedBy": 3,
+        "imports": 2,
+        "commits90d": 0,
+        "hotspot": 0
+      },
+      "importedBy": {
+        "total": 3,
+        "top": [
+          "observatory:sim/src/observatory/sky/tonight.py",
+          "observatory:sim/src/observatory/tools/export.py",
+          "observatory:sim/tests/test_catalog.py"
+        ]
+      },
+      "imports": {
+        "total": 2,
+        "top": [
+          "observatory:sim/src/observatory/catalog/magnitudes.py",
+          "observatory:sim/src/observatory/catalog/stars.py"
+        ]
+      },
+      "changesTogetherWith": [],
+      "view": "#sim~src~observatory~catalog~loader.py--CatalogView.__init__"
+    }
+  }
+}

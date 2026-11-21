@@ -1,0 +1,61 @@
+{
+  "call": {
+    "tool": "code_callers",
+    "args": {
+      "repo": "observatory",
+      "symbol": "web/src/orbits/kepler.ts#Orbit.position",
+      "offset": 1
+    },
+    "detail": "standard",
+    "maxResultChars": 1200
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "offset": 1,
+      "returned": 1,
+      "total": 3,
+      "hasMore": true,
+      "nextOffset": 2,
+      "note": "items 2-2 of 3; call again with offset 2 for the next page",
+      "labels": [
+        "bound",
+        "scoped"
+      ],
+      "scope": "direct",
+      "depth": 1,
+      "counts": {
+        "files": 2,
+        "callers": 2,
+        "sites": 3,
+        "bound": 1,
+        "scoped": 2,
+        "unscoped": 0
+      },
+      "callers": [
+        {
+          "id": "observatory:web/src/orbits/kepler.test.ts#<module>",
+          "file": "observatory:web/src/orbits/kepler.test.ts",
+          "test": true,
+          "hop": 1,
+          "part": "1/2",
+          "sites": [
+            {
+              "line": 26,
+              "col": 18,
+              "label": "bound",
+              "text": "expect(orbit.position(0)).toEqual([1, 0]);"
+            }
+          ]
+        }
+      ],
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed; ask with labels [\"unscoped\"] to see name matches",
+        "compiler-bound uses that match no outline definition are counted in coverage only (36)"
+      ],
+      "view": "#web~src~orbits~kepler.ts--Orbit.position"
+    }
+  }
+}

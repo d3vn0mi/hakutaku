@@ -6,7 +6,8 @@
       "!!**/dist",
       "!!**/coverage",
       "!!**/fixtures",
-      "!engines.lock.json"
+      "!engines.lock.json",
+      "!test/golden/**/*.json"
     ]
   },
   "formatter": {

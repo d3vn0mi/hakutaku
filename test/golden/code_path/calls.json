@@ -1,0 +1,39 @@
+{
+  "call": {
+    "tool": "code_path",
+    "args": {
+      "repo": "observatory",
+      "from": "web/src/sky/render.ts#drawSky",
+      "to": "web/src/orbits/kepler.ts#Orbit.position",
+      "via": "calls"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "from": "observatory:web/src/sky/render.ts#drawSky",
+      "to": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+      "via": "calls",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "found": true,
+      "hops": [
+        {
+          "from": "observatory:web/src/sky/render.ts#drawSky",
+          "to": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+          "kind": "scoped",
+          "line": 23,
+          "text": "const p = body.position(t);"
+        }
+      ],
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed",
+        "compiler-bound uses that match no outline definition are counted in coverage only (36)",
+        "unscoped name matches are not followed; code_callers lists them with labels [\"unscoped\"]",
+        "scoped links that code_callers finds through import chains are not followed",
+        "references, uses that are not calls, are not followed; code_references lists them"
+      ],
+      "view": "#web~src~sky~render.ts--drawSky"
+    }
+  }
+}

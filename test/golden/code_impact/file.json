@@ -1,0 +1,58 @@
+{
+  "call": {
+    "tool": "code_impact",
+    "args": {
+      "repo": "observatory",
+      "target": "web/src/orbits/kepler.ts"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "depth": 2,
+      "byHop": [
+        {
+          "hop": 1,
+          "definitions": [],
+          "files": [
+            "observatory:web/src/sky/planets.ts",
+            "observatory:web/src/api/ephemeris-client.ts",
+            "observatory:web/src/sky/render.ts",
+            "observatory:web/src/sky/camera.ts"
+          ],
+          "tests": [
+            "observatory:web/src/orbits/kepler.test.ts"
+          ]
+        },
+        {
+          "hop": 2,
+          "definitions": [],
+          "files": [
+            "observatory:web/src/sky/catalog.ts",
+            "observatory:web/src/sky/frame.ts",
+            "observatory:web/src/sky/legend.ts",
+            "observatory:web/app/page.tsx"
+          ],
+          "tests": [
+            "observatory:web/src/api/ephemeris-client.test.ts",
+            "observatory:web/src/sky/camera.test.ts",
+            "observatory:web/src/sky/frame.test.ts",
+            "observatory:web/src/sky/planets.test.ts"
+          ]
+        }
+      ],
+      "counts": {
+        "definitions": 0,
+        "files": 8,
+        "tests": 5
+      },
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed",
+        "compiler-bound uses that match no outline definition are counted in coverage only (36)"
+      ]
+    }
+  }
+}

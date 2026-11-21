@@ -1,0 +1,74 @@
+{
+  "call": {
+    "tool": "code_callers",
+    "args": {
+      "repo": "observatory",
+      "symbol": "web/src/orbits/kepler.ts#Orbit.position",
+      "scope": "transitive"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:web/src/orbits/kepler.ts#Orbit.position",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "labels": [
+        "bound",
+        "scoped"
+      ],
+      "scope": "transitive",
+      "depth": 1,
+      "counts": {
+        "files": 2,
+        "callers": 2,
+        "sites": 3,
+        "bound": 1,
+        "scoped": 2,
+        "unscoped": 0
+      },
+      "callers": [
+        {
+          "id": "observatory:web/src/sky/render.ts#drawSky",
+          "file": "observatory:web/src/sky/render.ts",
+          "test": false,
+          "hop": 1,
+          "sites": [
+            {
+              "line": 23,
+              "col": 20,
+              "label": "scoped",
+              "text": "const p = body.position(t);"
+            }
+          ]
+        },
+        {
+          "id": "observatory:web/src/orbits/kepler.test.ts#<module>",
+          "file": "observatory:web/src/orbits/kepler.test.ts",
+          "test": true,
+          "hop": 1,
+          "sites": [
+            {
+              "line": 26,
+              "col": 18,
+              "label": "bound",
+              "text": "expect(orbit.position(0)).toEqual([1, 0]);"
+            },
+            {
+              "line": 32,
+              "col": 16,
+              "label": "scoped",
+              "collision": true,
+              "text": "expect(o.position(HALF)[0]).toBeCloseTo(-1);"
+            }
+          ]
+        }
+      ],
+      "blindSpots": [
+        "1 dynamic import with a computed path is not followed; ask with labels [\"unscoped\"] to see name matches",
+        "compiler-bound uses that match no outline definition are counted in coverage only (36)"
+      ],
+      "view": "#web~src~orbits~kepler.ts--Orbit.position"
+    }
+  }
+}

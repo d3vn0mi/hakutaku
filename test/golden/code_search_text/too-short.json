@@ -1,0 +1,18 @@
+{
+  "call": {
+    "tool": "code_search_text",
+    "args": {
+      "repo": "observatory",
+      "text": "ab"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "error": {
+      "code": "invalid_argument",
+      "message": "text must have at least 3 characters",
+      "field": "text",
+      "hint": "see the input schema of code_search_text"
+    }
+  }
+}
