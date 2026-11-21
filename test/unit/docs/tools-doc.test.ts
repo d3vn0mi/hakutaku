@@ -1,6 +1,7 @@
-// docs/tools.md against the code it documents: a section for every tool, in order, with the
-// arguments its input schema declares; every error code and every label's wording; and two
-// worked examples copied from the golden answers, unchanged.
+// docs/tools.md and README.md against the code they document. docs/tools.md: a section for every
+// tool, in order, with the arguments its input schema declares, and every error code and every
+// label's wording. Both pages: their worked examples, copied from the golden answers unchanged,
+// and only IDs of nodes the sample has.
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import {
@@ -18,6 +19,21 @@ import type { InputSchema, PropertySchema } from "../../../src/tools/specs.js";
 
 const doc = readFileSync("docs/tools.md", "utf8");
 
+// The pages checked against the golden answers and the sample, each with the golden examples it
+// quotes, in order.
+const PAGES = [
+  {
+    path: "docs/tools.md",
+    text: doc,
+    examples: ["code_explain/file", "code_callers/method"],
+  },
+  {
+    path: "README.md",
+    text: readFileSync("README.md", "utf8"),
+    examples: ["code_callers/method"],
+  },
+];
+
 it("has a section for every tool, in order", () => {
   const heads = [...doc.matchAll(/^### `(code_[a-z_]+)`$/gm)].map((m) => m[1]);
   expect(heads).toEqual([...TOOL_NAMES]);
@@ -28,24 +44,25 @@ it("lists every error code and quotes every label's wording", () => {
   for (const w of Object.values(LABEL_WORDING)) expect(doc).toContain(w);
 });
 
-it("takes its examples from the golden files", () => {
-  const examples = [
-    ...doc.matchAll(
-      /<!-- golden: ([a-z_]+\/[a-z0-9-]+) -->\n```json\n([\s\S]*?)\n```/g,
-    ),
-  ];
-  // Named first, so that a marker whose block does not follow it exactly fails here rather
-  // than being skipped.
-  expect(examples.map((m) => m[1])).toEqual([
-    "code_explain/file",
-    "code_callers/method",
-  ]);
-  for (const m of examples) {
-    const g = JSON.parse(readFileSync(`test/golden/${m[1]}.json`, "utf8"));
-    expect(m[2]).toBe(JSON.stringify(g.result.answer, null, 2));
-  }
-  expect([...doc.matchAll(/<!-- golden: /g)]).toHaveLength(2);
-});
+for (const page of PAGES) {
+  it(`${page.path} takes its examples from the golden files`, () => {
+    const examples = [
+      ...page.text.matchAll(
+        /<!-- golden: ([a-z_]+\/[a-z0-9-]+) -->\n```json\n([\s\S]*?)\n```/g,
+      ),
+    ];
+    // Named first, so that a marker whose block does not follow it exactly fails here rather
+    // than being skipped.
+    expect(examples.map((m) => m[1])).toEqual(page.examples);
+    for (const m of examples) {
+      const g = JSON.parse(readFileSync(`test/golden/${m[1]}.json`, "utf8"));
+      expect(m[2], m[1]).toBe(JSON.stringify(g.result.answer, null, 2));
+    }
+    expect([...page.text.matchAll(/<!-- golden: /g)]).toHaveLength(
+      page.examples.length,
+    );
+  });
+}
 
 // A tool's section: the lines after its heading, up to the next heading of level 2 or 3.
 function sectionOf(name: string): string {
@@ -90,7 +107,7 @@ const defaultOf = (p: PropertySchema, required: boolean): string => {
 };
 
 // The sample's nodes as its oracle lists them: files, components, definitions and the
-// libraries its imports reach. Every example ID the page shows must name one of them.
+// libraries its imports reach. Every example ID either page shows must name one of them.
 interface OracleFact {
   fact: string;
   path?: string;
@@ -134,15 +151,19 @@ function inSample(ref: NodeRef): boolean {
   }
 }
 
-it("shows only IDs of nodes the sample has", () => {
-  const shown = [...new Set(doc.match(/observatory:[^\s`"|)]*/g) ?? [])];
-  expect(shown.length).toBeGreaterThan(0);
-  const missing = shown.filter((id) => {
-    const ref = parseId(id);
-    return ref === null || ref.repo !== "observatory" || !inSample(ref);
+for (const page of PAGES) {
+  it(`${page.path} shows only IDs of nodes the sample has`, () => {
+    const shown = [
+      ...new Set(page.text.match(/observatory:[^\s`"|)]*/g) ?? []),
+    ];
+    expect(shown.length).toBeGreaterThan(0);
+    const missing = shown.filter((id) => {
+      const ref = parseId(id);
+      return ref === null || ref.repo !== "observatory" || !inSample(ref);
+    });
+    expect(missing).toEqual([]);
   });
-  expect(missing).toEqual([]);
-});
+}
 
 it("lists each tool's arguments as its input schema declares them", () => {
   for (const spec of TOOL_SPECS) {

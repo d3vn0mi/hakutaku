@@ -350,19 +350,30 @@ Planned for 0.1. All 13 are read-only, except `code_refresh`, which asks for a r
   `rate_limited`, `refresh_disabled` or `internal`.
 
 <details>
-<summary><strong>Example: <code>code_callers</code> on the synthetic sample (illustrative)</strong></summary>
+<summary><strong>Example: <code>code_callers</code> on the synthetic sample, from its golden answers</strong></summary>
 
 `code_callers({"repo":"observatory","symbol":"web/src/orbits/kepler.ts#Orbit.position"})`
 
+<!-- golden: code_callers/method -->
 ```json
 {
   "id": "observatory:web/src/orbits/kepler.ts#Orbit.position",
-  "builtCommit": "4f2a9c1e07b3",
+  "builtCommit": "5f7b72a77e7a",
   "stale": false,
-  "labels": ["bound", "scoped"],
+  "labels": [
+    "bound",
+    "scoped"
+  ],
   "scope": "direct",
   "depth": 1,
-  "counts": { "files": 2, "callers": 2, "sites": 3, "bound": 1, "scoped": 2, "unscoped": 0 },
+  "counts": {
+    "files": 2,
+    "callers": 2,
+    "sites": 3,
+    "bound": 1,
+    "scoped": 2,
+    "unscoped": 0
+  },
   "callers": [
     {
       "id": "observatory:web/src/sky/render.ts#drawSky",
@@ -370,7 +381,12 @@ Planned for 0.1. All 13 are read-only, except `code_refresh`, which asks for a r
       "test": false,
       "hop": 1,
       "sites": [
-        { "line": 42, "col": 21, "label": "scoped", "text": "const p = body.position(t);" }
+        {
+          "line": 23,
+          "col": 20,
+          "label": "scoped",
+          "text": "const p = body.position(t);"
+        }
       ]
     },
     {
@@ -379,18 +395,34 @@ Planned for 0.1. All 13 are read-only, except `code_refresh`, which asks for a r
       "test": true,
       "hop": 1,
       "sites": [
-        { "line": 12, "col": 18, "label": "bound", "text": "expect(orbit.position(0)).toEqual([1, 0]);" },
-        { "line": 19, "col": 14, "label": "scoped", "collision": true, "text": "expect(o.position(HALF)[0]).toBeCloseTo(-1);" }
+        {
+          "line": 26,
+          "col": 18,
+          "label": "bound",
+          "text": "expect(orbit.position(0)).toEqual([1, 0]);"
+        },
+        {
+          "line": 32,
+          "col": 16,
+          "label": "scoped",
+          "collision": true,
+          "text": "expect(o.position(HALF)[0]).toBeCloseTo(-1);"
+        }
       ]
     }
   ],
-  "blindSpots": ["1 dynamic import with a computed path is not followed; ask with labels [\"unscoped\"] to see name matches"],
+  "blindSpots": [
+    "1 dynamic import with a computed path is not followed; ask with labels [\"unscoped\"] to see name matches",
+    "compiler-bound uses that match no outline definition are counted in coverage only (36)"
+  ],
   "view": "#web~src~orbits~kepler.ts--Orbit.position"
 }
 ```
 
 The `render.ts` call is a structural seam. `body` is typed by an interface, so the compiler binds the
-call to the interface's method, not to `Orbit.position`. The `scoped` label recovers it.
+call to the interface's method, not to `Orbit.position`. The `scoped` label recovers it. The second
+blind spot is a count across the whole map, not for this method alone: uses at call sites that the
+compiler bound to a symbol of the repository matching no single definition in hakutaku's outline.
 
 </details>
 
@@ -433,7 +465,7 @@ file        <repo-id>:<path>                    observatory:web/src/orbits/keple
 directory   <repo-id>:<path>/                   observatory:web/src/orbits/
 definition  <repo-id>:<path>#<qualname>[(<n>)]  observatory:web/src/orbits/kepler.ts#Orbit.position
 module      <repo-id>:<path>#<module>           observatory:web/src/orbits/kepler.test.ts#<module>
-external    <repo-id>:<ecosystem>:<name>        observatory:npm:react   observatory:pypi:numpy
+external    <repo-id>:<ecosystem>:<name>        observatory:npm:react   observatory:pypi:pytest
 ```
 
 - **Stable across builds.** An ID stays the same as long as the path and the qualified name do. The
