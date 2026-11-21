@@ -17,6 +17,11 @@ import {
   sandboxCommand,
   systemdRunArgv,
 } from "../../../src/extract/sandbox.js";
+import {
+  commandProbe,
+  type LiveProbe,
+  requireInCI,
+} from "../../helpers/live.js";
 
 const made: string[] = [];
 afterAll(() => {
@@ -335,18 +340,20 @@ function hostNetworkSystemdRun(): void {
   chmodSync(file, 0o755);
   vi.stubEnv("PATH", bin);
 }
-const hostHasNetwork = Object.keys(networkInterfaces()).some(
-  (name) => name !== "lo",
-);
+// The tests of a service in the host's network need a host network that differs from loopback.
+const hostInterfaces = Object.keys(networkInterfaces());
+const hostNetwork: LiveProbe = {
+  name: "a network interface besides loopback",
+  ok: hostInterfaces.some((name) => name !== "lo"),
+  evidence: `this host has ${hostInterfaces.join(", ") || "none"}`,
+};
 
-it.runIf(hostHasNetwork)(
-  "does not take systemd-run as the sandbox when its service sees the host's network",
-  async () => {
-    hostNetworkSystemdRun();
-    const s = await freshSandbox();
-    expect(await s.detectSandbox("linux")).toBeNull();
-  },
-);
+it("does not take systemd-run as the sandbox when its service sees the host's network", async (ctx) => {
+  requireInCI(ctx, hostNetwork);
+  hostNetworkSystemdRun();
+  const s = await freshSandbox();
+  expect(await s.detectSandbox("linux")).toBeNull();
+});
 
 it.each<[string, Partial<Record<"bwrap" | "systemd-run", number>>]>([
   ["both fail", { bwrap: 1, "systemd-run": 1 }],
@@ -427,26 +434,24 @@ it("finds no problem where bubblewrap and systemd-run both work, and none off Li
   expect(await s.sandboxProblems("darwin")).toEqual([]);
 });
 
-it.runIf(hostHasNetwork)(
-  "says systemd-run cannot cut the network when its service runs in the host's network",
-  async () => {
-    hostNetworkSystemdRun();
-    const s = await freshSandbox();
-    expect(await s.detectSandbox("linux")).toBeNull();
-    expect(await s.noSandboxReason("linux")).toBe(
-      "no sandbox: bubblewrap is not installed; systemd-run cannot cut the network",
-    );
-    expect(
-      (await s.sandboxProblems("linux")).map((p) => [
-        p.line,
-        s.evidenceLine(p.evidence),
-      ]),
-    ).toEqual([
-      ["bubblewrap is not installed", "bwrap: could not start: ENOENT"],
-      ["systemd-run cannot cut the network", "systemd-run: exit code 1"],
-    ]);
-  },
-);
+it("says systemd-run cannot cut the network when its service runs in the host's network", async (ctx) => {
+  requireInCI(ctx, hostNetwork);
+  hostNetworkSystemdRun();
+  const s = await freshSandbox();
+  expect(await s.detectSandbox("linux")).toBeNull();
+  expect(await s.noSandboxReason("linux")).toBe(
+    "no sandbox: bubblewrap is not installed; systemd-run cannot cut the network",
+  );
+  expect(
+    (await s.sandboxProblems("linux")).map((p) => [
+      p.line,
+      s.evidenceLine(p.evidence),
+    ]),
+  ).toEqual([
+    ["bubblewrap is not installed", "bwrap: could not start: ENOENT"],
+    ["systemd-run cannot cut the network", "systemd-run: exit code 1"],
+  ]);
+});
 
 it("names the platform off Linux, running no probe", async () => {
   const log = fakeTools({ bwrap: 0, "systemd-run": 0 });
@@ -541,33 +546,37 @@ it("runs systemd-run alone when it is the sandbox, with OOMPolicy where its serv
   });
 });
 
-// The live runs below need the real tools, so they run only where each works.
-const works = (argv: string[]): boolean =>
-  process.platform === "linux" &&
-  spawnSync(argv[0] ?? "", argv.slice(1), { stdio: "ignore", timeout: 30_000 })
-    .status === 0;
-const bwrapWorks = works(BWRAP_PROBE.split(" "));
-const systemdRunWorks = works(SYSTEMD_RUN_PROBE.split(" "));
-const systemdRunIsolates = works(SYSTEMD_RUN_ISOLATION_PROBE);
-const oomScopeWorks = works(OOM_SCOPE_PROBE.split(" "));
+// The live runs below need the real tools: each runs where its probes pass, is skipped where one
+// fails, and fails in CI where one fails.
+const bwrap = commandProbe("bubblewrap", BWRAP_PROBE.split(" "));
+const userManager = commandProbe(
+  "a systemd user manager",
+  SYSTEMD_RUN_PROBE.split(" "),
+);
+const isolatingManager = commandProbe(
+  "a systemd user manager that cuts a service's network",
+  SYSTEMD_RUN_ISOLATION_PROBE,
+);
+const oomScope = commandProbe(
+  "OOMPolicy on a systemd-run scope",
+  OOM_SCOPE_PROBE.split(" "),
+);
 
 // The isolation probe's check, on its own: it passes in a fresh network namespace and fails in the
 // host's, so a probe that passes proves the service had no network.
-it.runIf(bwrapWorks && hostHasNetwork)(
-  "checks for loopback only: true in a new network namespace, false in the host's",
-  () => {
-    const check = [process.execPath, "-e", ONLY_LOOPBACK];
-    const inNamespace = spawnSync(
-      "bwrap",
-      ["--unshare-all", "--die-with-parent", "--ro-bind", "/", "/", ...check],
-      { stdio: "ignore", timeout: 30_000 },
-    );
-    expect(inNamespace.status).toBe(0);
-    const [node = "", ...args] = check;
-    const onHost = spawnSync(node, args, { stdio: "ignore", timeout: 30_000 });
-    expect(onHost.status).toBe(1);
-  },
-);
+it("checks for loopback only: true in a new network namespace, false in the host's", (ctx) => {
+  requireInCI(ctx, bwrap, hostNetwork);
+  const check = [process.execPath, "-e", ONLY_LOOPBACK];
+  const inNamespace = spawnSync(
+    "bwrap",
+    ["--unshare-all", "--die-with-parent", "--ro-bind", "/", "/", ...check],
+    { stdio: "ignore", timeout: 30_000 },
+  );
+  expect(inNamespace.status).toBe(0);
+  const [node = "", ...args] = check;
+  const onHost = spawnSync(node, args, { stdio: "ignore", timeout: 30_000 });
+  expect(onHost.status).toBe(1);
+});
 
 // A sandbox's directories under the OS temp directory, a file in the export, and a directory
 // outside every bind.
@@ -634,69 +643,59 @@ const runArgv = (argv: string[]) => {
   return { status: r.status, out: r.stdout, err: r.stderr };
 };
 
-it.runIf(bwrapWorks)(
-  "runs a command in bubblewrap that reads the export, writes only the store and has no network",
-  () => {
-    const { p, outside } = liveLayout();
-    const r = runArgv(
-      bwrapArgv(p, [process.execPath, "-e", report(p, outside)]),
-    );
-    expect(r.err).toBe("");
-    expect(r.status).toBe(0);
-    expect(JSON.parse(r.out)).toEqual(SEEN_IN_BUBBLEWRAP);
-  },
-);
+it("runs a command in bubblewrap that reads the export, writes only the store and has no network", (ctx) => {
+  requireInCI(ctx, bwrap);
+  const { p, outside } = liveLayout();
+  const r = runArgv(bwrapArgv(p, [process.execPath, "-e", report(p, outside)]));
+  expect(r.err).toBe("");
+  expect(r.status).toBe(0);
+  expect(JSON.parse(r.out)).toEqual(SEEN_IN_BUBBLEWRAP);
+});
 
-it.runIf(bwrapWorks && systemdRunWorks)(
-  "runs bubblewrap inside a systemd-run scope",
-  async () => {
-    const { p, outside } = liveLayout();
-    const { argv, warnings } = await sandboxCommand("bubblewrap", p, [
-      process.execPath,
-      "-e",
-      report(p, outside),
-    ]);
-    expect(argv[0]).toBe("systemd-run");
-    expect(warnings).toEqual([]);
-    const r = runArgv(argv);
-    expect(r.status).toBe(0);
-    expect(JSON.parse(r.out)).toEqual(SEEN_IN_BUBBLEWRAP);
-  },
-);
+it("runs bubblewrap inside a systemd-run scope", async (ctx) => {
+  requireInCI(ctx, bwrap, userManager);
+  const { p, outside } = liveLayout();
+  const { argv, warnings } = await sandboxCommand("bubblewrap", p, [
+    process.execPath,
+    "-e",
+    report(p, outside),
+  ]);
+  expect(argv[0]).toBe("systemd-run");
+  expect(warnings).toEqual([]);
+  const r = runArgv(argv);
+  expect(r.status).toBe(0);
+  expect(JSON.parse(r.out)).toEqual(SEEN_IN_BUBBLEWRAP);
+});
 
-it.runIf(systemdRunIsolates)(
-  "runs a command under systemd-run with no network, nice 19 and the memory cap",
-  () => {
-    const { p } = liveLayout();
-    const script = `
+it("runs a command under systemd-run with no network, nice 19 and the memory cap", (ctx) => {
+  requireInCI(ctx, isolatingManager);
+  const { p } = liveLayout();
+  const script = `
 const fs = require("node:fs");
 const os = require("node:os");
 const cgroup = fs.readFileSync("/proc/self/cgroup", "utf8").trim().split("::")[1];
 const read = (name) => { const f = "/sys/fs/cgroup" + cgroup + "/" + name; return fs.existsSync(f) ? fs.readFileSync(f, "utf8").trim() : null; };
 console.log(JSON.stringify({ nice: os.getPriority(), network: Object.keys(os.networkInterfaces()).sort(), memoryMax: read("memory.max"), swapMax: read("memory.swap.max") }));`;
-    const r = runArgv(systemdRunArgv(p, [process.execPath, "-e", script]));
-    expect(r.status).toBe(0);
-    const seen = JSON.parse(r.out);
-    expect(seen).toMatchObject({
-      nice: 19,
-      network: ["lo"],
-      memoryMax: String(3 * 1024 ** 3),
-    });
-    expect(["0", null]).toContain(seen.swapMax); // null where swap is not accounted
-  },
-);
+  const r = runArgv(systemdRunArgv(p, [process.execPath, "-e", script]));
+  expect(r.status).toBe(0);
+  const seen = JSON.parse(r.out);
+  expect(seen).toMatchObject({
+    nice: 19,
+    network: ["lo"],
+    memoryMax: String(3 * 1024 ** 3),
+  });
+  expect(["0", null]).toContain(seen.swapMax); // null where swap is not accounted
+});
 
-it.runIf(systemdRunWorks)(
-  "runs systemd-run's service with no core dumps",
-  () => {
-    const { p } = liveLayout();
-    const script =
-      'console.log(/^Max core file size +(\\S+) +(\\S+)/m.exec(require("node:fs").readFileSync("/proc/self/limits", "utf8")).slice(1).join(" "))';
-    const r = runArgv(systemdRunArgv(p, [process.execPath, "-e", script]));
-    expect(r.status).toBe(0);
-    expect(r.out.trim()).toBe("0 0");
-  },
-);
+it("runs systemd-run's service with no core dumps", (ctx) => {
+  requireInCI(ctx, userManager);
+  const { p } = liveLayout();
+  const script =
+    'console.log(/^Max core file size +(\\S+) +(\\S+)/m.exec(require("node:fs").readFileSync("/proc/self/limits", "utf8")).slice(1).join(" "))';
+  const r = runArgv(systemdRunArgv(p, [process.execPath, "-e", script]));
+  expect(r.status).toBe(0);
+  expect(r.out.trim()).toBe("0 0");
+});
 
 // A process that starts a child which fills 400 MiB, then says how the child ended.
 const FILLS_PAST_THE_CAP = `
@@ -704,24 +703,22 @@ const { spawnSync } = require("node:child_process");
 const r = spawnSync(process.execPath, ["-e", "const a = []; for (let i = 0; i < 25; i++) a.push(Buffer.alloc(16 * 1024 * 1024, 1));"], { stdio: "inherit" });
 console.log(JSON.stringify({ status: r.status, signal: r.signal }));`;
 
-it.runIf(bwrapWorks && systemdRunWorks && oomScopeWorks)(
-  "keeps a capped sandbox running when the kernel kills one of its processes at the cap, which it stops without OOMPolicy",
-  async () => {
-    const { p } = liveLayout();
-    const capped = { ...p, memoryMax: "200M" };
-    const { argv } = await sandboxCommand("bubblewrap", capped, [
-      process.execPath,
-      "-e",
-      FILLS_PAST_THE_CAP,
-    ]);
-    const at = argv.indexOf("OOMPolicy=continue");
-    expect(argv[at - 1]).toBe("-p");
-    const kept = runArgv(argv);
-    expect(kept.status).toBe(0);
-    expect(JSON.parse(kept.out)).toEqual({ status: null, signal: "SIGKILL" });
-    // the control: the same scope without it stops the whole sandbox, which never reports
-    const stopped = runArgv([...argv.slice(0, at - 1), ...argv.slice(at + 1)]);
-    expect(stopped.status).not.toBe(0);
-    expect(stopped.out).toBe("");
-  },
-);
+it("keeps a capped sandbox running when the kernel kills one of its processes at the cap, which it stops without OOMPolicy", async (ctx) => {
+  requireInCI(ctx, bwrap, userManager, oomScope);
+  const { p } = liveLayout();
+  const capped = { ...p, memoryMax: "200M" };
+  const { argv } = await sandboxCommand("bubblewrap", capped, [
+    process.execPath,
+    "-e",
+    FILLS_PAST_THE_CAP,
+  ]);
+  const at = argv.indexOf("OOMPolicy=continue");
+  expect(argv[at - 1]).toBe("-p");
+  const kept = runArgv(argv);
+  expect(kept.status).toBe(0);
+  expect(JSON.parse(kept.out)).toEqual({ status: null, signal: "SIGKILL" });
+  // the control: the same scope without it stops the whole sandbox, which never reports
+  const stopped = runArgv([...argv.slice(0, at - 1), ...argv.slice(at + 1)]);
+  expect(stopped.status).not.toBe(0);
+  expect(stopped.out).toBe("");
+});

@@ -2,7 +2,6 @@
 // --yes` once, and `npm run build` for the sandboxed run, before this file. Each repo is made
 // with makeRepo, exported with exportRepo, and extracted with sandbox "none" unless a test says
 // otherwise. Every build's engines are checked one by one, never through its result alone.
-import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -39,6 +38,7 @@ import {
   standInEnginesDir,
 } from "../../helpers/engines.js";
 import { git, makeRepo, type RepoSpec } from "../../helpers/git.js";
+import { commandProbe, requireInCI } from "../../helpers/live.js";
 
 const TIMEOUT = 300_000;
 
@@ -1015,12 +1015,9 @@ it(
   TIMEOUT,
 );
 
-// Whether bubblewrap, and systemd-run beside it, work here.
-const works = (argv: string[]): boolean =>
-  process.platform === "linux" &&
-  spawnSync(argv[0] ?? "", argv.slice(1), { stdio: "ignore", timeout: 30_000 })
-    .status === 0;
-const bwrapWorks = works([
+// Whether bubblewrap, and systemd-run beside it, work here. A test that needs bubblewrap is
+// skipped where it does not work, and fails in CI.
+const bwrap = commandProbe("bubblewrap", [
   "bwrap",
   "--unshare-all",
   "--die-with-parent",
@@ -1029,7 +1026,7 @@ const bwrapWorks = works([
   "/",
   "true",
 ]);
-const systemdRunWorks = works([
+const userManager = commandProbe("a systemd user manager", [
   "systemd-run",
   "--user",
   "--wait",
@@ -1040,9 +1037,10 @@ const systemdRunWorks = works([
   "true",
 ]);
 
-it.runIf(bwrapWorks)(
+it(
   "builds the same store inside bubblewrap, and says so in build.json",
-  async () => {
+  async (ctx) => {
+    requireInCI(ctx, bwrap);
     const dir = await exportOf(await oneCommit({ ...SKY, ...EPHEMERIS }));
     const plain = storePath();
     const unsandboxed = await extract(dir, plain);
@@ -1059,7 +1057,7 @@ it.runIf(bwrapWorks)(
       grimp: "ran",
       "scip-typescript": "ran",
     });
-    if (systemdRunWorks) {
+    if (userManager.ok) {
       // the scope that caps bubblewrap's memory is read from outside it
       expect(facts?.peakRssBytes).toBeGreaterThan(0);
       expect(facts?.warnings).not.toContain(
@@ -1081,9 +1079,10 @@ it.runIf(bwrapWorks)(
   TIMEOUT,
 );
 
-it.runIf(bwrapWorks)(
+it(
   "fails a sandboxed build on a snapshot entry that is not a regular file, saying so once",
-  async () => {
+  async (ctx) => {
+    requireInCI(ctx, bwrap);
     const dir = await exportOf(await oneCommit(EPHEMERIS));
     // export writes regular files only: a link planted in its place is refused, never followed
     const file = join(dir, "snapshot", "sim", "src", "observatory", "units.py");
