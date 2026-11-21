@@ -162,7 +162,7 @@ The road to 0.1:
         no local sockets and read-only control groups, each checked from inside a test service
         before it is used. A build can write only a fresh work directory of its own; the finished
         store is checked and swapped in from outside the sandbox. Each engine runs in a fresh
-        environment under a timeout, with a memory cap wherever systemd-run is available; at the
+        environment under a timeout, with a memory cap wherever systemd-run can set one; at the
         cap only the engine stops, and the build says so. Drivers for scip-typescript,
         dependency-cruiser, grimp and ast-grep.
   - [x] **Merge and gates.** Engine output merged into one store, with ranks, cycles, churn and
@@ -557,8 +557,9 @@ not write. So every byte of an analysed repository is treated as data.
     Python, the export and the engines, all read-only, and a fresh work directory, the one path a
     build can write. The finished store is checked and swapped in from outside the sandbox.
   - The environment is built from scratch: `PATH` holds only Node and Python, and `HOME` is an empty
-    directory, so no API key reaches an engine. No engine writes a core file, and wherever
-    systemd-run is available, a memory cap stops only the engine that reaches it.
+    directory, so no API key reaches an engine. No engine writes a core file. Wherever systemd-run
+    can set one, a memory cap stops only the engine that reaches it; elsewhere the build records
+    that nothing caps its memory.
   - **A known limit of systemd-run:** its service shares your machine's process list and host name,
     which bubblewrap hides. An engine there can read other processes' command lines, though not their
     environment, working directory or files. Every such build records a warning saying so.
