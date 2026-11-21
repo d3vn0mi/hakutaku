@@ -1,6 +1,6 @@
 // SCIP's protobuf schema, vendored from the SCIP repository, https://github.com/scip-code/scip
-// (formerly https://github.com/sourcegraph/scip): its file scip.proto, from the main branch as
-// fetched on 2026-11-13. Everything after this header is that file, unchanged.
+// (formerly https://github.com/sourcegraph/scip): its file scip.proto at tag v0.10.0 (commit
+// 1c2b6db7e560d5233c944f36e4ac1377cc6963fc). Everything after this header is that file, unchanged.
 //
 // SCIP was created by Sourcegraph and is licensed under the Apache License, Version 2.0:
 // https://www.apache.org/licenses/LICENSE-2.0
