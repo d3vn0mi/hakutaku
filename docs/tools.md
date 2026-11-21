@@ -1060,6 +1060,10 @@ its `from` definition's:
   when grimp ran. The resolver reads every import of a file grimp did not read, one left out of
   `code_repos`' `coverage.indexed`, and, in a file grimp read, a dynamic import or an import of a
   module grimp did not report on the same line.
+- `<n> TypeScript and JavaScript files have imports that come from hakutaku's own resolver, not dependency-cruiser`,
+  for TypeScript and JavaScript. While dependency-cruiser runs, the resolver reads every import of
+  a file it did not list, one left out of `code_repos`' `coverage.indexed`, and an import it gave no
+  edge; when it did not run, every import scip-typescript did not resolve.
 - `hakutaku extracts no callers for <language>`, for a language other than TypeScript, JavaScript,
   Python and shell
 - `shell callers are name matches in the file and the files that source it`, for shell
@@ -1086,6 +1090,8 @@ For `code_deps`, by the file's language, and for `code_path` via imports, by its
 - `Python imports come from hakutaku's own resolver, because grimp did not run`,
   `Python imports were not read in this build`, or, when grimp ran,
   `<n> Python files have imports that come from hakutaku's own resolver, not grimp`, for Python
+- `<n> TypeScript and JavaScript files have imports that come from hakutaku's own resolver, not dependency-cruiser`,
+  for TypeScript and JavaScript
 - `<n> denylisted files are left out of the map, with their imports`
 
 For `code_path` via calls, last, the links its walk does not follow:

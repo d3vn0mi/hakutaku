@@ -660,6 +660,33 @@ it("counts, from a Python node either way, the Python files with imports from ha
   ).toEqual([COMPUTED]);
 });
 
+it("counts, from a TypeScript node either way, the TypeScript and JavaScript files with imports from hakutaku's own resolver", () => {
+  const one = openTinyResolved(
+    { python: 2, typescript: 1 },
+    { coverage: { denied: 0 } },
+  );
+  const line =
+    "1 TypeScript or JavaScript file has imports that come from hakutaku's own resolver, not dependency-cruiser";
+  expect(
+    answer(p({ from: "app/main.ts", to: "tiny:node:fs" }, one)).blindSpots,
+  ).toEqual([COMPUTED, line]);
+  expect(
+    answer(
+      p(
+        { from: "app/main.ts#main", to: "lib/units.ts#toAu", via: "calls" },
+        one,
+      ),
+    ).blindSpots,
+  ).toEqual([line, COMPUTED, UNSCOPED, CHAINED, REFERENCE]);
+  // never from a Python node
+  expect(
+    answer(p({ from: "py/pkg/__init__.py", to: "py/pkg/util.py" }, one))
+      .blindSpots,
+  ).toEqual([
+    "2 Python files have imports that come from hakutaku's own resolver, not grimp",
+  ]);
+});
+
 it("names what a path via calls cannot see: the from definition's caller lines, then the links it never follows", () => {
   const calls = (from: string, to: string, store: Store = s) =>
     answer(p({ from, to, via: "calls" }, store)).blindSpots;

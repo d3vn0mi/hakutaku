@@ -448,7 +448,7 @@ it("counts the Python files with imports from hakutaku's own resolver, when grim
   const py = { file: "py/pkg/__init__.py", direction: "out" } as const;
   const clean = { coverage: { denied: 0 } };
   // two imports of one file count once, and app/main.ts's imports are no Python file's
-  const one = openTinyResolved({ python: 1, typescript: true }, clean);
+  const one = openTinyResolved({ python: 1, typescript: 1 }, clean);
   expect(answer(d(py, one)).blindSpots).toEqual([
     "1 Python file has imports that come from hakutaku's own resolver, not grimp",
   ]);
@@ -463,11 +463,43 @@ it("counts the Python files with imports from hakutaku's own resolver, when grim
     "2 Python files have imports that come from hakutaku's own resolver, not grimp",
     "3 denylisted files are left out of the map, with their imports",
   ]);
-  // never on another language's answer
+  // never on another language's answer, which gets its own languages' count
   expect(
     answer(d({ file: "app/main.ts", direction: "out" }, one)).blindSpots,
-  ).toEqual([COMPUTED]);
+  ).toEqual([COMPUTED, ONE_SCRIPT]);
   expect(importBlindSpots(one, "shell")).toEqual([]);
+});
+
+const ONE_SCRIPT =
+  "1 TypeScript or JavaScript file has imports that come from hakutaku's own resolver, not dependency-cruiser";
+
+it("counts the TypeScript and JavaScript files with imports from hakutaku's own resolver", () => {
+  const two = openTinyResolved(
+    { python: 2, typescript: 2 },
+    { coverage: { unresolvedImports: 1, denied: 3 } },
+  );
+  expect(
+    answer(d({ file: "lib/orbit.ts", direction: "in" }, two)).blindSpots,
+  ).toEqual([
+    COMPUTED,
+    UNRESOLVED_ONE,
+    "2 TypeScript and JavaScript files have imports that come from hakutaku's own resolver, not dependency-cruiser",
+    "3 denylisted files are left out of the map, with their imports",
+  ]);
+  // never on a Python or a shell answer, and absent where no script's import is the resolver's
+  expect(importBlindSpots(two, "python")).toEqual([
+    UNRESOLVED_ONE,
+    "2 Python files have imports that come from hakutaku's own resolver, not grimp",
+    "3 denylisted files are left out of the map, with their imports",
+  ]);
+  expect(importBlindSpots(two, "shell")).toEqual([
+    UNRESOLVED_ONE,
+    "3 denylisted files are left out of the map, with their imports",
+  ]);
+  const py = openTinyResolved({ python: 2 }, { coverage: { denied: 0 } });
+  expect(
+    answer(d({ file: "app/main.ts", direction: "out" }, py)).blindSpots,
+  ).toEqual([COMPUTED]);
 });
 
 it("leaves that count out where grimp did not run, or no Python file has such imports", () => {
@@ -487,7 +519,7 @@ it("leaves that count out where grimp did not run, or no Python file has such im
     "Python imports were not read in this build",
   ]);
   const scripts = openTinyResolved(
-    { python: 0, typescript: true },
+    { python: 0, typescript: 1 },
     { coverage: { denied: 0 } },
   );
   expect(answer(d(py, scripts)).blindSpots).toEqual([]);

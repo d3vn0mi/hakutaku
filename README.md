@@ -574,6 +574,8 @@ As planned for 0.1:
   statements. `blindSpots` names a compiler tier that did not run, and says when Python imports come
   from hakutaku's own resolver because grimp did not run. When grimp ran, it says how many Python
   files still have imports from that resolver, which reads every import of a file grimp did not read.
+  It counts the TypeScript and JavaScript files with imports from that resolver too, which reads
+  imports dependency-cruiser gave no edge.
 - **Engines are installed, not depended on.** `hakutaku engines install` reads `engines.lock.json`,
   which pins exact versions with integrity hashes. It installs them into
   `$XDG_DATA_HOME/hakutaku/engines/`, and grimp from binary wheels with `--require-hashes`. Only

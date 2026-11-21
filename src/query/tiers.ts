@@ -118,29 +118,58 @@ function unmatchedBoundUses(n: number): string {
 const OWN_RESOLVER =
   "Python imports come from hakutaku's own resolver, because grimp did not run";
 
-// The count of Python files with at least one import that hakutaku's own resolver read, taken
-// from the store once for each Store object. While grimp runs, the resolver reads every import of
-// a file grimp did not read, and, in a file grimp read, a dynamic import and an import of a module
-// grimp did not report on the same line (src/extract/merge/imports.ts). So a counted file may
-// hold grimp's imports as well, and the line says only that some of its imports are the
-// resolver's.
-const RESOLVED_PYTHON_SQL =
-  "SELECT COUNT(DISTINCT i.src_file_id) AS n FROM imports AS i JOIN files AS f ON f.id = i.src_file_id WHERE f.lang = 'python' AND i.producer = 'hakutaku-resolver'";
-const resolvedPython = new WeakMap<Store, number>();
+// The count of files with at least one import that hakutaku's own resolver read, for Python or
+// for TypeScript and JavaScript together, taken from the store once for each Store object
+// (src/extract/merge/imports.ts says which imports are the resolver's). While grimp runs, the
+// resolver reads every import of a Python file grimp did not read, and, in a file grimp read, a
+// dynamic import and an import of a module grimp did not report on the same line. While
+// dependency-cruiser runs, it reads every import of a TypeScript or JavaScript file
+// dependency-cruiser did not list, and an import it gave no edge; when dependency-cruiser did not
+// run, every import scip-typescript did not resolve. So a counted file may hold an engine's
+// imports as well, and a line says only that some of its imports are the resolver's.
+const RESOLVED_SQL = {
+  python:
+    "SELECT COUNT(DISTINCT i.src_file_id) AS n FROM imports AS i JOIN files AS f ON f.id = i.src_file_id WHERE f.lang = 'python' AND i.producer = 'hakutaku-resolver'",
+  scripts:
+    "SELECT COUNT(DISTINCT i.src_file_id) AS n FROM imports AS i JOIN files AS f ON f.id = i.src_file_id WHERE f.lang IN ('typescript', 'javascript') AND i.producer = 'hakutaku-resolver'",
+} as const;
+const resolvedCounts = new WeakMap<
+  Store,
+  Partial<Record<keyof typeof RESOLVED_SQL, number>>
+>();
 
-function resolvedPythonFiles(store: Store): number {
-  let n = resolvedPython.get(store);
+function resolvedFiles(store: Store, group: keyof typeof RESOLVED_SQL): number {
+  let held = resolvedCounts.get(store);
+  if (held === undefined) {
+    held = {};
+    resolvedCounts.set(store, held);
+  }
+  let n = held[group];
   if (n === undefined) {
-    n = Number(store.db.prepare(RESOLVED_PYTHON_SQL).get()?.n ?? 0);
-    resolvedPython.set(store, n);
+    n = Number(store.db.prepare(RESOLVED_SQL[group]).get()?.n ?? 0);
+    held[group] = n;
   }
   return n;
+}
+
+// The line a TypeScript or JavaScript answer gets: the count of those files with imports from
+// the resolver, or no line when no file has one.
+function resolvedScriptLines(store: Store): string[] {
+  const n = resolvedFiles(store, "scripts");
+  if (n === 0) return [];
+  return [
+    counted(
+      n,
+      "TypeScript or JavaScript file has imports that come from hakutaku's own resolver, not dependency-cruiser",
+      "TypeScript and JavaScript files have imports that come from hakutaku's own resolver, not dependency-cruiser",
+    ),
+  ];
 }
 
 // The line a Python answer gets when grimp ran: the count of Python files with imports from the
 // resolver, or no line when no file has one.
 function resolvedPythonLines(store: Store): string[] {
-  const n = resolvedPythonFiles(store);
+  const n = resolvedFiles(store, "python");
   if (n === 0) return [];
   return [
     counted(
@@ -173,6 +202,7 @@ export function blindSpots(
       out.push(...resolvedPythonLines(store));
     }
   }
+  if (isScript(lang)) out.push(...resolvedScriptLines(store));
   if (lang !== null && !CALLER_LANGS.has(lang)) {
     out.push(`hakutaku extracts no callers for ${lang}`);
   }
@@ -245,6 +275,7 @@ export function importBlindSpots(store: Store, lang: Lang | null): string[] {
       out.push(...resolvedPythonLines(store));
     }
   }
+  if (isScript(lang)) out.push(...resolvedScriptLines(store));
   if (coverage.denied > 0) {
     out.push(
       counted(

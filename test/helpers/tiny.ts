@@ -545,10 +545,11 @@ const fileId = (path: string): number =>
 // The tiny store, where every import is dependency-cruiser's, with the imports of some files read
 // by hakutaku's own resolver instead. python 1 gives py/pkg/__init__.py a second import, and both
 // of its imports to the resolver; python 2 also gives py/pkg/util.py an import, read by the
-// resolver too; typescript gives the resolver app/main.ts's imports. The added rows follow the
-// tiny store's own, in its row order, so every other row keeps its id.
+// resolver too; typescript 1 gives the resolver app/main.ts's imports, and typescript 2 also
+// lib/render.ts's. The added rows follow the tiny store's own, in its row order, so every other
+// row keeps its id.
 export function openTinyResolved(
-  resolved: { python: 0 | 1 | 2; typescript?: boolean },
+  resolved: { python: 0 | 1 | 2; typescript?: 0 | 1 | 2 },
   opts?: TinyOptions,
 ): Store {
   const content = tinyContent(opts);
@@ -559,7 +560,9 @@ export function openTinyResolved(
   if (resolved.python > 0) added.push([init, util, 2, "pkg.util"]);
   if (resolved.python > 1) added.push([util, init, 1, "."]);
   const byResolver = new Set<number>(added.map(([src]) => src));
-  if (resolved.typescript === true) byResolver.add(fileId("app/main.ts"));
+  const scripts = resolved.typescript ?? 0;
+  if (scripts > 0) byResolver.add(fileId("app/main.ts"));
+  if (scripts > 1) byResolver.add(fileId("lib/render.ts"));
   const imports: ImportRow[] = [
     ...content.imports,
     ...added.map(

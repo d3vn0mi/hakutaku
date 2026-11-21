@@ -785,7 +785,7 @@ describe("blind spots", () => {
 
   it("counts the Python files with imports from hakutaku's own resolver while grimp ran", () => {
     // two imports of one file count once, and app/main.ts's imports are no Python file's
-    const one = openTinyResolved({ python: 1, typescript: true }, COMPILED);
+    const one = openTinyResolved({ python: 1, typescript: 1 }, COMPILED);
     const two = openTinyResolved({ python: 2 }, COMPILED);
     expect(blindSpots(one, "python", {})).toEqual([ONE_RESOLVED]);
     expect(blindSpots(two, "python", { fileTarget: true })).toEqual([
@@ -817,10 +817,10 @@ describe("blind spots", () => {
       { ...COMPILED, coverage: { pythonResolver: "none" } },
     );
     expect(blindSpots(none, "python", {})).toEqual([]);
-    const scripts = openTinyResolved({ python: 0, typescript: true }, COMPILED);
+    const scripts = openTinyResolved({ python: 0, typescript: 1 }, COMPILED);
     expect(blindSpots(scripts, "python", {})).toEqual([]);
     expect(blindSpots(openTiny(COMPILED), "python", {})).toEqual([]);
-    const two = openTinyResolved({ python: 2, typescript: true }, COMPILED);
+    const two = openTinyResolved({ python: 2, typescript: 1 }, COMPILED);
     const langs: (Lang | null)[] = [
       "typescript",
       "javascript",
@@ -828,17 +828,92 @@ describe("blind spots", () => {
       "go",
       null,
     ];
+    // a TypeScript or JavaScript answer gets its own languages' count, never Python's
     expect(
       langs.map((lang) => blindSpots(two, lang, { labels: ["bound"] })),
     ).toEqual([
-      [BLIND],
-      [BLIND],
+      [ONE_SCRIPT, BLIND],
+      [ONE_SCRIPT, BLIND],
       [
         "shell callers are name matches in the file and the files that source it",
       ],
       ["hakutaku extracts no callers for go"],
       [],
     ]);
+  });
+
+  const ONE_SCRIPT =
+    "1 TypeScript or JavaScript file has imports that come from hakutaku's own resolver, not dependency-cruiser";
+  const TWO_SCRIPTS =
+    "2 TypeScript and JavaScript files have imports that come from hakutaku's own resolver, not dependency-cruiser";
+
+  it("counts the TypeScript and JavaScript files with imports from hakutaku's own resolver", () => {
+    // three imports of one file count once, and the Python files' imports are no script's
+    const one = openTinyResolved({ python: 2, typescript: 1 }, COMPILED);
+    const two = openTinyResolved({ python: 0, typescript: 2 }, COMPILED);
+    expect(blindSpots(one, "typescript", { labels: ["bound"] })).toEqual([
+      ONE_SCRIPT,
+      BLIND,
+    ]);
+    expect(blindSpots(two, "javascript", { fileTarget: true })).toEqual([
+      TWO_SCRIPTS,
+      "1 dynamic import with a computed path is not followed",
+    ]);
+    // after the compiler tier's line, before the computed imports and the unmatched bound uses
+    const quick = openTinyResolved(
+      { python: 0, typescript: 1 },
+      { detail: "quick", coverage: { unmatchedBoundUses: 3 } },
+    );
+    expect(blindSpots(quick, "typescript", {})).toEqual([
+      "no compiler ran for TypeScript in this build (quick detail), so no site is bound",
+      ONE_SCRIPT,
+      '1 dynamic import with a computed path is not followed; code_callers lists name matches with labels ["unscoped"]',
+      "compiler-bound uses that match no outline definition are counted in coverage only (3)",
+    ]);
+    // whether dependency-cruiser ran or not: the rows say which imports are the resolver's
+    const fallback = openTinyResolved(
+      { python: 0, typescript: 1 },
+      { tiers: { ...COMPILED.tiers, "dependency-cruiser": "failed" } },
+    );
+    expect(blindSpots(fallback, "typescript", { labels: ["bound"] })).toEqual([
+      ONE_SCRIPT,
+      BLIND,
+    ]);
+  });
+
+  it("leaves that count out where no TypeScript or JavaScript file has such imports", () => {
+    expect(blindSpots(openTiny(COMPILED), "typescript", {})).toEqual([
+      '1 dynamic import with a computed path is not followed; code_callers lists name matches with labels ["unscoped"]',
+    ]);
+    const py = openTinyResolved({ python: 2 }, COMPILED);
+    expect(blindSpots(py, "javascript", { labels: ["bound"] })).toEqual([
+      BLIND,
+    ]);
+    expect(blindSpots(py, "python", {})).toEqual([TWO_RESOLVED]);
+  });
+
+  it("reads the scripts' count once for each store, and counts each store on its own", () => {
+    const one = openTinyResolved({ python: 0, typescript: 1 }, COMPILED);
+    const two = openTinyResolved({ python: 0, typescript: 2 }, COMPILED);
+    const reads = vi.spyOn(one.db, "prepare");
+    try {
+      expect(blindSpots(one, "typescript", { labels: ["bound"] })).toEqual([
+        ONE_SCRIPT,
+        BLIND,
+      ]);
+      expect(blindSpots(two, "typescript", { labels: ["bound"] })).toEqual([
+        TWO_SCRIPTS,
+        BLIND,
+      ]);
+      expect(importBlindSpots(one, "javascript")).toEqual([
+        "1 dynamic import with a computed path is not followed",
+        ONE_SCRIPT,
+        "1 denylisted file is left out of the map, with its imports",
+      ]);
+      expect(reads).toHaveBeenCalledTimes(1);
+    } finally {
+      reads.mockRestore();
+    }
   });
 
   it("reads that count once for each store, and counts each store on its own", () => {
