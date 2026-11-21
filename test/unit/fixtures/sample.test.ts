@@ -26,6 +26,7 @@ const MAKE_TIMEOUT = 120_000;
 const CLIENT = "web/src/api/ephemeris-client.ts";
 const ENV_FILE = "sim/.env";
 const PLACEHOLDER = "__OBS_FAKE_KEY__";
+const SUFFIX = ".fixture";
 const HEAD_TIME = Date.parse("2026-09-01T12:00:00Z") / 1000;
 const WEEKS_26 = 26 * 7 * 86_400;
 const DAYS_180 = 180 * 86_400;
@@ -206,8 +207,13 @@ it("has HEAD's content equal to tree/ apart from the two assembled files", () =>
     const [mode = "", , blob = ""] = info.split(" ");
     head.set(path, { mode, blob });
   }
+  // tree/ holds the dependency manifests with the suffix ".fixture", HEAD by their real names
   const tree = filesUnder(TREE);
-  expect([...head.keys()].filter((p) => p !== ENV_FILE).sort()).toEqual(tree);
+  const realName = (path: string): string =>
+    path.endsWith(SUFFIX) ? path.slice(0, -SUFFIX.length) : path;
+  expect([...head.keys()].filter((p) => p !== ENV_FILE).sort()).toEqual(
+    tree.map(realName).sort(),
+  );
   expect(head.has(ENV_FILE)).toBe(true);
 
   const differing: string[] = [];
@@ -218,7 +224,7 @@ it("has HEAD's content equal to tree/ apart from the two assembled files", () =>
       expect(text.split(PLACEHOLDER)).toHaveLength(2);
       bytes = Buffer.from(text.replace(PLACEHOLDER, key), "utf8");
     }
-    if (head.get(path)?.blob !== blobId(bytes)) differing.push(path);
+    if (head.get(realName(path))?.blob !== blobId(bytes)) differing.push(path);
   }
   expect(differing).toEqual([]);
   // modes come from the fixed list: only scripts/sync-sky.sh is executable

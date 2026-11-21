@@ -22,6 +22,11 @@
 // the value goes. A secret scan of the repository finds them, and hakutaku's own scan of
 // hakutaku finds neither.
 //
+// Held under another name. tree/ holds the sample's three dependency manifests,
+// web/package.json, sim/requirements.txt and sim/pyproject.toml, with the suffix ".fixture", so
+// that GitHub's dependency graph does not read them, with their deliberately old pins, as
+// hakutaku's own. history.mjs names each by its real name, and this script writes it there.
+//
 // Determinism. Two runs give the same commits on any machine: git runs with no system or global
 // config, no templates and an explicit -c for each setting this script relies on; the author
 // and committer are Sample Author <sample@example.invalid>, with each commit's fixed date; and
@@ -55,6 +60,9 @@ const RENAME = ["web/src/orbits/orbit.ts", "web/src/orbits/kepler.ts"];
 const CLIENT = "web/src/api/ephemeris-client.ts";
 const ENV_FILE = "sim/.env";
 const PLACEHOLDER = "__OBS_FAKE_KEY__";
+// The manifests, each held in tree/ with the suffix.
+const MANIFESTS = new Set(["sim/pyproject.toml", "sim/requirements.txt", "web/package.json"]);
+const SUFFIX = ".fixture";
 
 // The two fake values, each joined from parts that are not one whole value anywhere in this
 // tree.
@@ -131,23 +139,42 @@ function git(repo, args, date) {
 }
 
 // The files under tree/, as paths with "/" separators, sorted.
-function treeFiles(prefix = "") {
+function storedFiles(prefix = "") {
   const out = [];
   for (const entry of readdirSync(join(TREE, prefix), { withFileTypes: true })) {
     const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
-    if (entry.isDirectory()) out.push(...treeFiles(path));
+    if (entry.isDirectory()) out.push(...storedFiles(path));
     else if (entry.isFile()) out.push(path);
     else fail(`tree/${path} is neither a file nor a directory`);
   }
   return out.sort();
 }
 
+// The files under tree/ as the commits name them, each manifest by its real name, sorted.
+function treeFiles() {
+  const out = [];
+  for (const path of storedFiles()) {
+    if (MANIFESTS.has(path)) fail(`tree/ must hold ${path} as ${path}${SUFFIX}`);
+    const real = path.endsWith(SUFFIX) ? path.slice(0, -SUFFIX.length) : path;
+    if (real !== path && !MANIFESTS.has(real)) {
+      fail(`tree/${path} is not one of the manifests this script writes back`);
+    }
+    out.push(real);
+  }
+  return out.sort();
+}
+
+// The file under tree/ that holds a path: the path, with the suffix for a manifest.
+const storedAs = (path) => (MANIFESTS.has(path) ? `${path}${SUFFIX}` : path);
+
+// The file under tree/ whose text a path holds: tree/'s kepler.ts for orbit.ts.
+const sourceOf = (path) => storedAs(path === RENAME[0] ? RENAME[1] : path);
+
 // A file's text as a commit holds it: tree/'s, with the fake key in place of the placeholder,
 // and with orbit for kepler in its specifiers until the rename.
 function textOf(path, renamed) {
   if (path === ENV_FILE) return ENV_TEXT;
-  const source = path === RENAME[0] ? RENAME[1] : path;
-  let text = readFileSync(join(TREE, source), "utf8");
+  let text = readFileSync(join(TREE, sourceOf(path)), "utf8");
   if (path === CLIENT) text = text.replace(PLACEHOLDER, FAKE_KEY);
   return renamed ? text : text.replace(KEPLER_SPECIFIER, "$1$2orbit$1");
 }
@@ -164,7 +191,7 @@ function gitDate(iso) {
 // The checks history.mjs and tree/ must pass before anything is written.
 function checkInputs(files) {
   const withPlaceholder = files.filter((path) =>
-    readFileSync(join(TREE, path), "utf8").includes(PLACEHOLDER),
+    readFileSync(join(TREE, storedAs(path)), "utf8").includes(PLACEHOLDER),
   );
   const placeholders = readFileSync(join(TREE, CLIENT), "utf8").split(PLACEHOLDER).length - 1;
   if (withPlaceholder.join() !== CLIENT || placeholders !== 1) {
@@ -212,9 +239,8 @@ function apply(repo, commit, state) {
     }
   }
   for (const path of commit.add ?? []) {
-    const source = path === RENAME[0] ? RENAME[1] : path;
     if (state.churned.has(path)) fail(`${path} is added twice`);
-    if (path !== ENV_FILE && !existsSync(join(TREE, source))) {
+    if (path !== ENV_FILE && !existsSync(join(TREE, sourceOf(path)))) {
       fail(`${path} is not in tree/`);
     }
     state.churned.set(path, false);

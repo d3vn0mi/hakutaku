@@ -107,7 +107,9 @@ docs/                  design, tools, viewer and security notes
 has a TypeScript web UI, a Python service, shell scripts, launch manifests and tests. A script builds
 it with a fixed fictional author and fixed dates, so every build of it is identical. It is designed
 to hold every case that matters: an import cycle, a structural seam, a computed `import()`, a name
-collision, a denylisted `.env`, a fake secret and an injected instruction.
+collision, a denylisted `.env`, a fake secret and an injected instruction. In hakutaku's tree the
+sample's dependency manifests carry a `.fixture` suffix, so GitHub does not read them as hakutaku's
+own, and the script writes them under their real names.
 
 When you report a bug:
 
