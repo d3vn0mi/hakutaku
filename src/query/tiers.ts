@@ -118,6 +118,39 @@ function unmatchedBoundUses(n: number): string {
 const OWN_RESOLVER =
   "Python imports come from hakutaku's own resolver, because grimp did not run";
 
+// The count of Python files with at least one import that hakutaku's own resolver read, taken
+// from the store once for each Store object. While grimp runs, the resolver reads every import of
+// a file grimp did not read, and, in a file grimp read, a dynamic import and an import of a module
+// grimp did not report on the same line (src/extract/merge/imports.ts). So a counted file may
+// hold grimp's imports as well, and the line says only that some of its imports are the
+// resolver's.
+const RESOLVED_PYTHON_SQL =
+  "SELECT COUNT(DISTINCT i.src_file_id) AS n FROM imports AS i JOIN files AS f ON f.id = i.src_file_id WHERE f.lang = 'python' AND i.producer = 'hakutaku-resolver'";
+const resolvedPython = new WeakMap<Store, number>();
+
+function resolvedPythonFiles(store: Store): number {
+  let n = resolvedPython.get(store);
+  if (n === undefined) {
+    n = Number(store.db.prepare(RESOLVED_PYTHON_SQL).get()?.n ?? 0);
+    resolvedPython.set(store, n);
+  }
+  return n;
+}
+
+// The line a Python answer gets when grimp ran: the count of Python files with imports from the
+// resolver, or no line when no file has one.
+function resolvedPythonLines(store: Store): string[] {
+  const n = resolvedPythonFiles(store);
+  if (n === 0) return [];
+  return [
+    counted(
+      n,
+      "Python file has imports that come from hakutaku's own resolver, not grimp",
+      "Python files have imports that come from hakutaku's own resolver, not grimp",
+    ),
+  ];
+}
+
 // What an answer about callers cannot see in this build, one line per gap, in a fixed order.
 // labels are the labels asked for, given only by a tool that takes them. Without them, the
 // computed-import line names code_callers, which lists those name matches, so an answer of a
@@ -134,8 +167,11 @@ export function blindSpots(
     const tier = compilerTier(store, lang);
     if (!tier.ran) out.push(noCompiler(lang, tier.reason, "no site is bound"));
   }
-  if (lang === "python" && coverage.pythonResolver === "hakutaku-resolver") {
-    out.push(OWN_RESOLVER);
+  if (lang === "python") {
+    if (coverage.pythonResolver === "hakutaku-resolver") out.push(OWN_RESOLVER);
+    else if (coverage.pythonResolver === "grimp") {
+      out.push(...resolvedPythonLines(store));
+    }
   }
   if (lang !== null && !CALLER_LANGS.has(lang)) {
     out.push(`hakutaku extracts no callers for ${lang}`);
@@ -205,6 +241,8 @@ export function importBlindSpots(store: Store, lang: Lang | null): string[] {
     if (coverage.pythonResolver === "hakutaku-resolver") out.push(OWN_RESOLVER);
     else if (coverage.pythonResolver === "none") {
       out.push("Python imports were not read in this build");
+    } else if (coverage.pythonResolver === "grimp") {
+      out.push(...resolvedPythonLines(store));
     }
   }
   if (coverage.denied > 0) {

@@ -1,7 +1,8 @@
 // The tiny store: a small store built by hand, whose rows every unit test of the query functions
 // asserts against. Its rows are fixed; the options change the build's detail, its compiler
-// tiers, whether sources are stored, the cycles' severity, and any other coverage count. Ids
-// follow the store's row orders, which writeStore checks.
+// tiers, whether sources are stored, the cycles' severity, and any other coverage count. Only
+// openTinyResolved changes rows: it gives some imports to hakutaku's own resolver. Ids follow
+// the store's row orders, which writeStore checks.
 import type {
   DefKind,
   Detail,
@@ -15,6 +16,7 @@ import type {
 import type { QueryCtx } from "../../src/query/index.js";
 import {
   type Coverage,
+  type ImportRow,
   openStore,
   type Store,
   type StoreContent,
@@ -534,5 +536,51 @@ export function tinyStore(opts?: TinyOptions): string {
 export function openTiny(opts?: TinyOptions): Store {
   const store = openStore(tinyStore(opts));
   if ("code" in store) throw new Error(`the tiny store: ${store.reason}`);
+  return store;
+}
+
+const fileId = (path: string): number =>
+  FILES.findIndex(([p]) => p === path) + 1;
+
+// The tiny store, where every import is dependency-cruiser's, with the imports of some files read
+// by hakutaku's own resolver instead. python 1 gives py/pkg/__init__.py a second import, and both
+// of its imports to the resolver; python 2 also gives py/pkg/util.py an import, read by the
+// resolver too; typescript gives the resolver app/main.ts's imports. The added rows follow the
+// tiny store's own, in its row order, so every other row keeps its id.
+export function openTinyResolved(
+  resolved: { python: 0 | 1 | 2; typescript?: boolean },
+  opts?: TinyOptions,
+): Store {
+  const content = tinyContent(opts);
+  const init = fileId("py/pkg/__init__.py");
+  const util = fileId("py/pkg/util.py");
+  // source, imported file, line, specifier
+  const added: Array<[number, number, number, string]> = [];
+  if (resolved.python > 0) added.push([init, util, 2, "pkg.util"]);
+  if (resolved.python > 1) added.push([util, init, 1, "."]);
+  const byResolver = new Set<number>(added.map(([src]) => src));
+  if (resolved.typescript === true) byResolver.add(fileId("app/main.ts"));
+  const imports: ImportRow[] = [
+    ...content.imports,
+    ...added.map(
+      ([src, dst, line, specifier], i): ImportRow => ({
+        id: content.imports.length + i + 1,
+        src_file_id: src,
+        dst_file_id: dst,
+        dst_external_id: null,
+        kind: "static",
+        line,
+        specifier,
+        resolved: 1,
+        producer: "dependency-cruiser",
+      }),
+    ),
+  ].map((row) =>
+    byResolver.has(row.src_file_id)
+      ? { ...row, producer: "hakutaku-resolver" }
+      : row,
+  );
+  const store = openStore(miniStore({ ...content, imports }));
+  if ("code" in store) throw new Error(`the resolved store: ${store.reason}`);
   return store;
 }

@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { DefKind, Lang } from "../../../src/model/index.js";
 import {
   blindSpots,
   type CallLink,
   calleesOf,
   callersOf,
+  importBlindSpots,
   type LinkLabel,
   type QueryCtx,
   type QueryOut,
@@ -24,6 +25,7 @@ import type { CallersAnswer, Checked } from "../../../src/tools/types.js";
 import { emptyContent, miniStore } from "../../helpers/mini-store.js";
 import {
   openTiny,
+  openTinyResolved,
   TINY_CTX,
   type TinyOptions,
   tinyContent,
@@ -771,6 +773,92 @@ describe("blind spots", () => {
       ],
       [],
     ]);
+  });
+
+  const ONE_RESOLVED =
+    "1 Python file has imports that come from hakutaku's own resolver, not grimp";
+  const TWO_RESOLVED =
+    "2 Python files have imports that come from hakutaku's own resolver, not grimp";
+  const COMPILED: TinyOptions = {
+    tiers: { "scip-typescript": "ran", "scip-python": "ran" },
+  };
+
+  it("counts the Python files with imports from hakutaku's own resolver while grimp ran", () => {
+    // two imports of one file count once, and app/main.ts's imports are no Python file's
+    const one = openTinyResolved({ python: 1, typescript: true }, COMPILED);
+    const two = openTinyResolved({ python: 2 }, COMPILED);
+    expect(blindSpots(one, "python", {})).toEqual([ONE_RESOLVED]);
+    expect(blindSpots(two, "python", { fileTarget: true })).toEqual([
+      TWO_RESOLVED,
+    ]);
+    // where hakutaku's own resolver's line would be: after the compiler tier's, before the
+    // unmatched bound uses
+    const standard = openTinyResolved(
+      { python: 1 },
+      { coverage: { unmatchedBoundUses: 3 } },
+    );
+    expect(blindSpots(standard, "python", { labels: ["bound"] })).toEqual([
+      "no compiler ran for Python in this build (below deep detail), so no site is bound",
+      ONE_RESOLVED,
+      "compiler-bound uses that match no outline definition are counted in coverage only (3)",
+    ]);
+  });
+
+  it("leaves that count out where grimp did not run, where no Python file has such imports, and for other languages", () => {
+    const own = openTinyResolved(
+      { python: 2 },
+      { ...COMPILED, coverage: { pythonResolver: "hakutaku-resolver" } },
+    );
+    expect(blindSpots(own, "python", {})).toEqual([
+      "Python imports come from hakutaku's own resolver, because grimp did not run",
+    ]);
+    const none = openTinyResolved(
+      { python: 2 },
+      { ...COMPILED, coverage: { pythonResolver: "none" } },
+    );
+    expect(blindSpots(none, "python", {})).toEqual([]);
+    const scripts = openTinyResolved({ python: 0, typescript: true }, COMPILED);
+    expect(blindSpots(scripts, "python", {})).toEqual([]);
+    expect(blindSpots(openTiny(COMPILED), "python", {})).toEqual([]);
+    const two = openTinyResolved({ python: 2, typescript: true }, COMPILED);
+    const langs: (Lang | null)[] = [
+      "typescript",
+      "javascript",
+      "shell",
+      "go",
+      null,
+    ];
+    expect(
+      langs.map((lang) => blindSpots(two, lang, { labels: ["bound"] })),
+    ).toEqual([
+      [BLIND],
+      [BLIND],
+      [
+        "shell callers are name matches in the file and the files that source it",
+      ],
+      ["hakutaku extracts no callers for go"],
+      [],
+    ]);
+  });
+
+  it("reads that count once for each store, and counts each store on its own", () => {
+    const one = openTinyResolved({ python: 1 }, COMPILED);
+    const two = openTinyResolved({ python: 2 }, COMPILED);
+    const reads = vi.spyOn(one.db, "prepare");
+    try {
+      expect(blindSpots(one, "python", {})).toEqual([ONE_RESOLVED]);
+      expect(blindSpots(two, "python", {})).toEqual([TWO_RESOLVED]);
+      expect(blindSpots(one, "python", { fileTarget: true })).toEqual([
+        ONE_RESOLVED,
+      ]);
+      expect(importBlindSpots(one, "python")).toEqual([
+        ONE_RESOLVED,
+        "1 denylisted file is left out of the map, with its imports",
+      ]);
+      expect(reads).toHaveBeenCalledTimes(1);
+    } finally {
+      reads.mockRestore();
+    }
   });
 });
 

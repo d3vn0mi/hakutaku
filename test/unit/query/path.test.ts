@@ -10,7 +10,7 @@ import { openStore, type Store } from "../../../src/store/index.js";
 import type { ToolError } from "../../../src/tools/errors.js";
 import type { Checked, PathAnswer } from "../../../src/tools/types.js";
 import { emptyContent, miniStore } from "../../helpers/mini-store.js";
-import { openTiny, TINY_CTX } from "../../helpers/tiny.js";
+import { openTiny, openTinyResolved, TINY_CTX } from "../../helpers/tiny.js";
 
 const answer = (out: QueryOut<PathAnswer>): PathAnswer => {
   if (!out.ok) throw new Error(`an error: ${JSON.stringify(out.error)}`);
@@ -626,6 +626,38 @@ it("names what a path via imports cannot see with code_deps' lines for the from 
   expect(
     answer(p({ from: "app/main.ts", to: "tiny:node:fs" }, clean)).blindSpots,
   ).toEqual([]);
+});
+
+it("counts, from a Python node either way, the Python files with imports from hakutaku's own resolver", () => {
+  const two = openTinyResolved({ python: 2 }, { coverage: { denied: 0 } });
+  const line =
+    "2 Python files have imports that come from hakutaku's own resolver, not grimp";
+  expect(
+    answer(p({ from: "py/pkg/__init__.py", to: "py/pkg/util.py" }, two))
+      .blindSpots,
+  ).toEqual([line]);
+  expect(
+    answer(
+      p(
+        {
+          from: "py/pkg/util.py#helper",
+          to: "lib/units.ts#toAu",
+          via: "calls",
+        },
+        two,
+      ),
+    ).blindSpots,
+  ).toEqual([
+    "no compiler ran for Python in this build (below deep detail), so no site is bound",
+    line,
+    UNSCOPED,
+    CHAINED,
+    REFERENCE,
+  ]);
+  // never from a TypeScript node
+  expect(
+    answer(p({ from: "app/main.ts", to: "tiny:node:fs" }, two)).blindSpots,
+  ).toEqual([COMPUTED]);
 });
 
 it("names what a path via calls cannot see: the from definition's caller lines, then the links it never follows", () => {

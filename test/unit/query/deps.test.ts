@@ -10,7 +10,7 @@ import { openStore, type Store } from "../../../src/store/index.js";
 import type { ToolError } from "../../../src/tools/errors.js";
 import type { Checked, DepsAnswer } from "../../../src/tools/types.js";
 import { emptyContent, miniStore } from "../../helpers/mini-store.js";
-import { openTiny, TINY_CTX } from "../../helpers/tiny.js";
+import { openTiny, openTinyResolved, TINY_CTX } from "../../helpers/tiny.js";
 
 const answer = (out: QueryOut<DepsAnswer>): DepsAnswer => {
   if (!out.ok) throw new Error(`an error: ${JSON.stringify(out.error)}`);
@@ -442,6 +442,55 @@ it("names how a Python file's imports were read, when grimp did not read them", 
   expect(
     answer(d({ file: "app/main.ts", direction: "out" }, none)).blindSpots,
   ).toEqual([COMPUTED]);
+});
+
+it("counts the Python files with imports from hakutaku's own resolver, when grimp ran", () => {
+  const py = { file: "py/pkg/__init__.py", direction: "out" } as const;
+  const clean = { coverage: { denied: 0 } };
+  // two imports of one file count once, and app/main.ts's imports are no Python file's
+  const one = openTinyResolved({ python: 1, typescript: true }, clean);
+  expect(answer(d(py, one)).blindSpots).toEqual([
+    "1 Python file has imports that come from hakutaku's own resolver, not grimp",
+  ]);
+  const two = openTinyResolved(
+    { python: 2 },
+    { coverage: { unresolvedImports: 1, denied: 3 } },
+  );
+  expect(
+    answer(d({ file: "py/pkg/util.py", direction: "in" }, two)).blindSpots,
+  ).toEqual([
+    UNRESOLVED_ONE,
+    "2 Python files have imports that come from hakutaku's own resolver, not grimp",
+    "3 denylisted files are left out of the map, with their imports",
+  ]);
+  // never on another language's answer
+  expect(
+    answer(d({ file: "app/main.ts", direction: "out" }, one)).blindSpots,
+  ).toEqual([COMPUTED]);
+  expect(importBlindSpots(one, "shell")).toEqual([]);
+});
+
+it("leaves that count out where grimp did not run, or no Python file has such imports", () => {
+  const py = { file: "py/pkg/__init__.py", direction: "out" } as const;
+  const own = openTinyResolved(
+    { python: 2 },
+    { coverage: { pythonResolver: "hakutaku-resolver", denied: 0 } },
+  );
+  expect(answer(d(py, own)).blindSpots).toEqual([
+    "Python imports come from hakutaku's own resolver, because grimp did not run",
+  ]);
+  const none = openTinyResolved(
+    { python: 2 },
+    { coverage: { pythonResolver: "none", denied: 0 } },
+  );
+  expect(answer(d(py, none)).blindSpots).toEqual([
+    "Python imports were not read in this build",
+  ]);
+  const scripts = openTinyResolved(
+    { python: 0, typescript: true },
+    { coverage: { denied: 0 } },
+  );
+  expect(answer(d(py, scripts)).blindSpots).toEqual([]);
 });
 
 it("names the denylisted files left out with their imports", () => {

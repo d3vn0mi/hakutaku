@@ -1056,6 +1056,10 @@ its `from` definition's:
 - `no compiler ran for <language> in this build (<why>), so no site is bound`, for TypeScript,
   JavaScript and Python
 - `Python imports come from hakutaku's own resolver, because grimp did not run`, for Python
+- `<n> Python files have imports that come from hakutaku's own resolver, not grimp`, for Python
+  when grimp ran. The resolver reads every import of a file grimp did not read, one left out of
+  `code_repos`' `coverage.indexed`, and, in a file grimp read, a dynamic import or an import of a
+  module grimp did not report on the same line.
 - `hakutaku extracts no callers for <language>`, for a language other than TypeScript, JavaScript,
   Python and shell
 - `shell callers are name matches in the file and the files that source it`, for shell
@@ -1079,8 +1083,9 @@ For `code_deps`, by the file's language, and for `code_path` via imports, by its
 
 - `<n> dynamic imports with a computed path are not followed`, for TypeScript and JavaScript
 - `<n> relative imports did not resolve to a file and are not edges`
-- `Python imports come from hakutaku's own resolver, because grimp did not run`, or
-  `Python imports were not read in this build`, for Python
+- `Python imports come from hakutaku's own resolver, because grimp did not run`,
+  `Python imports were not read in this build`, or, when grimp ran,
+  `<n> Python files have imports that come from hakutaku's own resolver, not grimp`, for Python
 - `<n> denylisted files are left out of the map, with their imports`
 
 For `code_path` via calls, last, the links its walk does not follow:
