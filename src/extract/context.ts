@@ -2,6 +2,7 @@
 import type { ExportManifest } from "../export/index.js";
 import type { Detail, EngineName } from "../model/index.js";
 import type { Profile, Rules } from "../profile/index.js";
+import type { EngineRun, EngineRunResult } from "./run.js";
 
 export interface ExtractContext {
   exportDir: string;
@@ -18,6 +19,9 @@ export interface ExtractContext {
   // scip-typescript takes 80% of it as Node's heap. 3G when absent.
   memoryMax?: string;
   log(line: string): void;
+  // How each engine is run: runEngine, which a build wraps to learn when each engine starts and
+  // how its run ended, even when the driver then throws. runEngine itself when absent.
+  runner?: (run: EngineRun) => Promise<EngineRunResult>;
 }
 
 export interface EngineDriver<Out> {

@@ -1,5 +1,6 @@
 import { enginesCommand } from "./engines.js";
 import { exportCommand } from "./export.js";
+import { extractCommand } from "./extract.js";
 
 export interface CliIO {
   stdout(s: string): void;
@@ -16,4 +17,8 @@ export interface Command {
 }
 
 // The order is fixed: map, list, profile, engines, export, extract, doctor.
-export const COMMANDS: readonly Command[] = [enginesCommand, exportCommand];
+export const COMMANDS: readonly Command[] = [
+  enginesCommand,
+  exportCommand,
+  extractCommand,
+];

@@ -322,6 +322,40 @@ it.each<[string, Partial<Record<"bwrap" | "systemd-run", number>>]>([
   expect(await s.detectSandbox("linux")).toBeNull();
 });
 
+it.each<[string, Partial<Record<"bwrap" | "systemd-run", number>>]>([
+  ["both fail", { bwrap: 1, "systemd-run": 1 }],
+  ["neither is installed", {}],
+])(
+  "says bubblewrap and systemd-run are unavailable when %s",
+  async (_, codes) => {
+    fakeTools(codes);
+    const s = await freshSandbox();
+    expect(await s.detectSandbox("linux")).toBeNull();
+    expect(await s.noSandboxReason("linux")).toBe(
+      "no sandbox: bubblewrap and systemd-run are unavailable",
+    );
+  },
+);
+
+it.runIf(hostHasNetwork)(
+  "says systemd-run cannot cut the network when its service runs in the host's network",
+  async () => {
+    hostNetworkSystemdRun();
+    const s = await freshSandbox();
+    expect(await s.detectSandbox("linux")).toBeNull();
+    expect(await s.noSandboxReason("linux")).toBe(
+      "no sandbox: bubblewrap does not work and systemd-run cannot cut the network",
+    );
+  },
+);
+
+it("names the platform off Linux, running no probe", async () => {
+  const log = fakeTools({ bwrap: 0, "systemd-run": 0 });
+  const s = await freshSandbox();
+  expect(await s.noSandboxReason("darwin")).toBe("no sandbox on darwin");
+  expect(logged(log)).toEqual([]);
+});
+
 it("runs bubblewrap under a systemd-run scope with the memory cap when systemd-run works", async () => {
   const log = fakeTools({ bwrap: 0, "systemd-run": 0 });
   const s = await freshSandbox();

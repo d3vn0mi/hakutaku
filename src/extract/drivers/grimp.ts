@@ -286,7 +286,7 @@ async function runGrimp(ctx: ExtractContext): Promise<GrimpFacts> {
   const timeoutMs = ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS;
   const out = join(workDir, "grimp.out.json");
   try {
-    const result = await runEngine({
+    const result = await (ctx.runner ?? runEngine)({
       engine: "grimp",
       // -I ignores every PYTHON* variable, PYTHONDONTWRITEBYTECODE among them: -B keeps
       // Python from writing bytecode next to grimp in the engines directory.

@@ -108,7 +108,7 @@ async function runDepcruise(ctx: ExtractContext): Promise<DepcruiseFacts> {
   const timeoutMs = ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS;
   const out = join(workDir, "depcruise.out.json");
   try {
-    const result = await runEngine({
+    const result = await (ctx.runner ?? runEngine)({
       engine: "dependency-cruiser",
       argv: [
         process.execPath,

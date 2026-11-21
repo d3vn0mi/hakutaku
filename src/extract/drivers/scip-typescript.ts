@@ -57,7 +57,7 @@ async function runScipTypescript(ctx: ExtractContext): Promise<ScipFacts> {
   const output = join(workDir, "index.scip");
   const timeoutMs = ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS;
   try {
-    const result = await runEngine({
+    const result = await (ctx.runner ?? runEngine)({
       engine: "scip-typescript",
       argv: [
         process.execPath,

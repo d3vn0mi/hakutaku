@@ -119,7 +119,7 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
   const timeoutMs = ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS;
   const out = join(workDir, "ast-grep.jsonl");
   try {
-    const result = await runEngine({
+    const result = await (ctx.runner ?? runEngine)({
       engine: "ast-grep",
       argv,
       cwd: workDir,

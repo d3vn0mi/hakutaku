@@ -1,4 +1,4 @@
-// The "./build" export: what builds a store. A later task adds extract.
+// The "./build" export: what builds a store.
 export type {
   ExportManifest,
   ExportOptions,
@@ -6,6 +6,14 @@ export type {
   History,
 } from "./export/index.js";
 export { exportRepo } from "./export/index.js";
+export type {
+  ExtractHooks,
+  ExtractOptions,
+  ExtractResult,
+  ExtractStage,
+  SandboxMode,
+} from "./extract/index.js";
+export { extractSnapshot } from "./extract/index.js";
 export type { Profile, Rules } from "./profile/index.js";
 export {
   generateProfile,

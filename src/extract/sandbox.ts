@@ -93,6 +93,18 @@ export async function detectSandbox(
   return null;
 }
 
+// Why detectSandbox found none, as one clause naming the cause: a systemd-run that starts a
+// service, but one that still sees the host's network, is told apart from one that does not
+// start at all. Off Linux it names the platform and probes nothing.
+export async function noSandboxReason(
+  platform: NodeJS.Platform = process.platform,
+): Promise<string> {
+  if (platform !== "linux") return `no sandbox on ${platform}`;
+  return (await systemdRunWorks())
+    ? "no sandbox: bubblewrap does not work and systemd-run cannot cut the network"
+    : "no sandbox: bubblewrap and systemd-run are unavailable";
+}
+
 // The command that runs inner in a sandbox detectSandbox found, and the warnings it
 // brings. bubblewrap caps no memory, so it runs inside a systemd-run scope that does whenever
 // systemd-run works too.
