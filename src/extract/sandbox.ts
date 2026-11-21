@@ -38,6 +38,13 @@ export interface SandboxPaths {
 // The warning a bubblewrap build records when nothing caps its memory.
 export const NO_MEMORY_CAP = "no memory cap: systemd-run is unavailable";
 
+// The warning every systemd-run build records. Its service shares this machine's process IDs and
+// host name: another process's environment, working directory and root are refused, but its
+// command line is not, and a user manager cannot give a service a host name of its own.
+// bubblewrap's own namespaces hide both.
+export const NO_PROCESS_ISOLATION =
+  "no process isolation: under systemd-run the engines can read other processes' command lines and the host name, which bubblewrap hides";
+
 const BWRAP_PROBE = [
   "bwrap",
   "--unshare-all",
@@ -507,7 +514,10 @@ export async function sandboxCommand(
 ): Promise<{ argv: string[]; warnings: string[] }> {
   if (sandbox === "systemd-run") {
     const oomContinue = (await probeOnce(OOM_SERVICE_PROBE)).ok;
-    return { argv: systemdRunArgv(p, inner, { oomContinue }), warnings: [] };
+    return {
+      argv: systemdRunArgv(p, inner, { oomContinue }),
+      warnings: [NO_PROCESS_ISOLATION],
+    };
   }
   if (await scopesWork()) {
     const oomContinue = (await probeOnce(OOM_SCOPE_PROBE)).ok;

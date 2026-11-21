@@ -1491,6 +1491,10 @@ it(
     });
     // read inside the service, from its own cgroup
     expect(facts?.peakRssBytes).toBeGreaterThan(0);
+    // the service shares this machine's process list, which bubblewrap would hide
+    expect(facts?.warnings).toContain(
+      "no process isolation: under systemd-run the engines can read other processes' command lines and the host name, which bubblewrap hides",
+    );
     expect(readAttempt(out)?.result).toBe("built");
     expect(readdirSync(dirname(out)).sort()).toEqual([
       "attempt.json",

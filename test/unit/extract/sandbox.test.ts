@@ -815,13 +815,18 @@ it("runs bubblewrap without a memory cap, and warns, when systemd-run does not w
   });
 });
 
-it("runs systemd-run alone when it is the sandbox, with OOMPolicy where its services take it", async () => {
+// A systemd-run service shares this machine's process IDs and host name, which bubblewrap's own
+// namespaces hide, so every systemd-run build records that.
+const SHARED_PROCESSES =
+  "no process isolation: under systemd-run the engines can read other processes' command lines and the host name, which bubblewrap hides";
+
+it("runs systemd-run alone when it is the sandbox, with OOMPolicy where its services take it, and warns that it shares the process list", async () => {
   const log = fakeTools({ bwrap: 1, "systemd-run": 0 });
   const s = await freshSandbox();
   expect(await s.detectSandbox("linux")).toBe("systemd-run");
   expect(await s.sandboxCommand("systemd-run", paths, inner)).toEqual({
     argv: s.systemdRunArgv(paths, inner, { oomContinue: true }),
-    warnings: [],
+    warnings: [SHARED_PROCESSES],
   });
   expect(logged(log)).toEqual([
     BWRAP_PROBE,
@@ -832,7 +837,7 @@ it("runs systemd-run alone when it is the sandbox, with OOMPolicy where its serv
   const old = await freshSandbox();
   expect(await old.sandboxCommand("systemd-run", paths, inner)).toEqual({
     argv: old.systemdRunArgv(paths, inner),
-    warnings: [],
+    warnings: [SHARED_PROCESSES],
   });
 });
 
