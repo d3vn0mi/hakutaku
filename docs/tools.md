@@ -229,7 +229,7 @@ A repo that is not built shows `null` commits and `builtAt`, zero counts and emp
 ### `code_overview`
 
 The map of a repo: its core files, its components and the imports between them, its entry points,
-hotspots and cycles. With `component`, one component's core files and entry points.
+hotspots and cycles. With `component`, one component's top files by rank and its entry points.
 
 | Argument | Type | Default | Values |
 |---|---|---|---|
@@ -247,7 +247,8 @@ hotspots and cycles. With `component`, one component's core files and entry poin
   `importedBy`. The core set is the shortest run of production files, by rank, that carries at least
   half of the PageRank over the production imports, plus each component's top file.
 - `components`: `total`, and `top`, up to 12 components by their best-ranked file, each `id`,
-  `files`, `tests`, `coreFiles` and `entryPoints`.
+  `files`, `tests`, `coreFiles` and `entryPoints`. `coreFiles` counts the component's files that are
+  in the repo's core set. It is not the number of files a component answer lists in `core`.
 - `dependsOn`: `total`, and `top`, up to 12 pairs of components by the imports between them, each
   `from`, `to` and `imports`.
 - `entryPoints`: `total`, and `top`, up to 12 entry points by rank, each `id` (a file, or a
@@ -265,7 +266,9 @@ hotspots and cycles. With `component`, one component's core files and entry poin
 - `id`: the component's ID, which ends in `/`; `kind`: `"component"`.
 - Freshness.
 - `files` and `tests`: its production files, and its test and test-support files.
-- `core`: up to 6 of its production files by rank, each `id` and `importedBy`.
+- `core`: its top files, up to 6 of its production files by rank, each `id` and `importedBy`,
+  whether or not they are in the repo's core set. The repo answer's `coreFiles` counts only those
+  that are, so the two can differ.
 - `entryPoints`: up to 6 of its files that a manifest launches, by rank.
 - `view`.
 
@@ -998,7 +1001,7 @@ instruction-shaped text.
 | Candidates in an error | 20; an `ambiguous` message gives the full count |
 | What an error message quotes of your input | 120 characters |
 | `code_explain` | 8 importers, 8 imports, 6 co-change partners and 8 definitions |
-| `code_overview` of a component | 6 core files and 6 entry points |
+| `code_overview` of a component | 6 top files in `core` and 6 entry points |
 | `code_overview` of the repo | 12 core files, 12 components, 12 pairs of components, 12 entry points, 8 hotspots and 6 cycles |
 | `code_references` of a library | 8 importing files |
 | `code_refresh` | one build per repo every 10 minutes |
