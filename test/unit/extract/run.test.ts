@@ -221,13 +221,44 @@ it("fails a run that writes more than 64 MiB to stdout, and stops it", async () 
   expect(() => process.kill(pid, 0)).toThrow(); // ESRCH: stopped and reaped
 });
 
-it("rejects a run whose program cannot be started, without calling onSpawn", async () => {
+it("reports a run whose program cannot be started by its error code alone, without calling onSpawn", async () => {
   const seen: number[] = [];
   const missing = join(dir, "missing-engine");
-  await expect(
-    runEngine(run("", { argv: [missing], onSpawn: (pid) => seen.push(pid) })),
-  ).rejects.toThrow(`ast-grep: cannot run ${missing}: ENOENT`);
+  const r = await runEngine(
+    run("", { argv: [missing], onSpawn: (pid) => seen.push(pid) }),
+  );
+  expect(r).toMatchObject({
+    startError: "ENOENT",
+    exitCode: null,
+    signal: null,
+    timedOut: false,
+    stdout: "",
+    stderrTail: "",
+  });
+  expect(JSON.stringify(r)).not.toContain(dir);
   expect(seen).toEqual([]);
+  // a run that started has no start error
+  expect((await runEngine(run("process.exit(0)"))).startError).toBeNull();
+});
+
+it("watches the whole of stderr for Node's heap running out, even once it is cut from the tail", async () => {
+  // Node's line comes in two writes 50 ms apart, then 6,000 bytes push it out of the tail
+  const out = await runEngine(
+    run(
+      'process.stderr.write("FATAL ERROR: Reached heap limit Allocation failed - JavaScript he"); setTimeout(() => process.stderr.write("ap out of memory\\n" + "x".repeat(6000)), 50);',
+    ),
+  );
+  expect(out.stderrTail).not.toContain("heap out of memory");
+  expect(out.heapOutOfMemory).toBe(true);
+  expect(out.stderrCut).toBe(true);
+  const fine = await runEngine(run('process.stderr.write("orbit fine\\n")'));
+  expect(fine.heapOutOfMemory).toBe(false);
+  expect(fine.stderrCut).toBe(false);
+});
+
+it("counts no OOM kill for a run that ends well, where the cgroup can be read at all", async () => {
+  const r = await runEngine(run("process.exit(0)"));
+  expect([false, null]).toContain(r.oomKilled);
 });
 
 it("starts the stderr tail at a whole character", async () => {

@@ -228,6 +228,51 @@ it("writes coverage and gates in the key order of their types, with coverage's m
   expect(hashOf(miniStore(b))).toBe(hashOf(pathA));
 });
 
+it("writes the tiers that ran out of memory last, with their map sorted, and only when there are any", () => {
+  const capped =
+    "reached the 3G memory cap; rebuild with a larger --memory-max";
+  const heap = "ran out of JavaScript heap; rebuild with a larger --memory-max";
+  const a = emptyContent();
+  a.meta[0].coverage = {
+    ...a.meta[0].coverage,
+    outOfMemory: {
+      memoryMax: "3G",
+      tiers: { "dependency-cruiser": capped, "scip-typescript": heap },
+    },
+  };
+  const b = emptyContent();
+  b.meta[0].coverage = {
+    ...b.meta[0].coverage,
+    outOfMemory: reversed({
+      memoryMax: "3G",
+      tiers: reversed({
+        "dependency-cruiser": capped,
+        "scip-typescript": heap,
+      }),
+    }),
+  };
+  const pathA = miniStore(a);
+  const db = new DatabaseSync(pathA, { readOnly: true });
+  const { coverage } = db.prepare("SELECT coverage FROM meta").get() as {
+    coverage: string;
+  };
+  db.close();
+  expect(coverage).toMatch(
+    new RegExp(
+      `,"cycleSeverity":"warn","outOfMemory":\\{"memoryMax":"3G","tiers":\\{"dependency-cruiser":"${capped}","scip-typescript":"${heap}"\\}\\}\\}$`,
+    ),
+  );
+  expect(hashOf(miniStore(b))).toBe(hashOf(pathA));
+  // with none, the key is not written, so such a store hashes as it always did
+  const none = emptyContent();
+  const plain = new DatabaseSync(miniStore(none), { readOnly: true });
+  expect(
+    (plain.prepare("SELECT coverage FROM meta").get() as { coverage: string })
+      .coverage,
+  ).not.toContain("outOfMemory");
+  plain.close();
+});
+
 it("leaves no file when it refuses content, and never writes over a file", () => {
   const dir = mkdtempSync(join(tmpdir(), "hakutaku-write-"));
   try {

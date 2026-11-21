@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   computeFreshness,
   type RefResult,
@@ -158,3 +158,26 @@ it.each<
 ])("computeFreshness(%j, %j, %j, %s)", (built, head, attempt, ref, want) =>
   expect(computeFreshness(built, head, attempt, ref)).toStrictEqual(want),
 );
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
+it("cleans the reason it reads: the home directory as ~, and secrets redacted", () => {
+  vi.stubEnv("HOME", "/srv/astronomer");
+  // assembled here, never written whole
+  const secret = ["gh", "p_", "Q7x2M4p9K3l8N5r6".repeat(3)].join("");
+  expect(
+    computeFreshness(
+      A,
+      { commit: A },
+      att(
+        "failed",
+        `grimp failed: exit code 3\nat /srv/astronomer/sky.py: token=${secret}`,
+      ),
+      "main",
+    ).reason,
+  ).toBe(
+    "the last build failed: grimp failed: exit code 3\nat ~/sky.py: token=«redacted:github-token»",
+  );
+});

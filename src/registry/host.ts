@@ -6,6 +6,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import type { RepoId } from "../model/index.js";
+import { cleanReason } from "../redact/index.js";
 import {
   type Attempt,
   createStoreCache,
@@ -212,7 +213,8 @@ function fixedEntries(repos: RepoId[] | "all"): Map<string, RegistryEntry> {
   return fixed;
 }
 
-// A build that built or was skipped is ok; any other is failed, with its reason when it has one.
+// A build that built or was skipped is ok; any other is failed, with its reason when it has one,
+// cleaned again as computeFreshness cleans it.
 function lastAttemptOf(attempt: Attempt | null): LastAttempt | undefined {
   if (attempt === null) return undefined;
   if (attempt.result === "built" || attempt.result === "skipped") {
@@ -220,7 +222,11 @@ function lastAttemptOf(attempt: Attempt | null): LastAttempt | undefined {
   }
   return attempt.reason === undefined
     ? { at: attempt.at, result: "failed" }
-    : { at: attempt.at, result: "failed", reason: attempt.reason };
+    : {
+        at: attempt.at,
+        result: "failed",
+        reason: cleanReason(attempt.reason),
+      };
 }
 
 function refreshState(

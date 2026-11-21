@@ -376,7 +376,7 @@ it.each<[string, string, RegExp]>([
   [
     "the driver's message on stderr",
     'process.stderr.write("SourceSyntaxError: Syntax error in sky.py, line 2\\n"); process.exit(3);',
-    /^grimp failed: SourceSyntaxError: Syntax error in sky\.py, line 2$/,
+    /^grimp failed: exit code 3\nSourceSyntaxError: Syntax error in sky\.py, line 2$/,
   ],
   ["a bare exit code", "process.exit(3);", /^grimp failed: exit code 3$/],
   [

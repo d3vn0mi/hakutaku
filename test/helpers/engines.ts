@@ -61,23 +61,41 @@ function mirror(parts: string[], write: (at: string) => void): string {
 // exits 1, a native bin a shell script that does, and grimp a package whose import exits 1.
 // installed.json and every other engine are the installed ones.
 export function brokenEnginesDir(engine: EngineName): string {
-  const entry = readLock().lock.engines[engine];
-  if (entry === undefined) throw new Error(`the lock has no ${engine}`);
-  const installed = resolve(defaultEnginesDir());
-  const bin = relative(installed, resolveBin(installed, entry.bin)).split(sep);
   if (engine === "grimp") {
-    return mirror([...bin, "grimp", "__init__.py"], (at) =>
+    return mirror([...binParts(engine), "grimp", "__init__.py"], (at) =>
       writeFileSync(at, "raise SystemExit(1)\n"),
     );
   }
-  return mirror(bin, (at) => {
-    if (/\.[cm]?js$/.test(at)) {
-      writeFileSync(at, "process.exit(1);\n");
-    } else {
-      writeFileSync(at, "#!/bin/sh\nexit 1\n");
-      chmodSync(at, 0o755);
-    }
+  return standInEnginesDir(engine, {
+    node: "process.exit(1);\n",
+    sh: "#!/bin/sh\nexit 1\n",
   });
+}
+
+// An engines directory whose `engine`, a Node or a native bin, is the stand-in given for its
+// kind: a Node script, or a shell script. installed.json and every other engine are the
+// installed ones.
+export function standInEnginesDir(
+  engine: Exclude<EngineName, "grimp">,
+  script: { node?: string; sh?: string },
+): string {
+  return mirror(binParts(engine), (at) => {
+    const node = /\.[cm]?js$/.test(at);
+    const text = node ? script.node : script.sh;
+    if (text === undefined) {
+      throw new Error(`no ${node ? "Node" : "shell"} stand-in for ${engine}`);
+    }
+    writeFileSync(at, text);
+    if (!node) chmodSync(at, 0o755);
+  });
+}
+
+// The path of an engine's bin inside the installed engines directory, as its parts.
+function binParts(engine: EngineName): string[] {
+  const entry = readLock().lock.engines[engine];
+  if (entry === undefined) throw new Error(`the lock has no ${engine}`);
+  const installed = resolve(defaultEnginesDir());
+  return relative(installed, resolveBin(installed, entry.bin)).split(sep);
 }
 
 // An engines directory as installed without a Python: installed.json's python is null, so

@@ -24,6 +24,7 @@ import {
   extractSnapshot,
 } from "../../../src/extract/index.js";
 import { DEFAULT_PROFILE } from "../../../src/profile/load.js";
+import { compilerTier } from "../../../src/query/tiers.js";
 import {
   type BuildFacts,
   openStore,
@@ -34,6 +35,7 @@ import {
 import {
   brokenEnginesDir,
   enginesDirWithoutPython,
+  standInEnginesDir,
 } from "../../helpers/engines.js";
 import { git, makeRepo, type RepoSpec } from "../../helpers/git.js";
 
@@ -542,6 +544,147 @@ it(
       reason: "ast-grep failed: exit code 1",
     });
     expect(readdirSync(dirname(out))).toEqual(["attempt.json"]);
+  },
+  TIMEOUT,
+);
+
+it(
+  "keeps host paths and secrets out of a failed build's attempt, naming each directory by token",
+  async () => {
+    const repo = await oneCommit(SKY);
+    const dir = await exportOf(repo);
+    const out = storePath();
+    // assembled here, never written whole
+    const secret = ["gh", "p_", "Q7x2M4p9K3l8N5r6".repeat(3)].join("");
+    const enginesDir = standInEnginesDir("ast-grep", {
+      sh: `#!/bin/sh\necho "cannot scan $*; token=${secret}" >&2\nexit 2\n`,
+    });
+    await expect(extract(dir, out, { enginesDir })).rejects.toThrow(
+      /^ast-grep failed: exit code 2\ncannot scan scan --config <export>\/sgconfig\.yml /,
+    );
+    const reason = readAttempt(out)?.reason ?? "";
+    expect(reason).toMatch(
+      /^ast-grep failed: exit code 2\ncannot scan scan --config <export>\/sgconfig\.yml .* <snapshot>; token=«redacted:github-token»$/,
+    );
+    expect(reason).not.toContain(dirname(dir));
+    expect(reason).not.toContain(secret);
+    // any error the build records is cleaned, not only an engine's: here a hook's, which
+    // names the snapshot
+    await expect(
+      extractSnapshot(
+        { dir, out, sandbox: "none" },
+        {
+          onStage: () => {
+            throw new Error(`stopped at ${join(dir, "snapshot", "web")}`);
+          },
+        },
+      ),
+    ).rejects.toThrow("stopped at");
+    expect(readAttempt(out)?.reason).toBe("stopped at <snapshot>/web");
+  },
+  TIMEOUT,
+);
+
+it(
+  "keeps host paths out of build.json's warnings, as a driver's own message names them",
+  async () => {
+    const repo = await oneCommit(SKY);
+    const out = storePath();
+    // dependency-cruiser leaves no output, so its driver cannot read the file it names
+    const enginesDir = standInEnginesDir("dependency-cruiser", {
+      node: 'import { rmSync } from "node:fs";\nrmSync("depcruise.out.json");\n',
+    });
+    expect(
+      (await extract(await exportOf(repo), out, { enginesDir })).result,
+    ).toBe("built");
+    const warnings = readBuildFacts(out)?.warnings ?? [];
+    expect(warnings).toContain(
+      "dependency-cruiser failed: cannot read its output (ENOENT: no such file or directory, open '<work>/depcruise.out.json')",
+    );
+    expect(warnings.join("\n")).not.toContain(dirname(out));
+  },
+  TIMEOUT,
+);
+
+it(
+  "records a tier that ran out of memory with its repair, and rebuilds over it only at another memory cap",
+  async () => {
+    const repo = await oneCommit(SKY);
+    const dir = await exportOf(repo);
+    const out = storePath();
+    // Node's own words, then the exit code an abort has through a shell, with no core dumped
+    const enginesDir = standInEnginesDir("scip-typescript", {
+      node: 'process.stderr.write("FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\\n"); process.exit(134);\n',
+    });
+    const repair =
+      "ran out of JavaScript heap; rebuild with a larger --memory-max";
+    expect((await extract(dir, out, { enginesDir })).result).toBe("built");
+    inStore(out, (s) => {
+      expect(s.meta.coverage.tiers["scip-typescript"]).toBe("failed");
+      expect(s.meta.coverage.outOfMemory).toEqual({
+        memoryMax: "3G",
+        tiers: { "scip-typescript": repair },
+      });
+      expect(compilerTier(s, "typescript")).toEqual({
+        ran: false,
+        reason: `scip-typescript ${repair}`,
+      });
+    });
+    const facts = readBuildFacts(out);
+    expect(statuses(facts)["scip-typescript"]).toBe("failed");
+    expect(facts?.warnings).toContain(
+      `scip-typescript failed: ${repair}\nFATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory`,
+    );
+    // the same cap would end the same way, so that build is skipped; another one is built
+    expect((await extract(dir, out, { enginesDir })).result).toBe("skipped");
+    expect(
+      (await extract(dir, out, { enginesDir, memoryMax: "4G" })).result,
+    ).toBe("built");
+    inStore(out, (s) =>
+      expect(s.meta.coverage.outOfMemory?.memoryMax).toBe("4G"),
+    );
+  },
+  TIMEOUT,
+);
+
+it(
+  "records an engine that passed its timeout as timed-out, and one that exited non-zero as failed",
+  async () => {
+    const repo = await oneCommit(SKY);
+    const dir = await exportOf(repo);
+    // at quick detail ast-grep and dependency-cruiser run, and scip-typescript does not
+    const build = (enginesDir: string, out: string) =>
+      extractSnapshot(
+        { dir, out, sandbox: "none", detail: "quick", enginesDir },
+        { engineTimeoutMs: 2000 },
+      );
+    const hung = storePath();
+    const r = await build(
+      standInEnginesDir("dependency-cruiser", {
+        node: "setTimeout(() => {}, 60000);\n",
+      }),
+      hung,
+    );
+    expect(r.result).toBe("built");
+    const facts = readBuildFacts(hung);
+    expect(statuses(facts)).toEqual({
+      "ast-grep": "ran",
+      "dependency-cruiser": "timed-out",
+      grimp: "skipped",
+      "scip-typescript": "skipped",
+    });
+    expect(facts?.warnings).toContain(
+      "dependency-cruiser failed: timed out after 2 s",
+    );
+    inStore(hung, (s) =>
+      expect(s.meta.coverage.tiers["dependency-cruiser"]).toBe("failed"),
+    );
+    // the control: within the same timeout, an engine that exits 1 failed
+    const broken = storePath();
+    await build(brokenEnginesDir("dependency-cruiser"), broken);
+    expect(statuses(readBuildFacts(broken))["dependency-cruiser"]).toBe(
+      "failed",
+    );
   },
   TIMEOUT,
 );

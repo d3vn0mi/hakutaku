@@ -571,6 +571,26 @@ describe("refresh", () => {
     expect(spawnMap).toHaveBeenCalledTimes(2);
   });
 
+  it("cleans a failed attempt's reason again where it is shown: the home directory as ~, secrets redacted", () => {
+    vi.stubEnv("HOME", "/srv/astronomer");
+    // assembled here, never written whole
+    const secret = ["gh", "p_", "Q7x2M4p9K3l8N5r6".repeat(3)].join("");
+    const said = `ast-grep failed: exit code 2\ncannot read /srv/astronomer/sky.env: token=${secret}`;
+    const shown =
+      "ast-grep failed: exit code 2\ncannot read ~/sky.env: token=«redacted:github-token»";
+    attempt({ at: "2026-11-16T10:00:00Z", result: "failed", reason: said });
+    const host = createRegistryHost(
+      { repos: ["tiny"], allowRefresh: true },
+      fake(),
+    );
+    expect(refreshOf(host)("tiny")).toMatchObject({
+      lastAttempt: { result: "failed", reason: shown },
+    });
+    expect(host.freshness("tiny").reason).toBe(
+      `the last build failed: ${shown}`,
+    );
+  });
+
   it("keeps one state per repo, and ends a build whose done rejects", async () => {
     saveEntry({ ...entry("tiny"), id: "vega" });
     let now = 0;

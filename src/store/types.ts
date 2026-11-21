@@ -37,6 +37,13 @@ export interface Coverage {
   // The rules file's cycle severity, "warn" without one. It is the store's only copy, read by
   // code_rules, and not one of code_repos' fields.
   cycleSeverity: Severity;
+  // The tiers that failed for want of memory, each with its fixed wording and repair, and the
+  // memory cap the build had. Present only when a tier did, so another build's hash is
+  // unchanged; a build with another cap is never skipped over it, so the repair can work.
+  outOfMemory?: {
+    memoryMax: string;
+    tiers: Partial<Record<EngineName, string>>;
+  };
 }
 
 export interface GateResult {

@@ -106,6 +106,12 @@ const isCoverage = shape<Coverage>({
   noSourceFiles: isNumber,
   denied: isNumber,
   cycleSeverity: oneOf<Severity>({ error: true, warn: true, info: true }),
+  outOfMemory: optional(
+    shape<NonNullable<Coverage["outOfMemory"]>>({
+      memoryMax: isString,
+      tiers: engineMapOf(isString),
+    }),
+  ),
 });
 
 const isGateResult = shape<GateResult>({

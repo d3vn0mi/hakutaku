@@ -381,6 +381,18 @@ it("runs bubblewrap under a systemd-run scope with the memory cap when systemd-r
   expect(logged(log)).toEqual([BWRAP_PROBE, SYSTEMD_RUN_PROBE]);
 });
 
+it("says a sandbox caps memory when systemd-run is the sandbox, or caps bubblewrap's scope", async () => {
+  const works = fakeTools({ bwrap: 0, "systemd-run": 0 });
+  const s = await freshSandbox();
+  expect(await s.capsMemory("systemd-run")).toBe(true);
+  expect(logged(works)).toEqual([]);
+  expect(await s.capsMemory("bubblewrap")).toBe(true);
+  expect(logged(works)).toEqual([SYSTEMD_RUN_PROBE]);
+  fakeTools({ bwrap: 0, "systemd-run": 1 });
+  const without = await freshSandbox();
+  expect(await without.capsMemory("bubblewrap")).toBe(false);
+});
+
 it("runs bubblewrap without a memory cap, and warns, when systemd-run does not work", async () => {
   fakeTools({ bwrap: 0, "systemd-run": 1 });
   const s = await freshSandbox();

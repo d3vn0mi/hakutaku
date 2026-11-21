@@ -41,7 +41,10 @@ const sha256 = (bytes: Uint8Array): string =>
 
 // The meta of a store built at standard detail from the manifest, the profile copy and the rules
 // copy above, by this version with the packaged engine lock.
-function storeMeta(rulesHash = sha256(rulesBytes)): StoreMeta {
+function storeMeta(
+  rulesHash = sha256(rulesBytes),
+  outOfMemory?: StoreMeta["coverage"]["outOfMemory"],
+): StoreMeta {
   const content = emptyContent();
   const store = openStore(
     miniStore({
@@ -55,6 +58,10 @@ function storeMeta(rulesHash = sha256(rulesBytes)): StoreMeta {
           rules_hash: rulesHash,
           detail: "standard",
           no_source: 0,
+          coverage:
+            outOfMemory === undefined
+              ? row.coverage
+              : { ...row.coverage, outOfMemory },
         }),
       ),
     }),
@@ -66,7 +73,7 @@ function storeMeta(rulesHash = sha256(rulesBytes)): StoreMeta {
 
 it("builds the key from the manifest, the copies' bytes, the engine lock and this version", () => {
   expect(
-    skipKey(manifest, profileBytes, rulesBytes, "standard", false),
+    skipKey(manifest, profileBytes, rulesBytes, "standard", false, "3G"),
   ).toEqual({
     schemaVersion: SCHEMA_VERSION,
     commit: COMMIT,
@@ -76,8 +83,11 @@ it("builds the key from the manifest, the copies' bytes, the engine lock and thi
     rulesHash: sha256(rulesBytes),
     detail: "standard",
     noSource: false,
+    memoryMax: "3G",
   });
-  expect(skipKey(manifest, profileBytes, null, "deep", true)).toMatchObject({
+  expect(
+    skipKey(manifest, profileBytes, null, "deep", true, "3G"),
+  ).toMatchObject({
     rulesHash: "",
     detail: "deep",
     noSource: true,
@@ -87,7 +97,7 @@ it("builds the key from the manifest, the copies' bytes, the engine lock and thi
 it("matches the store built from the same inputs", () =>
   expect(
     matchesStore(
-      skipKey(manifest, profileBytes, rulesBytes, "standard", false),
+      skipKey(manifest, profileBytes, rulesBytes, "standard", false, "3G"),
       storeMeta(),
     ),
   ).toBe(true));
@@ -102,6 +112,7 @@ const changed: SkipKey = {
   rulesHash: "",
   detail: "deep",
   noSource: true,
+  memoryMax: "6G",
 };
 
 it.each([
@@ -115,7 +126,14 @@ it.each([
   "schemaVersion",
 ] as const)("stops matching when %s differs", (field) => {
   const meta = storeMeta();
-  const key = skipKey(manifest, profileBytes, rulesBytes, "standard", false);
+  const key = skipKey(
+    manifest,
+    profileBytes,
+    rulesBytes,
+    "standard",
+    false,
+    "3G",
+  );
   expect(matchesStore(key, meta)).toBe(true);
   expect(key[field]).not.toEqual(changed[field]);
   expect(matchesStore({ ...key, [field]: changed[field] }, meta)).toBe(false);
@@ -125,14 +143,30 @@ it("matches a store built without rules only when no rules are given", () => {
   const meta = storeMeta("");
   expect(
     matchesStore(
-      skipKey(manifest, profileBytes, null, "standard", false),
+      skipKey(manifest, profileBytes, null, "standard", false, "3G"),
       meta,
     ),
   ).toBe(true);
   expect(
     matchesStore(
-      skipKey(manifest, profileBytes, rulesBytes, "standard", false),
+      skipKey(manifest, profileBytes, rulesBytes, "standard", false, "3G"),
       meta,
     ),
   ).toBe(false);
+});
+
+it("rebuilds over a store whose tiers ran out of memory when the memory cap differs, so the repair can work", () => {
+  const capped = storeMeta(sha256(rulesBytes), {
+    memoryMax: "3G",
+    tiers: {
+      "scip-typescript":
+        "reached the 3G memory cap; rebuild with a larger --memory-max",
+    },
+  });
+  const at = (memoryMax: string) =>
+    skipKey(manifest, profileBytes, rulesBytes, "standard", false, memoryMax);
+  expect(matchesStore(at("3G"), capped)).toBe(true);
+  expect(matchesStore(at("6G"), capped)).toBe(false);
+  // a store no tier of which ran out of memory does not depend on the cap
+  expect(matchesStore(at("6G"), storeMeta())).toBe(true);
 });

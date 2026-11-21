@@ -351,7 +351,7 @@ it("fails with ast-grep's own error when it exits non-zero", async () => {
     "id: ts-def-broken\nlanguage: Nope\nrule: { kind: identifier }\n",
   );
   await expect(astGrepDriver.run(ctx)).rejects.toThrow(
-    /^ast-grep failed: Error: Cannot parse rule .*broken\.yml/,
+    /^ast-grep failed: exit code 8\nError: Cannot parse rule <export>\/ast-grep\/rules\/broken\.yml/,
   );
   expect(existsSync(join(ctx.workDir, "ast-grep.jsonl"))).toBe(false);
 }, 300_000);
@@ -365,7 +365,7 @@ it.skipIf(process.getuid?.() === 0)(
     chmodSync(sim, 0o000);
     try {
       await expect(astGrepDriver.run(ctx)).rejects.toThrow(
-        /^ast-grep failed: ERROR: .*\/snapshot\/sim: Permission denied/,
+        /^ast-grep failed: ERROR: <snapshot>\/sim: Permission denied/,
       );
     } finally {
       chmodSync(sim, 0o555);
@@ -378,9 +378,7 @@ it("fails when the snapshot directory is missing, which ast-grep would answer wi
   const ctx = await exportOf(await smallRepo());
   await expect(
     astGrepDriver.run({ ...ctx, snapshotDir: join(ctx.exportDir, "nowhere") }),
-  ).rejects.toThrow(
-    `ast-grep failed: no snapshot directory at ${join(ctx.exportDir, "nowhere")}`,
-  );
+  ).rejects.toThrow(/^ast-grep failed: the snapshot directory is missing$/);
 }, 300_000);
 
 // Each rule's syntax once, beyond the sample above: TS, TSX, JS, Python and shell.

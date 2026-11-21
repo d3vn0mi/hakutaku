@@ -105,6 +105,12 @@ export async function noSandboxReason(
     : "no sandbox: bubblewrap and systemd-run are unavailable";
 }
 
+// Whether a sandbox detectSandbox found caps memory: systemd-run always does, and bubblewrap
+// does inside the systemd-run scope that sandboxCommand puts it in when systemd-run works.
+export async function capsMemory(sandbox: Sandbox): Promise<boolean> {
+  return sandbox === "systemd-run" || (await systemdRunWorks());
+}
+
 // The command that runs inner in a sandbox detectSandbox found, and the warnings it
 // brings. bubblewrap caps no memory, so it runs inside a systemd-run scope that does whenever
 // systemd-run works too.

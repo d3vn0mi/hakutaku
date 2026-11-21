@@ -2,8 +2,11 @@
 //                  [--no-source] [--sandbox auto|require|none] [--memory-max <size>]
 // Builds one store from an export directory and prints the ExtractResult as one JSON line.
 // Exit codes: 0 built or skipped, 3 the gates failed (the previous store keeps serving), 1
-// failed (the message on stderr), 2 a usage error. --sandboxed-by bubblewrap|systemd-run is
-// left out of the usage: extract passes it to itself when it re-runs inside a sandbox.
+// failed (the message on stderr), 2 a usage error. --sandboxed-by bubblewrap|systemd-run,
+// --memory-capped and --home <path> are left out of the usage: extract passes them to itself
+// when it re-runs inside a sandbox, to say which one, whether it caps memory, and the home
+// directory the build's texts name as ~.
+import { isAbsolute } from "node:path";
 import { parseArgs } from "node:util";
 import { heapMiB } from "../../extract/drivers/scip-typescript.js";
 import { type ExtractResult, extractSnapshot } from "../../extract/index.js";
@@ -22,6 +25,8 @@ const OPTIONS = {
   sandbox: { type: "string" },
   "memory-max": { type: "string" },
   "sandboxed-by": { type: "string" },
+  "memory-capped": { type: "boolean" },
+  home: { type: "string" },
 } as const;
 
 const DETAILS = ["quick", "standard", "deep"] as const;
@@ -96,6 +101,13 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     values["sandboxed-by"],
   );
   if (sandboxedBy === null) return 2;
+  const home = values.home;
+  if (home !== undefined && !isAbsolute(home)) {
+    return usageError(
+      io,
+      `--home must be an absolute path, not ${JSON.stringify(home)}`,
+    );
+  }
   const memoryMax = values["memory-max"];
   if (memoryMax !== undefined) {
     // systemd takes a percentage or "infinity", from which Node's heap cannot be worked out
@@ -118,6 +130,8 @@ async function run(argv: string[], io: CliIO): Promise<number> {
       ...(sandbox === undefined ? {} : { sandbox }),
       ...(memoryMax === undefined ? {} : { memoryMax }),
       ...(sandboxedBy === undefined ? {} : { sandboxedBy }),
+      ...(values["memory-capped"] === true ? { memoryCapped: true } : {}),
+      ...(home === undefined ? {} : { home }),
     });
   } catch (error) {
     // a sandboxed run that printed its own message, on the stderr passed through, is not

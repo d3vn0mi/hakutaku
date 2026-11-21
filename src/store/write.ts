@@ -312,21 +312,33 @@ const cellRank = (cell: Cell): number =>
 
 function coverageJson(coverage: Coverage): string {
   objectAt(coverage, "meta.coverage");
-  return objectJson(
-    COVERAGE_KEYS.map((key) => {
-      const at = `meta.coverage.${key}`;
-      if (key === "indexed" || key === "tiers") {
-        return [key, mapJson(coverage[key], at)];
-      }
-      if (key === "callSites") {
-        return [
-          key,
-          fieldsJson(coverage.callSites, ["bound", "scoped", "unresolved"], at),
-        ];
-      }
-      return [key, json(coverage[key], at)];
-    }),
-  );
+  const entries = COVERAGE_KEYS.map((key): [string, string] => {
+    const at = `meta.coverage.${key}`;
+    if (key === "indexed" || key === "tiers") {
+      return [key, mapJson(coverage[key], at)];
+    }
+    if (key === "callSites") {
+      return [
+        key,
+        fieldsJson(coverage.callSites, ["bound", "scoped", "unresolved"], at),
+      ];
+    }
+    return [key, json(coverage[key], at)];
+  });
+  // written last, and only when a tier ran out of memory
+  const out = coverage.outOfMemory;
+  if (out !== undefined) {
+    const at = "meta.coverage.outOfMemory";
+    objectAt(out, at);
+    entries.push([
+      "outOfMemory",
+      objectJson([
+        ["memoryMax", json(out.memoryMax, `${at}.memoryMax`)],
+        ["tiers", mapJson(out.tiers, `${at}.tiers`)],
+      ]),
+    ]);
+  }
+  return objectJson(entries);
 }
 
 function mapJson(map: unknown, at: string): string {

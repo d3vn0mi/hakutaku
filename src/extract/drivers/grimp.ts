@@ -38,7 +38,13 @@ import {
 } from "../../model/index.js";
 import type { Profile } from "../../profile/index.js";
 import type { EngineDriver, ExtractContext } from "../context.js";
-import { type EngineRunResult, engineEnv, runEngine } from "../run.js";
+import {
+  EngineFailure,
+  engineEnv,
+  failureContext,
+  runEngine,
+  runFailure,
+} from "../run.js";
 
 export interface GrimpImport {
   importer: string;
@@ -283,7 +289,8 @@ async function runGrimp(ctx: ExtractContext): Promise<GrimpFacts> {
   const inputPath = join(workDir, "grimp-input.json");
   writeFileSync(inputPath, `${JSON.stringify(input, null, 2)}\n`);
 
-  const timeoutMs = ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS;
+  const timeoutMs =
+    ctx.timeoutMs ?? (ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS);
   const out = join(workDir, "grimp.out.json");
   try {
     const result = await (ctx.runner ?? runEngine)({
@@ -296,8 +303,11 @@ async function runGrimp(ctx: ExtractContext): Promise<GrimpFacts> {
       timeoutMs,
       stdoutFile: out,
     });
-    const failure = failureOf(result, timeoutMs);
-    if (failure !== null) throw new Error(`grimp failed: ${failure}`);
+    // The driver prints an error's type and message on stderr and exits 3.
+    const failure = runFailure(result, failureContext(ctx, timeoutMs));
+    if (failure !== null) {
+      throw new EngineFailure(`grimp failed: ${failure.text}`, failure.end);
+    }
     let text: string;
     try {
       text = readFileSync(out, "utf8");
@@ -341,20 +351,6 @@ async function runGrimp(ctx: ExtractContext): Promise<GrimpFacts> {
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
-
-// Why a run failed, or null. The driver prints an error's type and message on stderr and
-// exits 3.
-function failureOf(r: EngineRunResult, timeoutMs: number): string | null {
-  const tail = r.stderrTail.trim();
-  if (r.timedOut) {
-    return `timed out after ${timeoutMs / 1000} s${tail === "" ? "" : `\n${tail}`}`;
-  }
-  if (r.exitCode === 0) return null;
-  if (tail !== "") return tail;
-  return r.signal !== null
-    ? `stopped by ${r.signal}`
-    : `exit code ${r.exitCode}`;
-}
 
 // The facts in the driver's JSON output, in comparePaths order whatever order it wrote them,
 // each list without repeats.

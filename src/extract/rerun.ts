@@ -4,13 +4,14 @@
 // this process's working directory or environment. What only this side knows, the sandbox's
 // own warnings and the peak memory of bubblewrap's scope, is added to build.json afterwards.
 import { spawn } from "node:child_process";
-import { mkdirSync, readFileSync, statSync } from "node:fs";
+import { mkdirSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Detail } from "../model/index.js";
 import { readBuildFacts, writeBuildFacts } from "../store/index.js";
+import { cgroupOf, memoryPeak } from "./cgroup.js";
 import type { ExtractResult } from "./index.js";
-import { type Sandbox, sandboxCommand } from "./sandbox.js";
+import { capsMemory, type Sandbox, sandboxCommand } from "./sandbox.js";
 
 // The package root: two levels above this module, in src/ as in dist/. The re-run starts the
 // built CLI, whichever of the two this module was loaded from.
@@ -41,6 +42,7 @@ export interface Rerun {
   noSource: boolean;
   memoryMax: string;
   pythonPath: string | null; // the pinned interpreter, whose prefix the sandbox must show
+  home: string | null; // the user's home directory, which the inner run's texts name as ~
 }
 
 export async function extractInSandbox(r: Rerun): Promise<ExtractResult> {
@@ -49,25 +51,7 @@ export async function extractInSandbox(r: Rerun): Promise<ExtractResult> {
       "the sandbox re-runs hakutaku's built CLI, dist/cli/main.js, which is missing: build it, or extract with --sandbox none",
     );
   }
-  const inner = [
-    process.execPath,
-    CLI,
-    "extract",
-    r.dir,
-    "--out",
-    r.out,
-    "--engines-dir",
-    r.enginesDir,
-    "--detail",
-    r.detail,
-    ...(r.noSource ? ["--no-source"] : []),
-    "--sandbox",
-    "none",
-    "--sandboxed-by",
-    r.sandbox,
-    "--memory-max",
-    r.memoryMax,
-  ];
+  const inner = innerArgv(r, await capsMemory(r.sandbox));
   // bubblewrap binds the store's directory, which must exist
   const storeDir = dirname(r.out);
   mkdirSync(storeDir, { recursive: true });
@@ -108,6 +92,33 @@ export async function extractInSandbox(r: Rerun): Promise<ExtractResult> {
   }
   const { message, printed } = innerFailure(ended);
   throw new SandboxedRunFailed(message, printed);
+}
+
+// The inner run's command: extract with every path absolute, no sandbox of its own, the one it
+// is inside, whether that one caps its memory, and the home directory, which inside bubblewrap
+// is not its HOME.
+export function innerArgv(r: Rerun, capped: boolean): string[] {
+  return [
+    process.execPath,
+    CLI,
+    "extract",
+    r.dir,
+    "--out",
+    r.out,
+    "--engines-dir",
+    r.enginesDir,
+    "--detail",
+    r.detail,
+    ...(r.noSource ? ["--no-source"] : []),
+    "--sandbox",
+    "none",
+    "--sandboxed-by",
+    r.sandbox,
+    "--memory-max",
+    r.memoryMax,
+    ...(capped ? ["--memory-capped"] : []),
+    ...(r.home === null ? [] : ["--home", r.home]),
+  ];
 }
 
 export interface Ended {
@@ -217,29 +228,4 @@ export function innerFailure(
         : `the sandboxed extract was stopped by ${ended.signal}`,
     printed: false,
   };
-}
-
-// A process's cgroup, from the "0::<path>" line of /proc/<pid>/cgroup; null where there is none.
-export function cgroupOf(pid: number | "self"): string | null {
-  try {
-    const line = readFileSync(`/proc/${pid}/cgroup`, "utf8")
-      .split("\n")
-      .find((l) => l.startsWith("0::"));
-    return line === undefined ? null : line.slice(3);
-  } catch {
-    return null;
-  }
-}
-
-// A cgroup's peak memory in bytes, from its memory.peak; null where that cannot be read.
-export function memoryPeak(cgroup: string): number | null {
-  try {
-    const text = readFileSync(
-      join("/sys/fs/cgroup", cgroup, "memory.peak"),
-      "utf8",
-    ).trim();
-    return /^\d+$/.test(text) ? Number(text) : null;
-  } catch {
-    return null;
-  }
 }

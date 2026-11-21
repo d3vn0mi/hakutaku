@@ -78,6 +78,11 @@ it.each<[string, string[], string]>([
     '--sandboxed-by must be bubblewrap or systemd-run, not "chroot"',
   ],
   [
+    "a home directory that is not an absolute path",
+    ["a", "--out", "s.sqlite", "--home", "astronomer"],
+    '--home must be an absolute path, not "astronomer"',
+  ],
+  [
     "a memory cap systemd would take but Node's heap cannot follow",
     ["a", "--out", "s.sqlite", "--memory-max", "50%"],
     'scip-typescript: cannot read the memory cap "50%"',
@@ -95,6 +100,44 @@ it.each<[string, string[], string]>([
   expect(err.startsWith("hakutaku extract: ")).toBe(true);
   expect(err).toContain(message);
   expect(err.endsWith(USAGE)).toBe(true);
+});
+
+it("passes the flags a sandboxed re-run is given, which the usage leaves out", async () => {
+  extractSnapshot.mockResolvedValueOnce({
+    result: "built",
+    commit: "a".repeat(40),
+    contentHash: "b".repeat(64),
+    gates: [],
+  });
+  const c = capture();
+  expect(
+    await main(
+      [
+        "extract",
+        "export",
+        "--out",
+        "s.sqlite",
+        "--sandbox",
+        "none",
+        "--sandboxed-by",
+        "bubblewrap",
+        "--memory-capped",
+        "--home",
+        "/srv/astronomer",
+      ],
+      c.io,
+    ),
+  ).toBe(0);
+  expect(extractSnapshot).toHaveBeenLastCalledWith({
+    dir: "export",
+    out: "s.sqlite",
+    noSource: false,
+    sandbox: "none",
+    sandboxedBy: "bubblewrap",
+    memoryCapped: true,
+    home: "/srv/astronomer",
+  });
+  expect(USAGE).not.toMatch(/--memory-capped|--home|--sandboxed-by/);
 });
 
 const GATES = [

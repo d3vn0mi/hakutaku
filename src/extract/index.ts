@@ -15,7 +15,8 @@
 // 10. swap it in, keeping the previous store, then write build.json and the attempt.
 // markStage records each stage as a provisional failed attempt, so that a build that dies is
 // explained. Any error removes this build's temporary files, records the attempt as failed,
-// and is thrown again.
+// and is thrown again. Every reason and warning the build writes is cleaned first: each of its
+// directories, and the home directory, named by token, and every secret redacted.
 import { lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import {
@@ -27,6 +28,7 @@ import {
 } from "../engines/index.js";
 import { removeTree } from "../export/index.js";
 import { type Detail, type EngineName, LANG_BY_EXT } from "../model/index.js";
+import { homeRoot, textCleaner } from "../redact/index.js";
 import {
   type BuildFacts,
   besideStore,
@@ -41,6 +43,7 @@ import {
   writeStore,
 } from "../store/index.js";
 import { HAKUTAKU_VERSION } from "../version.js";
+import { cgroupOf, memoryPeak } from "./cgroup.js";
 import type { EngineDriver, ExtractContext } from "./context.js";
 import { astGrepDriver } from "./drivers/ast-grep.js";
 import { depcruiseDriver } from "./drivers/depcruise.js";
@@ -56,13 +59,14 @@ import {
   mergeFacts,
 } from "./merge/index.js";
 import { computeMetrics } from "./metrics.js";
+import { extractInSandbox, SandboxedRunFailed } from "./rerun.js";
 import {
-  cgroupOf,
-  extractInSandbox,
-  memoryPeak,
-  SandboxedRunFailed,
-} from "./rerun.js";
-import { type EngineRun, type EngineRunResult, runEngine } from "./run.js";
+  buildRoots,
+  EngineFailure,
+  type EngineRun,
+  type EngineRunResult,
+  runEngine,
+} from "./run.js";
 import { detectSandbox, noSandboxReason } from "./sandbox.js";
 import { matchesStore, skipKey } from "./skip.js";
 import { cleanupStale, markStage, swapIn } from "./swap.js";
@@ -80,6 +84,13 @@ export interface ExtractOptions {
   // The sandbox this run is already inside. A sandboxed re-run is given it, so that it runs no
   // sandbox of its own and build.json names the real one.
   sandboxedBy?: "bubblewrap" | "systemd-run";
+  // Whether whatever this run is inside caps its memory at memoryMax, as a sandboxed re-run is
+  // told when its sandbox does: only then is an engine killed for want of memory said to have
+  // reached the cap.
+  memoryCapped?: boolean;
+  // The user's home directory, which the build's texts name as ~: this process's when absent. A
+  // sandboxed re-run is given the outer one's, since inside bubblewrap HOME is the sandbox's.
+  home?: string;
 }
 
 export interface ExtractResult {
@@ -105,6 +116,8 @@ export type ExtractStage =
 
 export interface ExtractHooks {
   onStage?(stage: ExtractStage): void;
+  // Every engine's timeout in place of its detail's, so that a test can time one out quickly.
+  engineTimeoutMs?: number;
 }
 
 const DEFAULT_MEMORY_MAX = "3G";
@@ -136,8 +149,11 @@ interface Options {
   sandbox: SandboxMode;
   memoryMax: string;
   sandboxedBy: "bubblewrap" | "systemd-run" | undefined;
+  memoryCapped: boolean;
+  home: string | null;
   tmp: string;
   work: string;
+  clean: (text: string) => string; // a reason or a warning, as the build writes it
 }
 
 // What a build that reached the swap hands to its last step.
@@ -179,7 +195,7 @@ export async function extractSnapshot(
           at: new Date().toISOString(),
           commit: known.commit,
           result: "failed",
-          reason: messageOf(error),
+          reason: o.clean(messageOf(error)),
         });
       } catch {
         // the build's own error says more
@@ -210,17 +226,33 @@ function optionsOf(opts: ExtractOptions): Options {
   heapMiB(memoryMax);
   const out = resolve(opts.out);
   const beside = besideStore(out);
+  const dir = resolve(opts.dir);
+  const enginesDir = resolve(opts.enginesDir ?? defaultEnginesDir());
+  const work = beside.work(process.pid);
+  const home = opts.home ?? homeRoot();
   return {
-    dir: resolve(opts.dir),
+    dir,
     out,
-    enginesDir: resolve(opts.enginesDir ?? defaultEnginesDir()),
+    enginesDir,
     detail,
     noSource: opts.noSource ?? false,
     sandbox,
     memoryMax,
     sandboxedBy: opts.sandboxedBy,
+    memoryCapped: opts.memoryCapped ?? false,
+    home,
     tmp: beside.tmp(process.pid),
-    work: beside.work(process.pid),
+    work,
+    clean: textCleaner(
+      buildRoots({
+        snapshotDir: join(dir, "snapshot"),
+        exportDir: dir,
+        workDir: work,
+        enginesDir,
+        storeDir: beside.dir,
+        home,
+      }),
+    ),
   };
 }
 
@@ -250,7 +282,14 @@ async function build(
   const pythonPath = readInstalled(o.enginesDir)?.python ?? null;
 
   // 3.
-  const key = skipKey(manifest, profileBytes, rulesBytes, o.detail, o.noSource);
+  const key = skipKey(
+    manifest,
+    profileBytes,
+    rulesBytes,
+    o.detail,
+    o.noSource,
+    o.memoryMax,
+  );
   const current = currentStore(o.out);
   if (current !== null && matchesStore(key, current.meta)) {
     writeAttempt(o.out, {
@@ -285,6 +324,7 @@ async function build(
         noSource: o.noSource,
         memoryMax: o.memoryMax,
         pythonPath,
+        home: o.home,
       });
     }
     const why = await noSandboxReason();
@@ -311,6 +351,12 @@ async function build(
     manifest,
     pythonPath,
     memoryMax: o.memoryMax,
+    memoryCapped: o.memoryCapped,
+    storeDir,
+    home: o.home,
+    ...(hooks.engineTimeoutMs === undefined
+      ? {}
+      : { timeoutMs: hooks.engineTimeoutMs }),
     log: (line) => warnings.push(line),
     runner: async (run: EngineRun) => {
       const result = await runEngine({
@@ -343,6 +389,8 @@ async function build(
   // 6.
   const tiers: Coverage["tiers"] = {};
   const engines: BuildFacts["engines"] = {};
+  // the repair of each tier that failed for want of memory
+  const outOfMemory: Partial<Record<EngineName, string>> = {};
   const runTier = async <T>(driver: EngineDriver<T>): Promise<T | null> => {
     const name = driver.name;
     const choice = choices.get(name) ?? "skipped";
@@ -373,6 +421,9 @@ async function build(
         result,
         t,
       );
+      if (error instanceof EngineFailure && error.end.memory) {
+        outOfMemory[name] = error.end.text;
+      }
       warnings.push(messageOf(error));
       return null;
     }
@@ -416,13 +467,12 @@ async function build(
       denylistExtra: profile.denylist.extra,
     },
   );
-  const coverage = coverageOf({
-    input,
-    content,
-    side,
-    tiers,
-    cycleDifferences,
-  });
+  const coverage: Coverage = {
+    ...coverageOf({ input, content, side, tiers, cycleDifferences }),
+    ...(Object.keys(outOfMemory).length === 0
+      ? {}
+      : { outOfMemory: { memoryMax: o.memoryMax, tiers: outOfMemory } }),
+  };
   // The gates are part of the store's meta, so they are worked out here, over the rows about
   // to be written, and acted on once the written store opens.
   const gates = runGates({
@@ -481,7 +531,9 @@ async function build(
   if (failed.length > 0) {
     rmSync(o.tmp, { force: true });
     removeTree(o.work);
-    const reason = failed.map((g) => `${g.gate}: ${g.detail}`).join("; ");
+    const reason = o.clean(
+      failed.map((g) => `${g.gate}: ${g.detail}`).join("; "),
+    );
     writeAttempt(o.out, {
       at: new Date().toISOString(),
       commit,
@@ -531,7 +583,7 @@ function finish(
     peakRssBytes: s.sandbox === "systemd-run" ? ownPeak() : null,
     sandbox: s.sandbox,
     engines: s.engines,
-    warnings: s.warnings,
+    warnings: s.warnings.map(o.clean),
   };
   const steps: Array<[string, () => void]> = [
     ["write build.json", () => writeBuildFacts(o.out, facts)],

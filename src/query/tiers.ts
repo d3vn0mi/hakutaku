@@ -20,14 +20,19 @@ export function displayLang(lang: Lang | null): string {
 
 export type CompilerTier = { ran: true } | { ran: false; reason: string };
 
-// Whether the compiler tier for lang ran in the store's build, and, when it did not, why.
+// Whether the compiler tier for lang ran in the store's build, and, when it did not, why. A tier
+// that ran out of memory says so, with its repair, where any other failed tier fell back.
 export function compilerTier(store: Store, lang: Lang | null): CompilerTier {
   const { detail, coverage } = store.meta;
+  const fellBack = (engine: "scip-typescript" | "scip-python"): string => {
+    const why = coverage.outOfMemory?.tiers[engine];
+    return why === undefined ? `${engine} fell back` : `${engine} ${why}`;
+  };
   if (lang === "typescript" || lang === "javascript") {
     if (coverage.tiers["scip-typescript"] === "ran") return { ran: true };
     return {
       ran: false,
-      reason: detail === "quick" ? "quick detail" : "scip-typescript fell back",
+      reason: detail === "quick" ? "quick detail" : fellBack("scip-typescript"),
     };
   }
   if (lang === "python") {
@@ -39,7 +44,7 @@ export function compilerTier(store: Store, lang: Lang | null): CompilerTier {
           ? "quick detail"
           : detail === "standard"
             ? "below deep detail"
-            : "scip-python fell back",
+            : fellBack("scip-python"),
     };
   }
   return { ran: false, reason: "no compiler tier for this language" };

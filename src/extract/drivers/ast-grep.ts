@@ -22,7 +22,14 @@ import {
   type RuleLang,
   ruleOf,
 } from "../outline.js";
-import { type EngineRunResult, engineEnv, runEngine } from "../run.js";
+import {
+  EngineFailure,
+  engineEnv,
+  excerptOf,
+  failureContext,
+  runEngine,
+  runFailure,
+} from "../run.js";
 
 export type { RawMatch } from "../outline.js";
 
@@ -94,7 +101,7 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
   const workDir = resolve(ctx.workDir);
   // ast-grep reports a missing path on stderr and exits 0, as if nothing matched.
   if (!isDirectory(snapshotDir)) {
-    throw new Error(`ast-grep failed: no snapshot directory at ${snapshotDir}`);
+    throw new Error("ast-grep failed: the snapshot directory is missing");
   }
   const bin = resolveBin(
     ctx.enginesDir,
@@ -116,7 +123,8 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
     ...globs,
     snapshotDir,
   ];
-  const timeoutMs = ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS;
+  const timeoutMs =
+    ctx.timeoutMs ?? (ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS);
   const out = join(workDir, "ast-grep.jsonl");
   try {
     const result = await (ctx.runner ?? runEngine)({
@@ -127,8 +135,19 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
       timeoutMs,
       stdoutFile: out,
     });
-    const failure = failureOf(result, timeoutMs);
-    if (failure !== null) throw new Error(`ast-grep failed: ${failure}`);
+    // Every non-zero exit is a failure, since the rules keep ast-grep's default severity and a
+    // scan that matches nothing exits 0; so is an ERROR line on stderr, which is how ast-grep
+    // reports a path it could not read.
+    const f = failureContext(ctx, timeoutMs);
+    const failure = runFailure(result, f);
+    if (failure !== null) {
+      throw new EngineFailure(`ast-grep failed: ${failure.text}`, failure.end);
+    }
+    if (/^ERROR/m.test(result.stderrTail)) {
+      throw new Error(
+        `ast-grep failed: ${excerptOf(result.stderrTail, result.stderrCut, f.clean)}`,
+      );
+    }
     const matches = await readMatches(out, snapshotDir);
     for (const match of matches) {
       if (metadataOnly.has(match.file)) {
@@ -141,23 +160,6 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
   } finally {
     rmSync(out, { force: true });
   }
-}
-
-// Why a run failed, or null. Every non-zero exit is a failure, since the rules keep
-// ast-grep's default severity and a scan that matches nothing exits 0; so is an ERROR line
-// on stderr, which is how ast-grep reports a path it could not read.
-function failureOf(r: EngineRunResult, timeoutMs: number): string | null {
-  const tail = r.stderrTail.trim();
-  if (r.timedOut) {
-    return `timed out after ${timeoutMs / 1000} s${tail === "" ? "" : `\n${tail}`}`;
-  }
-  if (r.exitCode !== 0) {
-    if (tail !== "") return tail;
-    return r.signal !== null
-      ? `stopped by ${r.signal}`
-      : `exit code ${r.exitCode}`;
-  }
-  return /^ERROR/m.test(tail) ? tail : null;
 }
 
 async function readMatches(

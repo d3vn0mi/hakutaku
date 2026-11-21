@@ -22,7 +22,16 @@ import { readLock, resolveBin } from "../../engines/index.js";
 import { SOURCE_CAP } from "../../export/source-policy.js";
 import type { EngineDriver, ExtractContext } from "../context.js";
 import { hasTsconfigInput } from "../resolve/ts.js";
-import { type EngineRunResult, engineEnv, runEngine } from "../run.js";
+import {
+  EngineFailure,
+  type EngineRunResult,
+  engineEnv,
+  excerptOf,
+  type FailureContext,
+  failureContext,
+  runEngine,
+  runFailure,
+} from "../run.js";
 import { decodeScipIndex } from "../scip/decode.js";
 import { type ScipFacts, scipFacts } from "../scip/facts.js";
 
@@ -55,7 +64,8 @@ async function runScipTypescript(ctx: ExtractContext): Promise<ScipFacts> {
     readLock().lock.engines["scip-typescript"].bin,
   );
   const output = join(workDir, "index.scip");
-  const timeoutMs = ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS;
+  const timeoutMs =
+    ctx.timeoutMs ?? (ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS);
   try {
     const result = await (ctx.runner ?? runEngine)({
       engine: "scip-typescript",
@@ -82,8 +92,8 @@ async function runScipTypescript(ctx: ExtractContext): Promise<ScipFacts> {
       timeoutMs,
       stderrMark: FILE_ERROR,
     });
-    const failure = failureOf(result, timeoutMs);
-    if (failure !== null) throw new Error(`scip-typescript failed: ${failure}`);
+    // Its heap is cut from the memory cap, so a larger cap repairs a heap that ran out.
+    failIfFailed(result, failureContext(ctx, timeoutMs, { heap: true }));
     let bytes: Uint8Array;
     try {
       bytes = readFileSync(output);
@@ -101,31 +111,32 @@ async function runScipTypescript(ctx: ExtractContext): Promise<ScipFacts> {
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
-// Why a run failed, or null: a timeout, any exit but 0, or a file scip-typescript could not
-// index and went on without.
-function failureOf(r: EngineRunResult, timeoutMs: number): string | null {
-  const tail = r.stderrTail.trim();
-  if (r.timedOut) {
-    return `timed out after ${timeoutMs / 1000} s${tail === "" ? "" : `\n${tail}`}`;
+// Throws when a run failed: a timeout, any exit but 0, whose excerpt is the error line it
+// prints on stdout when its stderr says nothing, or a file scip-typescript could not index and
+// went on without.
+function failIfFailed(r: EngineRunResult, f: FailureContext): void {
+  const said = r.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("error:"))
+    .pop();
+  const failure = runFailure(r, f, said);
+  if (failure !== null) {
+    throw new EngineFailure(
+      `scip-typescript failed: ${failure.text}`,
+      failure.end,
+    );
   }
-  if (r.exitCode !== 0) {
-    if (tail !== "") return tail;
-    const said = r.stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith("error:"))
-      .pop();
-    if (said !== undefined) return said;
-    return r.signal !== null
-      ? `stopped by ${r.signal}`
-      : `exit code ${r.exitCode}`;
-  }
-  if (!r.stderrMarked) return null;
+  if (!r.stderrMarked) return;
   // The report's first line can be cut from the tail by its own stack and later reports.
-  const at = tail.indexOf(FILE_ERROR);
-  return at === -1
-    ? `${FILE_ERROR} a file, reported before the last 4 KiB of stderr:\n${tail}`
-    : tail.slice(at);
+  const at = r.stderrTail.indexOf(FILE_ERROR);
+  throw new Error(
+    `scip-typescript failed: ${
+      at === -1
+        ? `${FILE_ERROR} a file, reported before the last 4 KiB of stderr:\n${excerptOf(r.stderrTail, r.stderrCut, f.clean)}`
+        : excerptOf(r.stderrTail.slice(at), false, f.clean)
+    }`,
+  );
 }
 
 // The store's lines of a snapshot file: the file decoded as the store decodes text (each

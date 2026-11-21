@@ -30,7 +30,13 @@ import {
   resolveTsImport,
   type TsResolution,
 } from "../resolve/ts.js";
-import { type EngineRunResult, engineEnv, runEngine } from "../run.js";
+import {
+  EngineFailure,
+  engineEnv,
+  failureContext,
+  runEngine,
+  runFailure,
+} from "../run.js";
 
 export interface DepcruiseFacts {
   modules: Set<string>;
@@ -105,7 +111,8 @@ async function runDepcruise(ctx: ExtractContext): Promise<DepcruiseFacts> {
     ctx.enginesDir,
     readLock().lock.engines["dependency-cruiser"].bin,
   );
-  const timeoutMs = ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS;
+  const timeoutMs =
+    ctx.timeoutMs ?? (ctx.detail === "deep" ? DEEP_TIMEOUT_MS : TIMEOUT_MS);
   const out = join(workDir, "depcruise.out.json");
   try {
     const result = await (ctx.runner ?? runEngine)({
@@ -124,9 +131,15 @@ async function runDepcruise(ctx: ExtractContext): Promise<DepcruiseFacts> {
       timeoutMs,
       stdoutFile: out,
     });
-    const failure = failureOf(result, timeoutMs);
-    if (failure !== null)
-      throw new Error(`dependency-cruiser failed: ${failure}`);
+    // Every non-zero exit is a failure, since a broken rule still exits 0 with the JSON output
+    // type.
+    const failure = runFailure(result, failureContext(ctx, timeoutMs));
+    if (failure !== null) {
+      throw new EngineFailure(
+        `dependency-cruiser failed: ${failure.text}`,
+        failure.end,
+      );
+    }
     let text: string;
     try {
       text = readFileSync(out, "utf8");
@@ -151,20 +164,6 @@ async function runDepcruise(ctx: ExtractContext): Promise<DepcruiseFacts> {
 
 const messageOf = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
-
-// Why a run failed, or null. Every non-zero exit is a failure, since a broken rule still
-// exits 0 with the JSON output type.
-function failureOf(r: EngineRunResult, timeoutMs: number): string | null {
-  const tail = r.stderrTail.trim();
-  if (r.timedOut) {
-    return `timed out after ${timeoutMs / 1000} s${tail === "" ? "" : `\n${tail}`}`;
-  }
-  if (r.exitCode === 0) return null;
-  if (tail !== "") return tail;
-  return r.signal !== null
-    ? `stopped by ${r.signal}`
-    : `exit code ${r.exitCode}`;
-}
 
 // The facts in dependency-cruiser's JSON output, in path order whatever order it lists them.
 // - modules: the repo files it cruised, never a target it only listed, a file under

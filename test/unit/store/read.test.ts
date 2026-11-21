@@ -217,6 +217,14 @@ it.each<[string, string]>([
     "a tier that is not one",
     `UPDATE meta SET coverage = json_set(coverage, '$.tiers', json('{"grimp":"slow"}'))`,
   ],
+  [
+    "tiers out of memory without the cap they had",
+    `UPDATE meta SET coverage = json_set(coverage, '$.outOfMemory', json('{"tiers":{"grimp":"reached the cap"}}'))`,
+  ],
+  [
+    "a tier out of memory whose reason is not a string",
+    `UPDATE meta SET coverage = json_set(coverage, '$.outOfMemory', json('{"memoryMax":"3G","tiers":{"grimp":1}}'))`,
+  ],
   ["a detail that is not one", "UPDATE meta SET detail = 'complete'"],
   ["a no_source other than 0 or 1", "UPDATE meta SET no_source = 2"],
   [
@@ -236,6 +244,24 @@ it.each<[string, string]>([
     reason: "not an hakutaku store",
   }),
 );
+
+it("reads back the tiers that ran out of memory, and a store with none as before", () => {
+  const outOfMemory = {
+    memoryMax: "3G",
+    tiers: {
+      "scip-typescript":
+        "reached the 3G memory cap; rebuild with a larger --memory-max",
+    },
+  };
+  const c = emptyContent();
+  c.meta[0].coverage = { ...c.meta[0].coverage, outOfMemory };
+  const s = openStore(miniStore(c)) as Store;
+  expect(s.meta.coverage.outOfMemory).toEqual(outOfMemory);
+  s.close();
+  const plain = openStore(miniStore(emptyContent())) as Store;
+  expect(plain.meta.coverage.outOfMemory).toBeUndefined();
+  plain.close();
+});
 
 it("names a newer schema whatever else its meta holds", () => {
   // no run, and a meta of another layout

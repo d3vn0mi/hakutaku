@@ -1,5 +1,48 @@
 import { expect, it } from "vitest";
-import { innerFailure } from "../../../src/extract/rerun.js";
+import {
+  innerArgv,
+  innerFailure,
+  type Rerun,
+} from "../../../src/extract/rerun.js";
+
+const rerun: Rerun = {
+  sandbox: "bubblewrap",
+  dir: "/srv/observatory/export",
+  out: "/srv/observatory/store/store.sqlite",
+  enginesDir: "/srv/observatory/engines",
+  detail: "standard",
+  noSource: false,
+  memoryMax: "3G",
+  pythonPath: null,
+  home: "/srv/astronomer",
+};
+
+it("tells the sandboxed run whether its sandbox caps memory, and the home directory to name ~", () => {
+  const capped = innerArgv(rerun, true);
+  expect(capped.slice(2)).toEqual([
+    "extract",
+    "/srv/observatory/export",
+    "--out",
+    "/srv/observatory/store/store.sqlite",
+    "--engines-dir",
+    "/srv/observatory/engines",
+    "--detail",
+    "standard",
+    "--sandbox",
+    "none",
+    "--sandboxed-by",
+    "bubblewrap",
+    "--memory-max",
+    "3G",
+    "--memory-capped",
+    "--home",
+    "/srv/astronomer",
+  ]);
+  const uncapped = innerArgv({ ...rerun, home: null, noSource: true }, false);
+  expect(uncapped).not.toContain("--memory-capped");
+  expect(uncapped).not.toContain("--home");
+  expect(uncapped).toContain("--no-source");
+});
 
 it("takes the sandboxed run's own message, to the end of the stderr seen", () => {
   expect(

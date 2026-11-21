@@ -1055,7 +1055,7 @@ it("fails with dependency-cruiser's own error when it exits non-zero, and delete
     'process.stdout.write("{"); process.stderr.write("\\n  ERROR: the config is not valid\\n"); process.exit(1);',
   );
   await expect(depcruiseDriver.run(ctx)).rejects.toThrow(
-    /^dependency-cruiser failed: ERROR: the config is not valid$/,
+    /^dependency-cruiser failed: exit code 1\n {2}ERROR: the config is not valid$/,
   );
   expect(existsSync(join(ctx.workDir, "depcruise.out.json"))).toBe(false);
   const quiet = standIn("process.exit(3);");
@@ -1065,6 +1065,37 @@ it("fails with dependency-cruiser's own error when it exits non-zero, and delete
   const killed = standIn('process.kill(process.pid, "SIGTERM");');
   await expect(depcruiseDriver.run(killed)).rejects.toThrow(
     /^dependency-cruiser failed: stopped by SIGTERM$/,
+  );
+  // what it said comes below how it ended, and never hides the signal
+  const said = standIn(
+    'process.stderr.write("orbit: dying\\n"); process.kill(process.pid, "SIGTERM");',
+  );
+  await expect(depcruiseDriver.run(said)).rejects.toThrow(
+    /^dependency-cruiser failed: stopped by SIGTERM\norbit: dying$/,
+  );
+});
+
+it("names the snapshot, the export, the work directory and the engines by token in its error", async () => {
+  const ctx = standIn("");
+  const said = [
+    `cannot read ${ctx.snapshotDir}/web/a.ts`,
+    `with ${ctx.exportDir}/tsconfig.json`,
+    `from ${ctx.workDir}/depcruise.run.json`,
+    `at ${ctx.enginesDir}/node_modules/dependency-cruiser/bin/x.mjs`,
+  ].join("\n");
+  writeFileSync(
+    join(ctx.enginesDir, readLock().lock.engines["dependency-cruiser"].bin),
+    `process.stderr.write(${JSON.stringify(said)}); process.exit(2);`,
+  );
+  const failure = depcruiseDriver.run(ctx);
+  await expect(failure).rejects.toThrow(
+    [
+      "dependency-cruiser failed: exit code 2",
+      "cannot read <snapshot>/web/a.ts",
+      "with <export>/tsconfig.json",
+      "from <work>/depcruise.run.json",
+      "at <engines>/node_modules/dependency-cruiser/bin/x.mjs",
+    ].join("\n"),
   );
 });
 

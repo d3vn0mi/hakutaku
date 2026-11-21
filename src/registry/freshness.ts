@@ -8,9 +8,11 @@
 //   5. the head is not the built commit: true, "<ref> is at <head 12>, the store at <built 12>";
 //   6. otherwise false, with no reason.
 // A failed attempt comes first, so a first build whose gates failed, which leaves no store, still
-// says why. An attempt without a reason drops the ": <reason>". headCommit is the full head
-// whenever it was read, and null otherwise.
+// says why. An attempt without a reason drops the ": <reason>"; one with a reason is cleaned
+// again, the home directory, which it reads from HOME, named ~ and secrets redacted, whatever
+// build wrote it. headCommit is the full head whenever it was read, and null otherwise.
 import type { Stale } from "../model/index.js";
+import { cleanReason } from "../redact/index.js";
 import type { Attempt, NotBuilt } from "../store/index.js";
 import type { RefResult } from "./types.js";
 
@@ -27,7 +29,9 @@ export function computeFreshness(
         ? "the last build failed its gates"
         : "the last build failed";
     const reason =
-      attempt.reason === undefined ? what : `${what}: ${attempt.reason}`;
+      attempt.reason === undefined
+        ? what
+        : `${what}: ${cleanReason(attempt.reason)}`;
     return { headCommit, stale: true, reason };
   }
   if (typeof built !== "string") {

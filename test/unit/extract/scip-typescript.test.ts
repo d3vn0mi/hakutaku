@@ -114,12 +114,12 @@ it.each<[string, string, RegExp]>([
   [
     "its error on stderr",
     'process.stderr.write("\\nError: Cannot find module typescript\\n"); process.exit(1);',
-    /^scip-typescript failed: Error: Cannot find module typescript$/,
+    /^scip-typescript failed: exit code 1\nError: Cannot find module typescript$/,
   ],
   [
     "the error line it prints on stdout",
     'console.log("+ project (3ms)"); console.log("error: no files got indexed. To fix this problem, add files."); process.exit(1);',
-    /^scip-typescript failed: error: no files got indexed\. To fix this problem, add files\.$/,
+    /^scip-typescript failed: exit code 1\nerror: no files got indexed\. To fix this problem, add files\.$/,
   ],
   [
     "a bare exit code",
@@ -130,6 +130,13 @@ it.each<[string, string, RegExp]>([
     "a signal",
     'process.kill(process.pid, "SIGTERM");',
     /^scip-typescript failed: stopped by SIGTERM$/,
+  ],
+  [
+    // Node aborts once it says so; the stand-in exits as an abort through a shell would, so
+    // that no core is dumped
+    "its heap running out, which a larger memory cap repairs",
+    'process.stderr.write("FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory\\n"); process.exit(134);',
+    /^scip-typescript failed: ran out of JavaScript heap; rebuild with a larger --memory-max\nFATAL ERROR: Reached heap limit/,
   ],
   [
     // scip-typescript catches an error in one file, prints it, and goes on with exit 0,

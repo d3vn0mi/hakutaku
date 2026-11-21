@@ -28,6 +28,7 @@ export interface TinyOptions {
   tiers?: Coverage["tiers"];
   noSource?: boolean;
   cycleSeverity?: Severity;
+  outOfMemory?: Coverage["outOfMemory"];
 }
 
 export const TINY_CTX: QueryCtx = Object.freeze({
@@ -326,6 +327,9 @@ export function tinyContent(opts: TinyOptions = {}): StoreContent {
           noSourceFiles: 0,
           denied: 1,
           cycleSeverity: opts.cycleSeverity ?? "warn",
+          ...(opts.outOfMemory === undefined
+            ? {}
+            : { outOfMemory: opts.outOfMemory }),
         },
       },
     ],

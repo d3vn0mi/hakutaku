@@ -510,6 +510,25 @@ describe("compiler tiers", () => {
     expect(compilerTier(failed, "typescript")).toEqual(
       not("scip-typescript fell back"),
     );
+    // a tier that ran out of memory says so, with its repair, in place of "fell back"
+    const capped =
+      "reached the 3G memory cap; rebuild with a larger --memory-max";
+    const outOfMemory = (tiers: Record<string, string>) =>
+      openTiny({
+        detail: "deep",
+        tiers: { "scip-typescript": "failed", "scip-python": "failed" },
+        outOfMemory: { memoryMax: "3G", tiers },
+      });
+    expect(
+      compilerTier(outOfMemory({ "scip-typescript": capped }), "typescript"),
+    ).toEqual(not(`scip-typescript ${capped}`));
+    expect(
+      compilerTier(outOfMemory({ "scip-python": capped }), "python"),
+    ).toEqual(not(`scip-python ${capped}`));
+    // another tier's reason is not this one's
+    expect(
+      compilerTier(outOfMemory({ "scip-python": capped }), "typescript"),
+    ).toEqual(not("scip-typescript fell back"));
     expect(compilerTier(quick, "python")).toEqual(not("quick detail"));
     expect(compilerTier(s, "python")).toEqual(not("below deep detail"));
     expect(compilerTier(deep, "python")).toEqual(not("scip-python fell back"));
