@@ -1090,8 +1090,8 @@ it(
   TIMEOUT,
 );
 
-// Whether bubblewrap, and systemd-run beside it, work here. A test that needs bubblewrap is
-// skipped where it does not work, and fails in CI.
+// Whether bubblewrap, and a systemd-run scope beside it, work here. A test that needs bubblewrap
+// is skipped where it does not work, and fails in CI; the scope is what caps its memory.
 const bwrap = commandProbe("bubblewrap", [
   "bwrap",
   "--unshare-all",
@@ -1101,14 +1101,12 @@ const bwrap = commandProbe("bubblewrap", [
   "/",
   "true",
 ]);
-const userManager = commandProbe("a systemd user manager", [
+const scopes = commandProbe("a systemd user manager that starts a scope", [
   "systemd-run",
   "--user",
-  "--wait",
+  "--scope",
   "--quiet",
   "--collect",
-  "-p",
-  "PrivateNetwork=yes",
   "true",
 ]);
 
@@ -1149,7 +1147,7 @@ it(
       grimp: "ran",
       "scip-typescript": "ran",
     });
-    if (userManager.ok) {
+    if (scopes.ok) {
       // the scope that caps bubblewrap's memory is read from outside it
       expect(facts?.peakRssBytes).toBeGreaterThan(0);
       expect(facts?.warnings).not.toContain(

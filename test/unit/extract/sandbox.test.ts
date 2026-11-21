@@ -812,9 +812,11 @@ it("runs systemd-run alone when it is the sandbox, with OOMPolicy where its serv
 // The live runs below need the real tools: each runs where its probes pass, is skipped where one
 // fails, and fails in CI where one fails.
 const bwrap = commandProbe("bubblewrap", BWRAP_PROBE.split(" "));
-const userManager = commandProbe(
-  "a systemd user manager",
-  SYSTEMD_RUN_PROBE.split(" "),
+// The scope that caps bubblewrap's memory needs a user manager that starts a scope, not only a
+// service.
+const scopes = commandProbe(
+  "a systemd user manager that starts a scope",
+  SCOPE_PROBE.split(" "),
 );
 // The probe detectSandbox takes systemd-run on, run here as it is: a service with no network that
 // writes only its bound directory.
@@ -980,7 +982,7 @@ it("runs a command in bubblewrap that reads the export and nothing outside its b
 });
 
 it("runs bubblewrap inside a systemd-run scope", async (ctx) => {
-  requireInCI(ctx, bwrap, userManager);
+  requireInCI(ctx, bwrap, scopes);
   const { p, outside, storeDir } = liveLayout();
   const sleeper = sleeperIn(outside);
   const { argv, warnings } = await sandboxCommand("bubblewrap", p, [
@@ -1124,7 +1126,7 @@ const r = spawnSync(process.execPath, ["-e", "const a = []; for (let i = 0; i < 
 console.log(JSON.stringify({ status: r.status, signal: r.signal }));`;
 
 it("keeps a capped sandbox running when the kernel kills one of its processes at the cap, which it stops without OOMPolicy", async (ctx) => {
-  requireInCI(ctx, bwrap, userManager, oomScope);
+  requireInCI(ctx, bwrap, scopes, oomScope);
   const { p } = liveLayout();
   const capped = { ...p, memoryMax: "200M" };
   const { argv } = await sandboxCommand("bubblewrap", capped, [
