@@ -22,7 +22,7 @@ import {
 } from "../store/index.js";
 import { cgroupOf, memoryPeak, oomKills } from "./cgroup.js";
 import type { ExtractResult } from "./index.js";
-import { runEnd } from "./run.js";
+import { LARGER_CAP } from "./run.js";
 import { capsMemory, type Sandbox, sandboxCommand } from "./sandbox.js";
 
 // The package root: two levels above this module, in src/ as in dist/. The re-run starts the
@@ -132,6 +132,7 @@ export async function extractInSandbox(r: Rerun): Promise<SandboxedBuild> {
   const { message, printed } = innerFailure(ended, {
     sandbox: r.sandbox,
     memoryCap: capped ? r.memoryMax : null,
+    oomContinue: argv.includes("OOMPolicy=continue"),
     commit: r.commit,
     draft: draftAttempt(r.work),
   });
@@ -371,6 +372,9 @@ export function innerFailure(
   ctx: {
     sandbox: Sandbox;
     memoryCap: string | null; // the cap the sandbox applies, or null when it applies none
+    // whether the sandbox command carries OOMPolicy=continue, so that a kill at the cap stops
+    // only the process the kernel killed, never the whole unit
+    oomContinue: boolean;
     commit: string;
     draft: Attempt | null; // the inner run's last attempt
   },
@@ -400,13 +404,21 @@ export function innerFailure(
   };
 }
 
-// How the inner run ended, worded as an engine's end is. A signal that stopped it reaches this
-// process as an exit code, unless it stopped the sandbox command itself: bubblewrap exits 128 + N
-// for a run that signal N stopped, and systemd-run --wait exits 255 for a service a signal
-// stopped, which is most often SIGKILL.
+// How the inner run ended. A signal that stopped it reaches this process as an exit code, unless
+// it stopped the sandbox command itself: bubblewrap exits 128 + N for a run that signal N
+// stopped, and systemd-run --wait exits 255 for a service whose main process a signal stopped,
+// which is most often SIGKILL, and 1 for one that failed otherwise.
+//
+// The memory cap is said only where an OOM kill was counted in bubblewrap's scope. Nothing else
+// tells a kill at the cap from another, so where no count could be read, an end the cap can give
+// names it only as one possible cause, with its repair: a SIGKILL, which is how the kernel kills
+// a process at the cap, and so how systemd-run's 255 ends a service under OOMPolicy=continue
+// (probed); and, under systemd-run without OOMPolicy=continue, an exit 1, which is how a kill at
+// the cap that stops the whole service ends it (probed: systemd 255 says "oom-kill" for it, and
+// "signal" for the same kill under OOMPolicy=continue).
 function endOf(
   ended: Pick<Ended, "code" | "signal" | "oomKilled">,
-  ctx: { sandbox: Sandbox; memoryCap: string | null },
+  ctx: { sandbox: Sandbox; memoryCap: string | null; oomContinue: boolean },
 ): string {
   let code = ended.code;
   let signal = ended.signal;
@@ -424,25 +436,18 @@ function endOf(
       code = null;
     }
   }
-  const end = runEnd(
-    {
-      exitCode: code,
-      signal,
-      timedOut: false,
-      wallMs: 0,
-      cpuMs: null,
-      peakRssBytes: null,
-      stdout: "",
-      stderrTail: "",
-      stderrCut: false,
-      stderrMarked: false,
-      heapOutOfMemory: false,
-      oomKilled: ended.oomKilled,
-      startError: null,
-    },
-    { timeoutMs: 0, memoryCap: ctx.memoryCap, heapCap: null, clean: (t) => t },
-  );
-  return end?.text ?? `exit code ${code}`;
+  const text = signal !== null ? `stopped by ${signal}` : `exit code ${code}`;
+  if (ctx.memoryCap === null) return text;
+  if (ended.oomKilled === true) {
+    return `reached the ${ctx.memoryCap} memory cap; ${LARGER_CAP}`;
+  }
+  const maybeCap =
+    ended.oomKilled === null &&
+    (signal === "SIGKILL" ||
+      (ctx.sandbox === "systemd-run" && !ctx.oomContinue && code === 1));
+  return maybeCap
+    ? `${text}; if that was the ${ctx.memoryCap} memory cap, ${LARGER_CAP}`
+    : text;
 }
 
 // The name of signal n, or null for a number no signal has.

@@ -108,6 +108,7 @@ const failed = (reason: string, commit = COMMIT): Attempt => ({
 const ctx = {
   sandbox: "bubblewrap" as const,
   memoryCap: null,
+  oomContinue: true,
   commit: COMMIT,
   draft: null,
 };
@@ -172,13 +173,17 @@ it("words how the sandboxed run ended when it printed nothing, naming the stage 
   expect(stopped(137, null).message).toBe(
     "the sandboxed extract failed: stopped by SIGKILL",
   );
-  // under a memory cap, a SIGKILL that no OOM count rules out is the cap
+  // the cap is said only where an OOM kill was counted
   const cap =
     "the sandboxed extract failed: reached the 3G memory cap; rebuild with a larger --memory-max";
-  expect(stopped(137, null, { memoryCap: "3G" }).message).toBe(cap);
   expect(stopped(137, null, { memoryCap: "3G", oomKilled: true }).message).toBe(
     cap,
   );
+  // a SIGKILL that no count can tell from another under a memory cap names the cap only as one
+  // possible cause, with its repair
+  const maybeCap =
+    "the sandboxed extract failed: stopped by SIGKILL; if that was the 3G memory cap, rebuild with a larger --memory-max";
+  expect(stopped(137, null, { memoryCap: "3G" }).message).toBe(maybeCap);
   expect(
     stopped(137, null, { memoryCap: "3G", oomKilled: false }).message,
   ).toBe("the sandboxed extract failed: stopped by SIGKILL");
@@ -186,12 +191,48 @@ it("words how the sandboxed run ended when it printed nothing, naming the stage 
   expect(
     stopped(null, "SIGKILL", { memoryCap: "3G", oomKilled: true }).message,
   ).toBe(cap);
-  // systemd-run exits 255 for a service a signal stopped
+  expect(stopped(null, "SIGKILL", { memoryCap: "3G" }).message).toBe(maybeCap);
+  // systemd-run exits 255 for a service whose main process a signal stopped, as the kernel's
+  // kill at the cap does under OOMPolicy=continue, and 1 for one that failed otherwise, as an
+  // OOM kill that stops the service does without it
   expect(
     stopped(255, null, { sandbox: "systemd-run", memoryCap: "3G" }).message,
-  ).toBe(cap);
+  ).toBe(maybeCap);
+  expect(
+    stopped(255, null, {
+      sandbox: "systemd-run",
+      memoryCap: "3G",
+      draft: atStage,
+    }).message,
+  ).toBe(
+    "the sandboxed extract failed while running scip-typescript: stopped by SIGKILL; if that was the 3G memory cap, rebuild with a larger --memory-max",
+  );
   expect(stopped(1, null, { sandbox: "systemd-run" }).message).toBe(
     "the sandboxed extract failed: exit code 1",
+  );
+  // under OOMPolicy=continue the cap never stops the service; without it, an exit 1 may be the
+  // cap's
+  expect(
+    stopped(1, null, { sandbox: "systemd-run", memoryCap: "3G" }).message,
+  ).toBe("the sandboxed extract failed: exit code 1");
+  expect(
+    stopped(1, null, {
+      sandbox: "systemd-run",
+      memoryCap: "3G",
+      oomContinue: false,
+    }).message,
+  ).toBe(
+    "the sandboxed extract failed: exit code 1; if that was the 3G memory cap, rebuild with a larger --memory-max",
+  );
+  expect(
+    stopped(1, null, { memoryCap: "3G", oomContinue: false }).message,
+  ).toBe("the sandboxed extract failed: exit code 1");
+  // another signal, or no cap, names no cap
+  expect(stopped(143, null, { memoryCap: "3G" }).message).toBe(
+    "the sandboxed extract failed: stopped by SIGTERM",
+  );
+  expect(stopped(255, null, { sandbox: "systemd-run" }).message).toBe(
+    "the sandboxed extract failed: stopped by SIGKILL",
   );
   expect(stopped(200, null).message).toBe(
     "the sandboxed extract failed: exit code 200",

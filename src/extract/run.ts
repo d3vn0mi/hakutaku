@@ -281,7 +281,8 @@ export interface RunEnd {
 }
 
 const DEFAULT_MEMORY_MAX = "3G";
-const LARGER_CAP = "rebuild with a larger --memory-max";
+// The repair of a run that a larger memory cap may let finish.
+export const LARGER_CAP = "rebuild with a larger --memory-max";
 
 // How a run ended, the first that applies: it could not start; it timed out; it reached the
 // memory cap, which only a sandbox that applies one can say, from an OOM kill counted in its
