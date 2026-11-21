@@ -188,9 +188,9 @@ The road to 0.1:
         any of them from a shell. Every answer that can carry repository content is marked as
         untrusted, and the answers about references, dependencies, paths and text search name
         their blind spots.
-  - [x] **Golden answers.** Every tool's answers on the synthetic sample, pinned byte for byte in
-        [`test/golden/`](test/golden/), and the oracle's facts that only the tools can show,
-        checked through them.
+  - [x] **Golden answers.** Every tool's answers to a fixed set of calls on the synthetic sample,
+        pinned byte for byte in [`test/golden/`](test/golden/), and the oracle's facts that only
+        the tools can show, checked through them.
   - [x] **Conformance.** An MCP client over stdio replays the golden calls, all but the one to
         `code_repos` and those made at a detail other than standard or under a size cap of their
         own, and gets each golden answer back byte for byte. A store swapped in under a running
