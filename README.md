@@ -171,11 +171,13 @@ The road to 0.1:
         hostile-repository cases.
   - [ ] **The commands** `map`, `list`, `profile` and `doctor`, and deep Python detail.
 - [ ] **Tools and MCP server.** The 13 tools, with labels, paging and errors. `hakutaku query`. The
-      golden tests. In progress, 11 of 16 steps done: the tool contract (types, limits, errors,
-      label wording, argument checks and paging), all 13 tools answering from a store, and the host
+      golden tests. In progress, 12 of 16 steps done: the tool contract (types, limits, errors,
+      label wording, argument checks and paging), all 13 tools answering from a store, the host
       that serves the registered repositories, says whether each map is current, and rate-limits
-      refreshes. Next: the MCP server and `hakutaku query`, the golden answers, conformance and the
-      latency check.
+      refreshes, and the stdio MCP server with `hakutaku mcp` and `hakutaku query`. Every answer
+      that can carry repository content is marked as untrusted, and the answers about references,
+      dependencies, paths and text search name their blind spots. Next: the golden answers,
+      conformance and the latency check.
 - [ ] **Viewer.** Lenses, depth levels, search and filters, the source view, accessibility and the
       performance budget.
 - [ ] **Release.** CI, the hostile-repository suite, and an npm release with provenance. A static map of
@@ -333,7 +335,8 @@ Planned for 0.1. All 13 are read-only, except `code_refresh`, which asks for a r
 - **Untrusted content.** Everything taken from the repository is data, not instructions: source
   lines, snippets and signatures, and also file paths, names and IDs, which a repository can fill
   with instruction-shaped text. `code_snippet` marks its result `untrusted: true`, and the MCP server
-  will mark every answer that carries repository content.
+  marks every answer, and every error that can quote the repository, with
+  `_meta: { "untrustedContent": true }`.
 - **Errors** are one JSON object with a code: `unknown_repo`, `not_built`, `not_found` (with near
   misses and renames), `ambiguous` (with candidates), `invalid_argument`, `denied_file`, `no_source`,
   `rate_limited`, `refresh_disabled` or `internal`.
@@ -617,11 +620,12 @@ hakutaku stands on the work of others.
   [graphology](https://github.com/graphology/graphology),
   [highlight.js](https://github.com/highlightjs/highlight.js) and the
   [IBM Plex](https://github.com/IBM/plex) fonts.
+- **The MCP server:** the [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk).
 - **Algorithms:** PageRank (Brin and Page) and Tarjan's strongly connected components.
 
-The engines are installed separately, never bundled. The repository vendors one upstream file, SCIP's
-schema, which hakutaku's decoder is written from. [NOTICE](NOTICE) credits each upstream project as
-it is added.
+The engines are installed separately, never bundled. The MCP SDK is installed with the package, as
+its one direct dependency. The repository vendors one upstream file, SCIP's schema, which
+hakutaku's decoder is written from. [NOTICE](NOTICE) credits each upstream project as it is added.
 
 ## The name
 
