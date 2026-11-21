@@ -48,8 +48,9 @@ Every byte of an analysed repository is treated as data. As designed for 0.1:
   system and global git config. Symlinks are never created, submodules are not followed, and unsafe
   paths are refused.
 - **No repository config or script runs.** The repository's engine configs are removed, or never
-  read: hakutaku generates its own. Python runs isolated (`python -I`), and grimp parses files
-  without importing them. hakutaku never runs `npm install`, `pip install`, `setup.py`,
+  read: hakutaku generates its own. hakutaku runs Python isolated (`python -I`), and grimp parses
+  files without importing them; at deep detail, Pyright runs that Python only for a fixed script of
+  its own, which first drops the working directory from the import path. hakutaku never runs `npm install`, `pip install`, `setup.py`,
   `conftest.py`, a test runner or a package script on an analysed repository.
 - **Extraction is offline and sandboxed:** on Linux, bubblewrap, or else a `systemd-run --user`
   service with no network and the same view of the file system. Either sees only its inputs, the

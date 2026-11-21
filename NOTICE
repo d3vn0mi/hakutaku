@@ -77,7 +77,7 @@ Use: the store, through node:sqlite
 
 ### Python
 Licence: PSF-2.0
-Use: runs grimp, through hakutaku's driver
+Use: runs grimp, through hakutaku's driver; at deep detail, Pyright asks it for its version and search paths
 
 ### git
 Licence: GPL-2.0-only

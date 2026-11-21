@@ -28,7 +28,7 @@ Everyone who takes part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 - Linux or macOS. Windows is not supported in v1.
 - Node.js, the current LTS release. It must be 22.16 or later: from 22.16, `node:sqlite` needs no flag and its SQLite includes the FTS5 full-text index that hakutaku's store uses.
-- Python 3, for the grimp driver and the Python fixtures.
+- Python 3, for the grimp driver, the deep detail level and the Python fixtures.
 - git.
 - Optional, on Linux: [bubblewrap](https://github.com/containers/bubblewrap) and a systemd user
   manager, to run the live sandbox tests and the hostile fixtures inside a real sandbox. Without a
@@ -46,23 +46,32 @@ npm run ci:local  # the build, typecheck, Biome, unit and oracle tests, secret s
 ```
 
 The analysis engines are not npm dependencies. They are pinned, with integrity hashes, in
-`engines.lock.json`, and installed by `hakutaku engines install`.
+`engines.lock.json`, and installed by `hakutaku engines install`. The oracle and hostile tests build
+with every engine, scip-python included, so install the deep ones too:
 
-**What CI will run**, on Linux with the current Node LTS and the current Node release, plus a macOS
-smoke test:
+```sh
+npm run build && node dist/cli/main.js engines install --deep
+```
+
+A test whose engine is missing is skipped locally, saying why, and fails in CI.
+
+**What CI will run**, on Linux with Node 22.16, the current Node LTS and the current Node release,
+plus a macOS smoke test:
 
 1. typecheck and lint;
 2. unit tests;
-3. the engines, installed from the lockfile;
+3. the engines, the deep ones included, installed from the lockfile;
 4. the golden answers on the synthetic sample;
-5. the hostile-repository fixtures, inside a working sandbox;
-6. MCP conformance;
-7. the viewer end to end, with Playwright: offline, keyboard only, an accessibility scan, and a
+5. a determinism check: the three Node versions must build the sample to one content hash;
+6. the hostile-repository fixtures, first with no sandbox, since the no-execution controls must hold
+   without one, then inside a working sandbox;
+7. MCP conformance;
+8. the viewer end to end, with Playwright: offline, keyboard only, an accessibility scan, and a
    performance smoke test on a generated large repository;
-8. an allowlist for what `npm pack` may contain;
-9. a licence report;
-10. a secret scan;
-11. a check for home-directory paths and stray stores.
+9. an allowlist for what `npm pack` may contain;
+10. a licence report;
+11. a secret scan;
+12. a check for home-directory paths and stray stores.
 
 ## The planned layout
 

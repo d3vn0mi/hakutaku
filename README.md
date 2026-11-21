@@ -126,7 +126,8 @@ The road to 0.1:
         configs, shadowing Python modules, host symlinks and path tricks: none of them ran, and
         nothing from the host leaked. One resource finding: a 50 MB single-line minified file
         exhausted the build's memory cap, so 0.1 keeps oversized and minified files out of every
-        engine's input.
+        engine's input. Only Pyright, at `deep` detail, still follows an import into one (see
+        [Limits and blind spots](#limits-and-blind-spots)).
   - [x] **Caller accuracy**, judged blind by hand on a stratified sample. Every compiler-bound answer
         in the sample was a real call. Import-scoped name matches were right often, but not often
         enough to state as facts, so the `scoped` label tells agents to confirm with `code_snippet`.
@@ -138,9 +139,9 @@ The road to 0.1:
   - [x] **Real costs**, measured in resource-capped units. On a public repository of about 5,300
         files (marimo), a full map took about a minute and peaked near 1.1 GB, queries answered in a
         few milliseconds, and no network connection was opened.
-- [ ] **Engine and store.** Export, sandboxed extract, the store, metrics, launch manifests, the
-      profile generator, redaction, gates, the synthetic sample and its oracle, `hakutaku map`.
-      In progress, 24 of 30 steps done:
+- [x] **Engine and store** (done 2026-11-21). Export, sandboxed extract, the store, metrics, launch
+      manifests, the profile generator, redaction, gates, the synthetic sample and its oracle,
+      `hakutaku map`. All 30 steps:
   - [x] **The store.** One SQLite file per build, with a full-text index and a content hash, written
         deterministically. Its reader, its cache and the metric algorithms.
   - [x] **Redaction.** The rules that replace secret-shaped text, and the denylist that keeps files
@@ -167,9 +168,16 @@ The road to 0.1:
   - [x] **Merge and gates.** Engine output merged into one store, with ranks, cycles, churn and
         co-change stored. Five quality gates decide whether a new store replaces the current one,
         which keeps serving when a gate fails. `hakutaku extract`.
-  - [ ] **Proof.** The synthetic sample and its golden answers, build acceptance, and the
-        hostile-repository cases.
-  - [ ] **The commands** `map`, `list`, `profile` and `doctor`, and deep Python detail.
+  - [x] **Proof.** A synthetic sample repository ([`fixtures/observatory/`](fixtures/observatory/)),
+        with a TypeScript web UI, a Python service, shell scripts and launch manifests, built by a
+        script with a fixed history, and the hand-written oracle its store is checked against. A
+        build killed part-way leaves the current store serving. Traced at standard detail, a build
+        opens no network socket and writes nothing to the repository or its snapshot. Node 22.16,
+        the current LTS and the current release build the same content hash, and broken profiles
+        fail the gates while the previous store keeps serving. The hostile-repository cases run
+        through export and extract in CI.
+  - [x] **The commands** `map`, `list`, `profile` and `doctor`, and deep Python detail, which runs
+        scip-python under a 15 GB memory cap by default.
 - [ ] **Tools and MCP server.** The 13 tools, with labels, paging and errors. `hakutaku query`. The
       golden tests. In progress, 12 of 16 steps done: the tool contract (types, limits, errors,
       label wording, argument checks and paging), all 13 tools answering from a store, the host
@@ -532,7 +540,10 @@ not write. So every byte of an analysed repository is treated as data.
   - Symlinks are recorded, never created. Submodules are not followed, and LFS pointers stay pointers.
     A path with `..`, an absolute path or a control character is refused.
   - The repository's own engine configs are removed, or never read; hakutaku generates every engine
-    config itself. Python runs isolated (`python -I`), and grimp parses files without importing them.
+    config itself. hakutaku runs Python isolated (`python -I`), and grimp parses files without
+    importing them. At `deep` detail, Pyright runs the same pinned Python only to ask for its
+    version and search paths, through a fixed script that first drops the working directory from
+    the import path.
   - hakutaku never runs `npm install`, `pip install`, `setup.py`, `conftest.py`, a test runner or a
     package script on an analysed repository.
 - **Extraction runs offline, in a sandbox.** `--sandbox auto`, the default, uses the strongest one
@@ -575,6 +586,13 @@ analysed repository. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 - **Compiler-precise callers cover TypeScript, JavaScript and Python only.** Shell is matched by
   name. Other languages appear as files, with their lines and history.
 - **Python callers are compiler-bound only at `deep` detail.** Below it, they are `scoped`.
+- **At `deep` detail, the host's Python can change a few answers.** Pyright asks the pinned Python
+  for its search paths, which include that Python's own site-packages, so a package installed there
+  can change some deep call answers from one host to another.
+- **At `deep` detail, Pyright follows imports into files that hakutaku leaves out.** It reads a
+  large or generated Python file that an indexed file imports, though nothing from that file is
+  stored. A huge imported module can use up the deep tier's hour or its memory cap; the build then
+  falls back to `scoped` Python callers and says so.
 - **No dependency install.** A receiver typed by a package that is not installed is invisible to the
   compiler tier, and `blindSpots` says so.
 - **Computed `import()` paths are not followed.** `unscoped` name matches are the only way to see
