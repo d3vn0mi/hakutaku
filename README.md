@@ -91,9 +91,10 @@ flowchart TD
 
 The two stages are separate on purpose. Export needs git and reads your repository. Extract needs
 neither: it runs the parsers over untrusted input, with no network. So each stage can run in its own
-sandbox. A new store is checked against gates (every file indexed, unresolved imports under a
-threshold, no denylisted path, redaction done) before it replaces the old one, and the previous store
-is kept.
+sandbox. A new store is checked against gates before it replaces the old one, and the previous store
+is kept. The gates want each TypeScript and JavaScript file given to the engines indexed by
+dependency-cruiser and scip-typescript when they ran, each module of a Python package named under the
+profile's Python roots, unresolved imports under a threshold, no denylisted path, and redaction done.
 
 ### What the store knows
 
@@ -571,7 +572,8 @@ As planned for 0.1:
   quick, standard and deep detail, and when a compiler tier fails.
 - **When an engine is missing or fails,** hakutaku falls back to its own resolver over the import
   statements. `blindSpots` names a compiler tier that did not run, and says when Python imports come
-  from hakutaku's own resolver because grimp did not run.
+  from hakutaku's own resolver because grimp did not run. When grimp ran, it says how many Python
+  files still have imports from that resolver, which reads every import of a file grimp did not read.
 - **Engines are installed, not depended on.** `hakutaku engines install` reads `engines.lock.json`,
   which pins exact versions with integrity hashes. It installs them into
   `$XDG_DATA_HOME/hakutaku/engines/`, and grimp from binary wheels with `--require-hashes`. Only
