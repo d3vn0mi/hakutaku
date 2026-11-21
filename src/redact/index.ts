@@ -6,5 +6,6 @@ export {
   textCleaner,
 } from "./clean.js";
 export { DENYLIST, isDenied } from "./denylist.js";
+export { errorDetail, printable, printableLines } from "./printable.js";
 export { findSecrets, redactText, shannonEntropy } from "./redact.js";
 export { REDACTION_RULES, type RedactionRule } from "./rules.js";
