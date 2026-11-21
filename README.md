@@ -140,7 +140,7 @@ The road to 0.1:
         few milliseconds, and no network connection was opened.
 - [ ] **Engine and store.** Export, sandboxed extract, the store, metrics, launch manifests, the
       profile generator, redaction, gates, the synthetic sample and its oracle, `hakutaku map`.
-      In progress, 18 of 30 steps done:
+      In progress, 24 of 30 steps done:
   - [x] **The store.** One SQLite file per build, with a full-text index and a content hash, written
         deterministically. Its reader, its cache and the metric algorithms.
   - [x] **Redaction.** The rules that replace secret-shaped text, and the denylist that keeps files
@@ -155,14 +155,18 @@ The road to 0.1:
         of history. git runs with every transport refused and a throwaway home; paths holding `..`,
         `.git` or control characters are refused; the repository's own engine configs are removed,
         and hakutaku generates its own.
-  - [ ] **The engines and the sandbox.** Pinned engines, their install, and extract inside the
-        sandbox. Done so far: the engines are pinned in a hash-checked lock and installed from it,
-        and the sandbox is built. On Linux it runs extract inside bubblewrap or, where bubblewrap does
-        not work, a systemd-run service checked to have no network. Each engine runs in a fresh
-        environment under a timeout, with a memory cap wherever systemd-run is available. The
-        ast-grep and dependency-cruiser drivers are written; scip-typescript and grimp are next.
-  - [ ] **Merge and gates.** Engine output merged into one store, metrics stored, quality gates,
-        `hakutaku extract`.
+  - [x] **The engines and the sandbox.** The engines are pinned in a hash-checked lock and
+        installed from it. On Linux, extract runs inside bubblewrap or, where bubblewrap does not
+        work, a systemd-run service given the same narrow view of the file system, with no network,
+        no local sockets and read-only control groups, each checked from inside a test service
+        before it is used. A build can write only a fresh work directory of its own; the finished
+        store is checked and swapped in from outside the sandbox. Each engine runs in a fresh
+        environment under a timeout, with a memory cap wherever systemd-run is available; at the
+        cap only the engine stops, and the build says so. Drivers for scip-typescript,
+        dependency-cruiser, grimp and ast-grep.
+  - [x] **Merge and gates.** Engine output merged into one store, with ranks, cycles, churn and
+        co-change stored. Five quality gates decide whether a new store replaces the current one,
+        which keeps serving when a gate fails. `hakutaku extract`.
   - [ ] **Proof.** The synthetic sample and its golden answers, build acceptance, and the
         hostile-repository cases.
   - [ ] **The commands** `map`, `list`, `profile` and `doctor`, and deep Python detail.
@@ -187,15 +191,22 @@ and git. Python 3 is used for Python imports; without it, a fallback resolver la
 Linux, install bubblewrap for the strongest sandbox. Windows is not supported in v1.
 
 ```sh
+# 0. Install once, globally, outside any repository
+npm install -g hakutaku@0.1.0
+
 # 1. Map a repository: profile it, build its store, register it as "my-repo"
-npx hakutaku map . --id my-repo
+hakutaku map . --id my-repo
 
 # 2. Explore the map in your browser (127.0.0.1, behind a session token)
-npx hakutaku view my-repo --open
+hakutaku view my-repo --open
 
 # 3. Serve the tools to an agent, over stdio
-npx hakutaku mcp my-repo
+hakutaku mcp my-repo
 ```
+
+**Do not run hakutaku through `npx` inside a repository.** There, npx prefers the repository's own
+`node_modules` and reads its `.npmrc` before hakutaku starts, so a hostile repository could run its
+own code under hakutaku's name. A global install keeps hakutaku outside every repository it maps.
 
 On first use, `map` names the analysis engines it needs and asks before fetching their pinned,
 hash-checked versions (`--yes` answers for scripts). That install is the only step that uses the
@@ -247,20 +258,26 @@ Map the repository first. The server speaks MCP over stdio and serves exactly th
 when it starts (`mcp <id>...`, or `--all`). A model cannot add a repository, open a path or switch to
 another one.
 
+Register the globally installed hakutaku by absolute paths: the Node.js binary as the command, and
+hakutaku's entry script as its first argument. MCP clients often start servers inside the project
+directory, where `npx` would read that project's files first, and desktop clients do not share your
+shell's `PATH`, so a bare `node` or `hakutaku` may find nothing, or an older Node.js.
+
 **Claude Code**
 
 ```sh
-claude mcp add hakutaku -- npx -y hakutaku@0.1.0 mcp my-repo
+claude mcp add hakutaku -- "$(command -v node)" "$(npm root -g)/hakutaku/dist/cli/main.js" mcp my-repo
 ```
 
-**Claude Desktop**, in `claude_desktop_config.json`:
+**Claude Desktop**, in `claude_desktop_config.json`, with both paths filled in from
+`command -v node` and `npm root -g`:
 
 ```json
 {
   "mcpServers": {
     "hakutaku": {
-      "command": "npx",
-      "args": ["-y", "hakutaku@0.1.0", "mcp", "my-repo"]
+      "command": "/absolute/path/to/node",
+      "args": ["/absolute/path/to/node_modules/hakutaku/dist/cli/main.js", "mcp", "my-repo"]
     }
   }
 }
@@ -271,8 +288,8 @@ claude mcp add hakutaku -- npx -y hakutaku@0.1.0 mcp my-repo
 | Setting | Value |
 |---|---|
 | Transport | stdio |
-| Command | `npx` |
-| Arguments | `-y hakutaku@0.1.0 mcp <repo-id>...`, or `--all` in place of the ids |
+| Command | the absolute path of `node` (`command -v node`) |
+| Arguments | the absolute path of `hakutaku/dist/cli/main.js` under `npm root -g`, then `mcp <repo-id>...`, or `--all` in place of the ids |
 
 `code_refresh` answers `refresh_disabled` unless the server was started with `--allow-refresh`. With
 that flag, it runs the same sandboxed build as `map`: one build at a time, at most once every 10
@@ -313,8 +330,10 @@ Planned for 0.1. All 13 are read-only, except `code_refresh`, which asks for a r
   `JSON.stringify(result, null, 2)`. An
   answer with no paging fields is complete. A longer one goes out a page at a time (`offset`,
   `returned`, `total`, `hasMore`, `nextOffset`), and nothing is ever cut mid-item.
-- **Untrusted text.** Every source line, snippet and signature is repository content, marked as data
-  and not instructions. `code_snippet` marks its result `untrusted: true`.
+- **Untrusted content.** Everything taken from the repository is data, not instructions: source
+  lines, snippets and signatures, and also file paths, names and IDs, which a repository can fill
+  with instruction-shaped text. `code_snippet` marks its result `untrusted: true`, and the MCP server
+  will mark every answer that carries repository content.
 - **Errors** are one JSON object with a code: `unknown_repo`, `not_built`, `not_found` (with near
   misses and renames), `ambiguous` (with candidates), `invalid_argument`, `denied_file`, `no_source`,
   `rate_limited`, `refresh_disabled` or `internal`.
@@ -514,11 +533,21 @@ not write. So every byte of an analysed repository is treated as data.
   - hakutaku never runs `npm install`, `pip install`, `setup.py`, `conftest.py`, a test runner or a
     package script on an analysed repository.
 - **Extraction runs offline, in a sandbox.** `--sandbox auto`, the default, uses the strongest one
-  available. On Linux that is bubblewrap (no network, inputs read-only, one writable output directory,
-  a cleared environment), or else `systemd-run --user` with `PrivateNetwork=yes` and a memory cap.
-  Without either, the build warns and names what is missing. `--sandbox require` fails instead. The
-  environment is built from scratch: `PATH` holds only the engines, Node and Python, and `HOME` is an
-  empty directory, so no API key reaches an engine.
+  available. Without one, the build warns and names what is missing; `--sandbox require` fails
+  instead.
+  - On Linux the strongest is bubblewrap, which shares no namespace with your machine and has a host
+    name of its own. Where bubblewrap does not work, it is a `systemd-run --user` service given the
+    same view of the file system, with no network, no unix socket and read-only control groups. Each
+    of these is checked from inside a test service before a build uses one.
+  - Either way, the sandbox's root holds only the system directories, Node, hakutaku, the pinned
+    Python, the export and the engines, all read-only, and a fresh work directory, the one path a
+    build can write. The finished store is checked and swapped in from outside the sandbox.
+  - The environment is built from scratch: `PATH` holds only Node and Python, and `HOME` is an empty
+    directory, so no API key reaches an engine. No engine writes a core file, and wherever
+    systemd-run is available, a memory cap stops only the engine that reaches it.
+  - **A known limit of systemd-run:** its service shares your machine's process list and host name,
+    which bubblewrap hides. An engine there can read other processes' command lines, though not their
+    environment, working directory or files. Every such build records a warning saying so.
 - **Secrets are never stored.** Denylisted files (`.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`,
   `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`, `.netrc`, `*.kdbx`, `secrets/**`, and your profile's
   extras) never leave the export. A redaction pass replaces secret-looking spans with
@@ -527,8 +556,9 @@ not write. So every byte of an analysed repository is treated as data.
 - **No tool opens what a model names.** No tool takes a filesystem path, glob or URL from a model and
   opens it. After start-up, the MCP server starts no process and opens no socket, except a build when
   it runs with `--allow-refresh`.
-- **Injected instructions stay data.** Repository text is marked as untrusted in every answer. The
-  viewer escapes all of it, under a strict Content Security Policy.
+- **Injected instructions stay data.** Everything a repository controls, its paths and names as well
+  as its text, is treated as untrusted: the server's instructions say so and the answers that carry
+  it are marked. The viewer escapes all of it, under a strict Content Security Policy.
 - **Nothing talks to the outside.** There is no telemetry and no update check. The engine install is
   the one step that uses the network.
 - **Answers never carry** absolute host paths, store paths, environment values or engine command
@@ -575,7 +605,7 @@ Everyone who takes part follows the [Code of Conduct](CODE_OF_CONDUCT.md). Secur
 
 hakutaku stands on the work of others.
 
-- **Analysis engines (planned):** [scip-typescript](https://github.com/sourcegraph/scip-typescript)
+- **Analysis engines:** [scip-typescript](https://github.com/sourcegraph/scip-typescript)
   and [scip-python](https://github.com/sourcegraph/scip-python), which is built on
   [Pyright](https://github.com/microsoft/pyright); both write the [SCIP](https://github.com/scip-code/scip)
   index format. Also [dependency-cruiser](https://github.com/sverweij/dependency-cruiser),
@@ -589,8 +619,9 @@ hakutaku stands on the work of others.
   [IBM Plex](https://github.com/IBM/plex) fonts.
 - **Algorithms:** PageRank (Brin and Page) and Tarjan's strongly connected components.
 
-Nothing is bundled yet. The engines will be installed separately, never bundled.
-[NOTICE](NOTICE) credits each upstream project as it is added.
+The engines are installed separately, never bundled. The repository vendors one upstream file, SCIP's
+schema, which hakutaku's decoder is written from. [NOTICE](NOTICE) credits each upstream project as
+it is added.
 
 ## The name
 

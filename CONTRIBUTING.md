@@ -30,21 +30,23 @@ Everyone who takes part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 - Node.js, the current LTS release. It must be 22.16 or later: from 22.16, `node:sqlite` needs no flag and its SQLite includes the FTS5 full-text index that hakutaku's store uses.
 - Python 3, for the grimp driver and the Python fixtures.
 - git.
-- Optional, on Linux: [bubblewrap](https://github.com/containers/bubblewrap), to run the hostile
-  fixtures inside a real sandbox, as CI does.
+- Optional, on Linux: [bubblewrap](https://github.com/containers/bubblewrap) and a systemd user
+  manager, to run the live sandbox tests and the hostile fixtures inside a real sandbox. Without a
+  working sandbox those tests are skipped locally, each saying why; in CI (`CI=true`) they fail
+  instead, so a sandbox that does not start cannot pass as a skip.
 
 **Then:**
 
 ```sh
 git clone https://github.com/d3vn0mi/hakutaku.git
 cd hakutaku
-npm ci        # the lockfile is committed; always install with npm ci
-npm test      # unit tests and golden answers
+npm ci            # the lockfile is committed; always install with npm ci
+npm test          # the unit tests
+npm run ci:local  # the build, typecheck, Biome, unit and oracle tests, secret scan and tree check
 ```
 
 The analysis engines are not npm dependencies. They are pinned, with integrity hashes, in
-`engines.lock.json`, and installed by `hakutaku engines install`. The exact npm scripts arrive with the
-first code, and this section will list them.
+`engines.lock.json`, and installed by `hakutaku engines install`.
 
 **What CI will run**, on Linux with the current Node LTS and the current Node release, plus a macOS
 smoke test:

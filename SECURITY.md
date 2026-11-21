@@ -51,8 +51,11 @@ Every byte of an analysed repository is treated as data. As designed for 0.1:
   read: hakutaku generates its own. Python runs isolated (`python -I`), and grimp parses files
   without importing them. hakutaku never runs `npm install`, `pip install`, `setup.py`,
   `conftest.py`, a test runner or a package script on an analysed repository.
-- **Extraction is offline and sandboxed:** bubblewrap, or `systemd-run --user` with no network, on
-  Linux. The environment is built from scratch, so no API key or other secret reaches an engine.
+- **Extraction is offline and sandboxed:** on Linux, bubblewrap, or else a `systemd-run --user`
+  service with no network and the same view of the file system. Either sees only its inputs, the
+  engines and one writable work directory. The environment is built from scratch, so no API key or
+  other secret reaches an engine. A systemd-run service shares the machine's process list and host
+  name, which bubblewrap hides, and every build run in one records a warning saying so.
 - **Secrets are never stored.** Denylisted files never leave the export, a redaction pass runs before
   any text enters the store, and a store that fails either check is never used.
 - **No tool opens what a model names.** No tool takes a filesystem path, glob or URL from a model and
@@ -71,7 +74,9 @@ The [README's security model](README.md#security-model) gives the full list.
   effects (`sitecustomize.py`, an `__init__.py`), package scripts, symlinks or crafted paths. This
   holds with `--sandbox none` too: the no-execution controls do not depend on the sandbox.
 - **Sandbox escape.** Extraction that reaches the network, writes outside its output directory, reads
-  outside its inputs and the engines, or inherits environment values.
+  outside its inputs and the engines, or inherits environment values. One exception is documented:
+  under systemd-run, an engine can read other processes' command lines and the host name, as the
+  next section says.
 - **Secret exposure.** A denylisted file, or a secret that redaction should catch, that reaches the
   store, an answer, the viewer or a static export.
 - **Access a model should not have.** A tool that opens a path, glob or URL a model supplied, or that
@@ -90,6 +95,9 @@ The [README's security model](README.md#security-model) gives the full list.
   untrusted;
 - the missing isolation when you choose `--sandbox none`, or on a platform with no sandbox, where
   hakutaku warns (code execution there is still in scope, as above);
+- under systemd-run, an engine that reads other processes' command lines or the host name: the
+  service shares the machine's process list and host name, which bubblewrap hides, and the build
+  warns (reading anything else outside the sandbox's inputs is still in scope);
 - a vulnerability in an analysis engine itself: please report it upstream, and tell us too if the way
   hakutaku runs that engine makes it reachable;
 - slow builds or high memory use within the documented memory cap.
