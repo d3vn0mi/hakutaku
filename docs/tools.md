@@ -89,7 +89,7 @@ file        <repo-id>:<path>                      observatory:web/src/orbits/kep
 component   <repo-id>:<path>/                     observatory:web/src/orbits/
 definition  <repo-id>:<path>#<qualname>[(<n>)]    observatory:web/src/orbits/kepler.ts#Orbit.position
 module      <repo-id>:<path>#<module>             observatory:web/src/orbits/kepler.test.ts#<module>
-library     <repo-id>:<ecosystem>:<name>          observatory:npm:react   observatory:pypi:numpy
+library     <repo-id>:<ecosystem>:<name>          observatory:npm:react   observatory:pypi:pytest
 ```
 
 - **A repo id** has 1 to 64 characters: lower-case letters, digits, `.`, `_` and `-`, starting with a
@@ -98,7 +98,7 @@ library     <repo-id>:<ecosystem>:<name>          observatory:npm:react   observ
   control characters in it are percent-encoded, so the first `:` ends the repo id, a second unencoded
   `:` marks a library, and the first `#` starts a definition's name.
 - **A component** is a directory that the map groups files by, such as a package. Its ID ends in `/`,
-  and the root component is `observatory:./`.
+  and a root component, where a repo has one, is `<repo-id>:./`.
 - **`(n)`** appears only when one file defines the same qualified name more than once. It counts from
   2, in file order.
 - **`<module>`** is a file's module scope: the code outside any function, such as a test file's top
@@ -139,8 +139,6 @@ by the same rule.
 | `observatory:npm:react` | `npm:react` |
 | `observatory:` | empty, so its `view` is `#` |
 | `observatory:web/src/orbits/kepler.test.ts#<module>` | `web~src~orbits~kepler.test.ts--%3Cmodule%3E` |
-| `observatory:npm:@types/node` | `npm:%40types~node` |
-| `observatory:scripts/sync-#main`, a path that ends in `-` | `scripts~sync%2D--main` |
 
 To build a token, take each part of the ID raw, as git holds it: the path, the qualified name, or a
 library's name. In each part:
@@ -154,6 +152,9 @@ A file's or a component's token is its encoded path. A definition's is its encod
 its encoded qualified name. A library's is its ecosystem, `:`, then its encoded name. The repo's is
 empty. To decode, split first (a `:` marks a library; otherwise the first `--` ends the path), turn
 each `~` back into `/`, and only then decode the escapes. So a token always gives back exactly one ID.
+
+For example, a library named `@types/node` has the token `npm:%40types~node`, and a definition `main`
+in a file whose path ends in `-`, such as `scripts/sync-`, has `scripts~sync%2D--main`.
 
 ## Labels
 
@@ -189,9 +190,10 @@ every tool description and the server's instructions give each one the same sent
 Every tool answers `invalid_argument` to arguments its input schema does not allow: a missing required
 argument, an unknown one, a wrong type, a value out of range, or a string over 4,096 characters. A
 tool name that is not one of the thirteen is `invalid_argument` too. Every tool but `code_repos`
-answers `unknown_repo` for a repo it does not serve, and `not_built` for one without a usable store.
-Every argument that names a node can answer `not_found`, `ambiguous`, `denied_file`, or
-`invalid_argument` for an ID of another repo. The refusals under each tool are its own.
+answers `unknown_repo` for a repo it does not serve, and every tool but `code_repos` and
+`code_refresh` answers `not_built` for one without a usable store. Every argument that names a node
+can answer `not_found`, `ambiguous`, `denied_file`, or `invalid_argument` for an ID of another repo.
+The refusals under each tool are its own.
 
 In the answers below, *freshness* is `builtCommit` and `stale` ([Freshness](#freshness)), and *the
 paging fields* are the six fields a page carries right after `stale`

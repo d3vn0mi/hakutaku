@@ -4,6 +4,11 @@
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import {
+  MODULE_QUALNAME,
+  type NodeRef,
+  parseId,
+} from "../../../src/model/index.js";
+import {
   ERROR_CODES,
   LABEL_WORDING,
   TOOL_NAMES,
@@ -83,6 +88,61 @@ const defaultOf = (p: PropertySchema, required: boolean): string => {
     ? "optional"
     : `\`${JSON.stringify(p.default)}\``;
 };
+
+// The sample's nodes as its oracle lists them: files, components, definitions and the
+// libraries its imports reach. Every example ID the page shows must name one of them.
+interface OracleFact {
+  fact: string;
+  path?: string;
+  component?: string | null;
+  id?: string;
+  to?: string;
+}
+const oracle = JSON.parse(
+  readFileSync("fixtures/observatory/oracle.json", "utf8"),
+) as { facts: OracleFact[] };
+const sampleFiles = new Set<string>();
+const sampleComponents = new Set<string>();
+const sampleDefinitions = new Set<string>();
+const sampleLibraries = new Set<string>();
+for (const f of oracle.facts) {
+  if (f.fact === "file" && f.path !== undefined) {
+    sampleFiles.add(f.path);
+    if (typeof f.component === "string") sampleComponents.add(f.component);
+  }
+  if (f.fact === "definition" && f.id !== undefined)
+    sampleDefinitions.add(f.id);
+  if (f.fact === "import" && f.to?.includes(":")) sampleLibraries.add(f.to);
+}
+
+// Whether ref names a node of the sample. A component's path ends in "/", so the root
+// component "./" would be "." among the oracle's components, which it never is.
+function inSample(ref: NodeRef): boolean {
+  switch (ref.kind) {
+    case "repo":
+      return true;
+    case "file":
+      return sampleFiles.has(ref.path);
+    case "directory":
+      return sampleComponents.has(ref.path.slice(0, -1));
+    case "definition":
+      return ref.qualname === MODULE_QUALNAME
+        ? sampleFiles.has(ref.path)
+        : sampleDefinitions.has(`${ref.path}#${ref.qualname}`);
+    case "external":
+      return sampleLibraries.has(`${ref.ecosystem}:${ref.name}`);
+  }
+}
+
+it("shows only IDs of nodes the sample has", () => {
+  const shown = [...new Set(doc.match(/observatory:[^\s`"|)]*/g) ?? [])];
+  expect(shown.length).toBeGreaterThan(0);
+  const missing = shown.filter((id) => {
+    const ref = parseId(id);
+    return ref === null || ref.repo !== "observatory" || !inSample(ref);
+  });
+  expect(missing).toEqual([]);
+});
 
 it("lists each tool's arguments as its input schema declares them", () => {
   for (const spec of TOOL_SPECS) {
