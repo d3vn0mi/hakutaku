@@ -1,6 +1,7 @@
 // hakutaku extract <dir> --out <store> [--engines-dir <path>] [--detail quick|standard|deep]
 //                  [--no-source] [--sandbox auto|require|none] [--memory-max <size>]
 // Builds one store from an export directory and prints the ExtractResult as one JSON line.
+// --memory-max is 3G unless given, and 15G at deep detail, where scip-python runs.
 // Exit codes: 0 built or skipped, 3 the gates failed (the previous store keeps serving), 1
 // failed (the message on stderr), 2 a usage error. --sandboxed-by bubblewrap|systemd-run,
 // --memory-capped, --home <path> and --current-unresolved <n> are left out of the usage: extract

@@ -161,9 +161,11 @@ it("writes tracked regular files read-only and nothing else", async () => {
   expect(readdirSync(out).sort()).toEqual([
     "ast-grep",
     "depcruise.json",
+    "empty-env.json",
     "export.json",
     "history.json",
     "profile.json",
+    "pyrightconfig.json",
     "sgconfig.yml",
     "snapshot",
     "tsconfig.json",

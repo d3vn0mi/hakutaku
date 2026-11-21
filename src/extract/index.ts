@@ -6,11 +6,12 @@
 //     machine has, building in this build's work directory, the one path the sandbox can write;
 //     then check what that run left there, and go on at the swap with its store;
 //  5. remove what dead builds left, and make this build's work directory;
-//  6. run the engines: ast-grep, dependency-cruiser, grimp, then scip-typescript, each when its
-//     detail and its input allow. A failed or timed-out engine degrades to its fallback, and an
-//     engine that cannot run here (grimp without Python) falls back, except ast-grep, whose
-//     outline mints every definition ID: its failure fails the build;
-//  7. merge their facts, compute the metrics, the coverage and the gates;
+//  6. run the engines: ast-grep, dependency-cruiser, grimp, scip-typescript, then scip-python,
+//     each when its detail and its input allow. A failed or timed-out engine degrades to its
+//     fallback, and an engine that cannot run here (grimp without Python) falls back, except
+//     ast-grep, whose outline mints every definition ID: its failure fails the build;
+//  7. merge their facts, the two SCIP indexes' as one, compute the metrics, the coverage and
+//     the gates;
 //  8. write the store to store.tmp-<pid>.sqlite;
 //  9. open it, and decide on its gates: a failed gate deletes it;
 // 10. swap it in, keeping the previous store, then write build.json and the attempt.
@@ -49,6 +50,7 @@ import type { EngineDriver, ExtractContext } from "./context.js";
 import { astGrepDriver } from "./drivers/ast-grep.js";
 import { depcruiseDriver } from "./drivers/depcruise.js";
 import { grimpDriver } from "./drivers/grimp.js";
+import { scipPythonDriver } from "./drivers/scip-python.js";
 import { heapMiB, scipTypescriptDriver } from "./drivers/scip-typescript.js";
 import { readExportDir, snapshotReader } from "./export-dir.js";
 import { runGates, storedTexts } from "./gates.js";
@@ -69,6 +71,7 @@ import {
   noSandboxReason,
   type Sandbox,
 } from "./sandbox.js";
+import { joinScipFacts } from "./scip/facts.js";
 import { matchesStore, skipKey } from "./skip.js";
 import { cleanupStale, markStage, swapIn } from "./swap.js";
 
@@ -81,7 +84,7 @@ export interface ExtractOptions {
   detail?: Detail; // "standard"
   noSource?: boolean;
   sandbox?: SandboxMode; // "auto"
-  memoryMax?: string; // "3G", systemd's MemoryMax syntax
+  memoryMax?: string; // systemd's MemoryMax syntax; defaultMemoryMax(detail)
   // The sandbox this run is already inside. A sandboxed re-run is given it, so that it runs no
   // sandbox of its own and build.json names the real one.
   sandboxedBy?: "bubblewrap" | "systemd-run";
@@ -127,6 +130,10 @@ export interface ExtractHooks {
 }
 
 const DEFAULT_MEMORY_MAX = "3G";
+// Deep detail's cap. scip-python's memory grows with the Python it reads, far past the default
+// cap on a large repo; the sandbox allows no swap, so a build that reaches the cap fails at once
+// instead of crawling on.
+const DEEP_MEMORY_MAX = "15G";
 const DETAILS: readonly Detail[] = ["quick", "standard", "deep"];
 const SANDBOX_MODES: readonly SandboxMode[] = ["auto", "require", "none"];
 const SANDBOX_KINDS: readonly string[] = ["bubblewrap", "systemd-run"];
@@ -136,13 +143,19 @@ const DETAIL_RANK: Readonly<Record<Detail, number>> = {
   deep: 2,
 };
 
-// The engines in the order they run. scip-python's driver comes with deep detail's own work.
+// The engines in the order they run.
 const DRIVERS: readonly EngineDriver<unknown>[] = [
   astGrepDriver,
   depcruiseDriver,
   grimpDriver,
   scipTypescriptDriver,
+  scipPythonDriver,
 ];
+
+// The memory cap a build of this detail takes when none is given: 3G, and 15G at deep detail.
+export function defaultMemoryMax(detail: Detail): string {
+  return detail === "deep" ? DEEP_MEMORY_MAX : DEFAULT_MEMORY_MAX;
+}
 
 type EngineFacts = NonNullable<BuildFacts["engines"][EngineName]>;
 
@@ -239,7 +252,7 @@ function optionsOf(opts: ExtractOptions): Options {
   ) {
     throw new Error(`not a sandbox: ${JSON.stringify(opts.sandboxedBy)}`);
   }
-  const memoryMax = opts.memoryMax ?? DEFAULT_MEMORY_MAX;
+  const memoryMax = opts.memoryMax ?? defaultMemoryMax(detail);
   // the cap systemd takes must also give Node a heap: no percentage, no "infinity"
   heapMiB(memoryMax);
   const currentUnresolved = opts.currentUnresolved ?? null;
@@ -304,7 +317,9 @@ async function build(
   });
   if (!verified.ok) {
     throw new Error(
-      `the engines are not ready (${verified.problems.join("; ")}); run hakutaku engines install`,
+      `the engines are not ready (${verified.problems.join("; ")}); run hakutaku engines install${
+        o.detail === "deep" ? " --deep" : ""
+      }`,
     );
   }
   const pythonPath = readInstalled(o.enginesDir)?.python ?? null;
@@ -464,8 +479,10 @@ async function build(
   const depcruise = await runTier(depcruiseDriver);
   const grimp = await runTier(grimpDriver);
   const scip = await runTier(scipTypescriptDriver);
+  const scipPython = await runTier(scipPythonDriver);
 
-  // 7.
+  // 7. The two SCIP indexes cover disjoint files, the TypeScript and JavaScript ones and the
+  // Python ones, and the merge reads them as one.
   const input: MergeInput = {
     manifest,
     profile,
@@ -475,7 +492,7 @@ async function build(
     readSnapshot: snapshotReader(ctx.snapshotDir),
     astGrep,
     depcruise,
-    scip,
+    scip: joinScipFacts(scip, scipPython),
     grimp,
     pythonResolver:
       tiers.grimp === "ran"
@@ -506,7 +523,10 @@ async function build(
       : { outOfMemory: { memoryMax: o.memoryMax, tiers: outOfMemory } }),
   };
   // The gates are part of the store's meta, so they are worked out here, over the rows about
-  // to be written, and acted on once the written store opens.
+  // to be written, and acted on once the written store opens. Their SCIP facts are
+  // scip-typescript's alone: the TypeScript and JavaScript files it was given must each have a
+  // document, and its symbols must each be one file's. A Python file's indexing is checked by
+  // its module name, at every detail.
   const gates = runGates({
     files: content.files,
     regularPaths: regularPaths(manifest),
@@ -516,7 +536,7 @@ async function build(
     scip:
       scip === null
         ? null
-        : { documents: scip.documents, duplicates: side.scipDuplicates },
+        : { documents: scip.documents, duplicates: scip.duplicates },
     relative: side.relative,
     maxUnresolvedRelativeImports: profile.gates.maxUnresolvedRelativeImports,
     currentUnresolved,

@@ -29,19 +29,21 @@ const PROFILE = fileURLToPath(
 );
 const ENGINES_DIR = defaultEnginesDir();
 const PYTHON = samplePythonProbe();
-// What runs at each detail: scip-typescript starts at standard.
+// What runs at each detail: scip-typescript starts at standard, scip-python at deep.
 const TIERS: Partial<Record<Detail, Store["meta"]["coverage"]["tiers"]>> = {
   quick: {
     "ast-grep": "ran",
     "dependency-cruiser": "ran",
     grimp: "ran",
     "scip-typescript": "skipped",
+    "scip-python": "skipped",
   },
   standard: {
     "ast-grep": "ran",
     "dependency-cruiser": "ran",
     grimp: "ran",
     "scip-typescript": "ran",
+    "scip-python": "skipped",
   },
 };
 

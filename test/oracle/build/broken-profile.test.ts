@@ -104,6 +104,7 @@ async function builtStore(): Promise<{ store: string; head: string }> {
       "dependency-cruiser": "ran",
       grimp: "ran",
       "scip-typescript": "ran",
+      "scip-python": "skipped",
     });
   } finally {
     s.close();

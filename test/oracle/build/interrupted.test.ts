@@ -45,11 +45,13 @@ const PROFILE = fileURLToPath(
 // The installed engines, read before any test points XDG_DATA_HOME elsewhere.
 const ENGINES_DIR = defaultEnginesDir();
 const PYTHON = samplePythonProbe();
+// Every engine of standard detail ran; scip-python, deep detail's, was skipped.
 const ALL_RAN = {
   "ast-grep": "ran",
   "dependency-cruiser": "ran",
   grimp: "ran",
   "scip-typescript": "ran",
+  "scip-python": "skipped",
 };
 // How long the dead build's process group may take to be gone.
 const GROUP_GONE_MS = 30_000;

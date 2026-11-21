@@ -2,11 +2,12 @@
 // definition and each use of a symbol, the module that an import specifier names, and the
 // symbols defined more than once.
 //
-// A position is read as TypeScript reads a file, which is how scip-typescript counts lines and
-// characters: without a byte order mark at its start, and with a line ending at each LF, CR,
-// CRLF, U+2028 and U+2029. The store ends a line at LF only, keeps the mark as the first column
-// of line 1, and drops the CR of a CRLF; rawLine gives a store line, so each of TypeScript's
-// lines is found inside one of the store's.
+// A position is read as the indexer's compiler reads a file. TypeScript, inside scip-typescript,
+// drops a byte order mark at its start, and ends a line at each LF, CR, CRLF, U+2028 and U+2029.
+// Pyright, inside scip-python, keeps the mark as a character, and ends a line at LF, CR and CRLF
+// only. The store ends a line at LF only, keeps the mark as the first column of line 1, and drops
+// the CR of a CRLF; rawLine gives a store line, so each of the compiler's lines is found inside
+// one of the store's.
 import { posix } from "node:path";
 import { comparePaths } from "../../model/index.js";
 import { utf16ColToCol } from "../columns.js";
@@ -23,6 +24,10 @@ export interface ScipFacts {
   moduleAt: Map<string, string>;
   duplicates: string[];
 }
+
+// How an index counts a file's lines and characters: as TypeScript does, for scip-typescript's,
+// or as Pyright does, for scip-python's.
+export type PositionReading = "typescript" | "pyright";
 
 // SymbolRole.Definition: the symbol is defined here. Any other occurrence is a use.
 export const DEFINITION_ROLE = 1;
@@ -48,9 +53,11 @@ const UTF32 = 3;
 // - moduleAt: each use of a document's module symbol, the symbol a specifier such as "./body"
 //   carries, keyed by its position and naming that document;
 // - duplicates: each non-local symbol that two or more documents define as their own.
+// Positions are read as TypeScript reads a file unless reading says otherwise.
 export function scipFacts(
   index: ScipIndex,
   rawLine: (file: string, line0: number) => string,
+  reading: PositionReading = "typescript",
 ): ScipFacts {
   const byFile = new Map<string, ScipDocument[]>();
   for (const doc of index.documents) {
@@ -68,7 +75,7 @@ export function scipFacts(
   const definitions: Definition[] = [];
   const uses: Use[] = [];
   for (const file of files) {
-    const lines = new TypeScriptLines(file, rawLine);
+    const lines = new CompilerLines(file, rawLine, reading);
     const defs: Definition[] = [];
     const used: Use[] = [];
     for (const doc of byFile.get(file) ?? []) {
@@ -122,12 +129,12 @@ export function scipFacts(
     }
   }
 
-  // A document owns a symbol when the symbol starts with the document's own module symbol: the
-  // symbol names that file. So a lib symbol that a repo file augments, a symbol of another
+  // A document owns a symbol when the symbol starts with the document's own module namespace:
+  // the symbol names that file. So a lib symbol that a repo file augments, a symbol of another
   // file's module, and a local symbol are never owned by the document that defines them.
   const owners = new Map<string, Set<string>>();
   for (const d of definitions) {
-    const own = modulesOf.get(d.file) ?? [];
+    const own = (modulesOf.get(d.file) ?? []).map(namespaceOf);
     if (!own.some((m) => d.symbol.startsWith(m))) continue;
     const by = owners.get(d.symbol) ?? new Set<string>();
     by.add(d.file);
@@ -166,16 +173,59 @@ function startOf(range: readonly number[], file: string): [number, number] {
 
 const isLocal = (symbol: string): boolean => symbol.startsWith("local ");
 
-// Whether symbol is the module symbol of file: a symbol ending in a namespace, "/", whose last
-// name is the file's name. scip-typescript defines one at the start of every file, named after
-// the file's path below its package; a TypeScript namespace also ends in "/", under another
-// name. The merge gives it to the file's module row rather than to an outline definition.
+// Whether symbol is the module symbol of file, which each indexer defines at the start of every
+// file it indexes, and which the merge gives to the file's module row rather than to an outline
+// definition:
+// - scip-typescript's ends in a namespace, "/", whose last name is the file's name: it is named
+//   after the file's path below its package. A TypeScript namespace also ends in "/", under
+//   another name;
+// - scip-python's is the file's dotted module name as a namespace, then the meta descriptor
+//   "__init__:". Nothing else it writes ends so: a method named __init__ ends "__init__().", and
+//   a variable "__init__.".
 export function isModuleOf(symbol: string, file: string): boolean {
+  if (isLocal(symbol)) return false;
+  if (symbol.startsWith("scip-python ")) return symbol.endsWith("/__init__:");
   return (
-    !isLocal(symbol) &&
     symbol.endsWith("/") &&
     lastName(symbol.slice(0, -1)) === posix.basename(file)
   );
+}
+
+// The namespace of a module symbol, which starts each symbol of its module: scip-typescript's
+// module symbol itself, and scip-python's less its "__init__:".
+const namespaceOf = (module: string): string =>
+  module.startsWith("scip-python ")
+    ? module.slice(0, -"__init__:".length)
+    : module;
+
+// The facts of indexes of disjoint files as one, such as scip-typescript's of the TypeScript and
+// JavaScript files and scip-python's of the Python ones, each file's facts in their order; null
+// when no index is given. A file two of them indexed is refused, since its positions could have
+// been read two ways.
+export function joinScipFacts(
+  ...facts: Array<ScipFacts | null>
+): ScipFacts | null {
+  const given = facts.filter((f): f is ScipFacts => f !== null);
+  if (given.length <= 1) return given[0] ?? null;
+  const documents = new Set<string>();
+  for (const f of given) {
+    for (const file of f.documents) {
+      if (documents.has(file)) {
+        throw new Error(`two SCIP indexes hold the document ${file}`);
+      }
+      documents.add(file);
+    }
+  }
+  // a stable sort by file keeps each file's facts in their order
+  const byFile = <T extends { file: string }>(items: T[]): T[] =>
+    items.sort((a, b) => comparePaths(a.file, b.file));
+  return {
+    documents: new Set([...documents].sort(comparePaths)),
+    definitions: byFile(given.flatMap((f) => f.definitions)),
+    uses: byFile(given.flatMap((f) => f.uses)),
+    moduleAt: new Map(given.flatMap((f) => [...f.moduleAt])),
+    duplicates: given.flatMap((f) => f.duplicates).sort(comparePaths),
+  };
 }
 
 // The name of a symbol's last descriptor, the symbol cut before that descriptor's suffix: a
@@ -193,9 +243,9 @@ function lastName(s: string): string | null {
   return null;
 }
 
-// Where each of a file's lines, as TypeScript counts them, lies in the store's lines.
-class TypeScriptLines {
-  // TypeScript's lines in order, each a span [from, to) of a store line, in UTF-16 code units
+// Where each of a file's lines, as its compiler counts them, lies in the store's lines.
+class CompilerLines {
+  // the compiler's lines in order, each a span [from, to) of a store line, in UTF-16 code units
   private readonly spans: Array<{ line0: number; from: number; to: number }> =
     [];
   private readonly texts: string[] = [];
@@ -203,6 +253,7 @@ class TypeScriptLines {
   constructor(
     private readonly file: string,
     private readonly rawLine: (file: string, line0: number) => string,
+    private readonly reading: PositionReading,
   ) {}
 
   // The store position of a 0-based line and character, counted in the given encoding.
@@ -227,10 +278,12 @@ class TypeScriptLines {
     const line0 = this.texts.length;
     const text = this.rawLine(this.file, line0);
     this.texts.push(text);
-    let from = line0 === 0 && text.charCodeAt(0) === 0xfeff ? 1 : 0;
+    const typescript = this.reading === "typescript";
+    let from =
+      typescript && line0 === 0 && text.charCodeAt(0) === 0xfeff ? 1 : 0;
     for (let i = from; i < text.length; i++) {
       const c = text.charCodeAt(i);
-      if (c === 0x0d || c === 0x2028 || c === 0x2029) {
+      if (c === 0x0d || (typescript && (c === 0x2028 || c === 0x2029))) {
         this.spans.push({ line0, from, to: i });
         from = i + 1;
       }

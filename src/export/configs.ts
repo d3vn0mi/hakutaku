@@ -1,8 +1,11 @@
 // The engines' configs, generated beside the snapshot, so that no
 // config from the analysed repo is ever read: tsconfig.json for scip-typescript, in the
 // snapshot's parent directory; depcruise.json, which dependency-cruiser always gets with
-// --config; and sgconfig.yml, with hakutaku's own ast-grep rules copied beside it. Every path
-// in them is relative to the export directory; extract adds the absolute ones at run time.
+// --config; sgconfig.yml, with hakutaku's own ast-grep rules copied beside it; and, for
+// scip-python at deep detail, pyrightconfig.json, which Pyright finds in the export directory
+// before it looks for any other, and empty-env.json, the empty list of installed packages that
+// scip-python reads in place of asking pip. Every path in them is relative to the export
+// directory; extract adds the absolute ones at run time.
 import {
   copyFileSync,
   mkdirSync,
@@ -10,7 +13,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { comparePaths } from "../model/index.js";
 import type { Profile, Rules } from "../profile/index.js";
@@ -54,6 +57,54 @@ export function writeEngineConfigs(
     join(exportDir, "sgconfig.yml"),
     `ruleDirs:\n  - ast-grep/rules\n${utils}`,
   );
+  writeJson(
+    join(exportDir, "pyrightconfig.json"),
+    pyrightconfig(profile, skipped),
+  );
+  writeFileSync(join(exportDir, "empty-env.json"), "[]\n");
+}
+
+// What Pyright leaves out of a project by default, which an exclude list of a config replaces:
+// node_modules, __pycache__, and every directory or file whose name starts with a dot.
+const PYRIGHT_EXCLUDES: readonly string[] = [
+  "**/node_modules",
+  "**/__pycache__",
+  "**/.*",
+];
+const PYRIGHT_SKIPS: ReadonlySet<string> = new Set([
+  "node_modules",
+  "__pycache__",
+]);
+
+// Whether Pyright reads a snapshot path as a source file of the project pyrightconfig.json gives
+// it, before the metadata-only files are left out: a .py or .pyi file, none of whose names it
+// leaves out by default.
+export function pyrightReads(path: string): boolean {
+  return (
+    /\.pyi?$/.test(path) &&
+    path
+      .split("/")
+      .every((name) => !name.startsWith(".") && !PYRIGHT_SKIPS.has(name))
+  );
+}
+
+// Pyright over the snapshot alone, the profile's Python roots as its import roots, in their
+// order. Its exclude list keeps its defaults and adds each metadata-only file it would read. A
+// path is a glob there: "*" and "?" are its only wildcards and cannot be escaped, so each is
+// written "?", which matches one character, the path's own among them.
+function pyrightconfig(profile: Profile, skipped: readonly string[]): unknown {
+  return {
+    include: ["snapshot"],
+    exclude: [
+      ...PYRIGHT_EXCLUDES,
+      ...skipped
+        .filter(pyrightReads)
+        .map((path) => `snapshot/${path.replace(/[*?]/g, "?")}`),
+    ],
+    extraPaths: profile.python.roots.map((root) =>
+      posix.join("snapshot", root),
+    ),
+  };
 }
 
 // Bundler resolution over the snapshot, with the profile's aliases resolved from it.

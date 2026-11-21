@@ -211,6 +211,7 @@ it(
         "dependency-cruiser": "ran",
         grimp: "skipped",
         "scip-typescript": "ran",
+        "scip-python": "skipped",
       });
       expect(Object.keys(s.meta.engines).sort()).toEqual([
         "ast-grep",
@@ -239,6 +240,7 @@ it(
       "dependency-cruiser": "ran",
       grimp: "skipped",
       "scip-typescript": "ran",
+      "scip-python": "skipped",
     });
     expect(facts?.engines["scip-typescript"]?.exitCode).toBe(0);
     expect(readAttempt(out)).toMatchObject({ commit: head, result: "built" });
@@ -355,6 +357,7 @@ it(
         "dependency-cruiser": "ran",
         grimp: "skipped",
         "scip-typescript": "skipped",
+        "scip-python": "skipped",
       });
       expect(
         countOf(
@@ -447,6 +450,7 @@ it(
         "dependency-cruiser": "ran",
         grimp: "skipped",
         "scip-typescript": "failed",
+        "scip-python": "skipped",
       });
       expect(s.meta.engines["scip-typescript"]).toBeUndefined();
       expect(
@@ -469,6 +473,7 @@ it(
       "dependency-cruiser": "ran",
       grimp: "skipped",
       "scip-typescript": "failed",
+      "scip-python": "skipped",
     });
     expect(facts?.engines["scip-typescript"]?.exitCode).toBe(1);
     expect(facts?.warnings).toContain("scip-typescript failed: exit code 1");
@@ -502,6 +507,7 @@ it(
         "dependency-cruiser": "failed",
         grimp: "skipped",
         "scip-typescript": "ran",
+        "scip-python": "skipped",
       });
       expect(s.meta.coverage.cycleDifferences).toBe(0);
       expect(countOf(s, "SELECT COUNT(*) AS n FROM cycles")).toBe(2);
@@ -759,6 +765,7 @@ it(
       "dependency-cruiser": "timed-out",
       grimp: "skipped",
       "scip-typescript": "skipped",
+      "scip-python": "skipped",
     });
     expect(facts?.warnings).toContain(
       "dependency-cruiser failed: timed out after 2 s",
@@ -834,6 +841,7 @@ it(
       "dependency-cruiser": "skipped",
       grimp: "skipped",
       "scip-typescript": "skipped",
+      "scip-python": "skipped",
     };
     const cases: Array<{
       name: string;
@@ -934,6 +942,7 @@ it(
         "dependency-cruiser": "skipped",
         grimp: "fallback",
         "scip-typescript": "skipped",
+        "scip-python": "skipped",
       });
       expect(s.meta.coverage.unresolvedImports).toBe(0);
     });
@@ -1146,6 +1155,7 @@ it(
       "dependency-cruiser": "ran",
       grimp: "ran",
       "scip-typescript": "ran",
+      "scip-python": "skipped",
     });
     if (scopes.ok) {
       // the scope that caps bubblewrap's memory is read from outside it
@@ -1488,6 +1498,7 @@ it(
       "dependency-cruiser": "ran",
       grimp: "ran",
       "scip-typescript": "ran",
+      "scip-python": "skipped",
     });
     // read inside the service, from its own cgroup
     expect(facts?.peakRssBytes).toBeGreaterThan(0);

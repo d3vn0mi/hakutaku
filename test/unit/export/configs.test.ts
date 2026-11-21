@@ -223,6 +223,48 @@ it("copies ast-grep/ beside sgconfig.yml", () => {
   expect(statSync(join(dir, "ast-grep")).isDirectory()).toBe(true);
 });
 
+it("writes pyrightconfig.json over the snapshot alone, with the profile's roots, Pyright's own excludes and the metadata-only Python files, and an empty environment list", () => {
+  const dir = tmp();
+  const profile = profileWith({});
+  profile.python.roots = ["sim/src", ".", "lib"];
+  writeEngineConfigs(dir, profile, null, [
+    "web/big.js",
+    "sim/src/big.py",
+    // Pyright's only wildcards cannot be escaped: each is written as one that matches it
+    "sim/gen*?.pyi",
+    // a dot directory, which Pyright already leaves out
+    ".hidden/huge.py",
+  ]);
+  // The exact object, key order and layout included; the roots in the profile's order.
+  expect(text(dir, "pyrightconfig.json")).toBe(
+    `${JSON.stringify(
+      {
+        include: ["snapshot"],
+        exclude: [
+          "**/node_modules",
+          "**/__pycache__",
+          "**/.*",
+          "snapshot/sim/gen??.pyi",
+          "snapshot/sim/src/big.py",
+        ],
+        extraPaths: ["snapshot/sim/src", "snapshot", "snapshot/lib"],
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  expect(text(dir, "empty-env.json")).toBe("[]\n");
+  const bare = tmp();
+  writeEngineConfigs(bare, profileWith({}), null, []);
+  expect(JSON.parse(text(bare, "pyrightconfig.json"))).toStrictEqual({
+    include: ["snapshot"],
+    exclude: ["**/node_modules", "**/__pycache__", "**/.*"],
+    extraPaths: DEFAULT_PROFILE.python.roots.map((r) =>
+      r === "." ? "snapshot" : `snapshot/${r}`,
+    ),
+  });
+});
+
 it("writes no absolute path into the generated files", () => {
   const dir = tmp();
   writeEngineConfigs(
@@ -241,7 +283,13 @@ it("writes no absolute path into the generated files", () => {
     },
     ["web/big.js"],
   );
-  for (const name of ["tsconfig.json", "depcruise.json", "sgconfig.yml"]) {
+  for (const name of [
+    "tsconfig.json",
+    "depcruise.json",
+    "sgconfig.yml",
+    "pyrightconfig.json",
+    "empty-env.json",
+  ]) {
     expect(text(dir, name)).not.toContain(dir);
     expect(text(dir, name)).not.toMatch(/["\s]\//);
   }

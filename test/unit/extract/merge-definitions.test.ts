@@ -253,6 +253,64 @@ it("counts a SCIP definition that joins nothing", () => {
   expect(defs.scipToDef).toEqual(new Map([[`${PREFIX}\`body.ts\`/Body#`, 2]]));
 });
 
+it("gives scip-python's module symbol to the module row, never to the constant named at the start of the file", () => {
+  const SKY = "sim/src/observatory/sky.py";
+  const NAMESPACE = "scip-python python observatory . `observatory.sky`/";
+  const input = mergeInput(
+    { [SKY]: "SCALE = 2\n" },
+    {
+      profile: SIM,
+      facts: {
+        astGrep: astGrep({
+          defs: [
+            outlineDef(
+              SKY,
+              "SCALE",
+              "constant",
+              P(1, 1),
+              P(1, 10),
+              [P(1, 1)],
+              "SCALE = 2",
+            ),
+          ],
+        }),
+        // scip-python defines the module at (1,1), where the constant's name also is
+        scip: scip({
+          documents: new Set([SKY]),
+          definitions: [
+            { file: SKY, at: P(1, 1), symbol: `${NAMESPACE}SCALE.` },
+            { file: SKY, at: P(1, 1), symbol: `${NAMESPACE}__init__:` },
+          ],
+        }),
+      },
+    },
+  );
+  const defs = mergeDefinitions(input, fileRows(input));
+  expect(defs.definitions).toEqual([
+    moduleRow(1, 1, 1, `${NAMESPACE}__init__:`),
+    {
+      id: 2,
+      file_id: 1,
+      qualname: "SCALE",
+      ordinal: 1,
+      name: "SCALE",
+      kind: "constant",
+      start_line: 1,
+      start_col: 1,
+      end_line: 1,
+      end_col: 10,
+      exported: 0,
+      parent_id: null,
+      scip_symbol: `${NAMESPACE}SCALE.`,
+      signature: "SCALE = 2",
+      producer: "ast-grep",
+    },
+  ]);
+  // a use of the module, such as an import's, binds nothing through the constant
+  expect(defs.scipToDef).toEqual(new Map([[`${NAMESPACE}SCALE.`, 2]]));
+  expect(defs.unmatchedScipDefinitions).toBe(0);
+});
+
 it("exports a Python name only when another file imports its module", () => {
   const LONELY = "sim/src/observatory/lonely.py";
   const ORBIT = "sim/src/observatory/orbit.py";

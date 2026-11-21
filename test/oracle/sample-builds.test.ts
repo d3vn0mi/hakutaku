@@ -38,6 +38,7 @@ it(
         "dependency-cruiser": "ran",
         grimp: "ran",
         "scip-typescript": "ran",
+        "scip-python": "skipped",
       });
       expect(s.meta.gates.map((g) => g.gate)).toEqual([
         "files-indexed",

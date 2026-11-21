@@ -20,6 +20,7 @@ import { readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { readLock, resolveBin } from "../../engines/index.js";
 import { SOURCE_CAP } from "../../export/source-policy.js";
+import type { EngineName } from "../../model/index.js";
 import type { EngineDriver, ExtractContext } from "../context.js";
 import { snapshotReader } from "../export-dir.js";
 import { hasTsconfigInput } from "../resolve/ts.js";
@@ -103,7 +104,10 @@ async function runScipTypescript(ctx: ExtractContext): Promise<ScipFacts> {
         `scip-typescript failed: cannot read its index (${messageOf(error)})`,
       );
     }
-    return scipFacts(decodeScipIndex(bytes), snapshotLines(snapshotDir));
+    return scipFacts(
+      decodeScipIndex(bytes),
+      snapshotLines(snapshotDir, "scip-typescript"),
+    );
   } finally {
     rmSync(output, { force: true });
   }
@@ -140,12 +144,14 @@ function failIfFailed(r: EngineRunResult, f: FailureContext): void {
   );
 }
 
-// The store's lines of a snapshot file: the file decoded as the store decodes text (each
-// invalid UTF-8 sequence one U+FFFD, a byte order mark kept), split at LF, each line without
-// the CR of a CRLF. A few files are kept, as the facts are read one document at a time. Each file
-// is read as the merge reads one, through no link, since the index may name any repo path.
-function snapshotLines(
+// The store's lines of a snapshot file, for the index an engine wrote: the file decoded as the
+// store decodes text (each invalid UTF-8 sequence one U+FFFD, a byte order mark kept), split at
+// LF, each line without the CR of a CRLF. A few files are kept, as the facts are read one
+// document at a time. Each file is read as the merge reads one, through no link, since the index
+// may name any repo path.
+export function snapshotLines(
   snapshotDir: string,
+  engine: EngineName,
 ): (file: string, line0: number) => string {
   const read = snapshotReader(snapshotDir);
   const cache = new Map<string, string[]>();
@@ -161,7 +167,7 @@ function snapshotLines(
     const line = lines[line0];
     if (line === undefined) {
       throw new Error(
-        `scip-typescript reported line ${line0 + 1} of ${file}, past its end`,
+        `${engine} reported line ${line0 + 1} of ${file}, past its end`,
       );
     }
     return line.endsWith("\r") ? line.slice(0, -1) : line;

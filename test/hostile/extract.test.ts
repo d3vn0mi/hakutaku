@@ -61,7 +61,7 @@ import {
   takeCanary,
 } from "../helpers/hostile.js";
 import { requireInCI } from "../helpers/live.js";
-import { samplePythonProbe } from "../helpers/sample.js";
+import { samplePythonProbe, scipPythonProbe } from "../helpers/sample.js";
 
 const TIMEOUT = 300_000;
 const GIB = 1024 ** 3;
@@ -70,6 +70,8 @@ const GIB = 1024 ** 3;
 // grimp runs under it, so a case that needs grimp to run requires it.
 const ENGINES_DIR = defaultEnginesDir();
 const PYTHON = samplePythonProbe();
+// scip-python, which only an engine install with --deep holds, for the case built at deep detail.
+const SCIP_PYTHON = scipPythonProbe();
 const pinnedPython = (): string =>
   JSON.parse(readFileSync(join(ENGINES_DIR, "installed.json"), "utf8")).python;
 
@@ -349,6 +351,7 @@ it(
         "dependency-cruiser": "ran",
         grimp: "skipped",
         "scip-typescript": "ran",
+        "scip-python": "skipped",
       });
       expect(s.meta.coverage.outOfMemory).toBeUndefined();
     });
@@ -357,6 +360,7 @@ it(
       "dependency-cruiser": "ran",
       grimp: "skipped",
       "scip-typescript": "ran",
+      "scip-python": "skipped",
     });
     // under the 3 GiB cap wherever the peak is known: each engine's, sampled on Linux, and the
     // build's, which only a sandbox measures
@@ -377,9 +381,9 @@ it(
 );
 
 it(
-  "pyright-interpreter: removes pyrightconfig.json, and runs only the pinned interpreter",
+  "pyright-interpreter: removes pyrightconfig.json, never reads [tool.pyright], and runs only the pinned interpreter at deep detail",
   async (ctx) => {
-    requireInCI(ctx, PYTHON);
+    requireInCI(ctx, PYTHON, SCIP_PYTHON);
     const fx = await hostileFixtures();
     const copy = scratchCopy(fx, "pyright-interpreter");
     // both configs name evil-venv, whose python writes the canary when it runs
@@ -393,19 +397,83 @@ it(
     expect(takeCanary(fx)).toEqual({
       "pyright-interpreter": ["pyright-interpreter: evil-venv/bin/python ran"],
     });
+    // Stock scip-python, run in the copy as a person runs it there with evil-venv activated:
+    // Pyright asks python3, then python, on PATH for its version and search paths, and so runs
+    // evil-venv's.
+    const scratch = dirname(copy);
+    writeFileSync(join(scratch, "env.json"), "[]\n");
+    stock(
+      process.execPath,
+      [
+        bin("scip-python"),
+        "index",
+        "--cwd",
+        copy,
+        "--project-name",
+        "fixture-app",
+        "--project-version",
+        "0.0.0",
+        "--output",
+        join(scratch, "index.scip"),
+        "--environment",
+        join(scratch, "env.json"),
+        "--quiet",
+      ],
+      copy,
+      { PATH: `${join(copy, "evil-venv", "bin")}:${process.env.PATH ?? ""}` },
+    );
+    expect(new Set(takeCanary(fx)["pyright-interpreter"])).toEqual(
+      new Set([
+        "pyright-interpreter: evil-venv/bin/python3 ran",
+        "pyright-interpreter: evil-venv/bin/python ran",
+      ]),
+    );
 
-    // standard detail: grimp is the engine here that runs a Python, the pinned one
+    // deep detail: grimp, and Pyright inside scip-python, each run a Python, the pinned one
     const { result, exportDir, manifest, store, facts } =
-      await exportAndExtract(fx, "pyright-interpreter", "standard");
+      await exportAndExtract(fx, "pyright-interpreter", "deep");
     expect(manifest.engineConfigsRemoved).toEqual(["pyrightconfig.json"]);
     expect(existsSync(join(exportDir, "snapshot", "pyrightconfig.json"))).toBe(
       false,
     );
+    // scip-python's config is the one export writes beside the snapshot, where Pyright looks
+    // first, so pyproject.toml's [tool.pyright], kept as the project's metadata, is never read;
+    // the environment it is given lists no package, so it runs no pip
+    expect(
+      JSON.parse(readFileSync(join(exportDir, "pyrightconfig.json"), "utf8")),
+    ).toEqual({
+      include: ["snapshot"],
+      exclude: ["**/node_modules", "**/__pycache__", "**/.*"],
+      extraPaths: ["snapshot"],
+    });
+    expect(readFileSync(join(exportDir, "empty-env.json"), "utf8")).toBe(
+      "[]\n",
+    );
+    expect(
+      readFileSync(join(exportDir, "snapshot", "pyproject.toml"), "utf8"),
+    ).toContain("[tool.pyright]");
     expect(result.result).toBe("built");
     expect(statuses(facts).grimp).toBe("ran");
+    expect(statuses(facts)["scip-python"]).toBe("ran");
     inStore(store, (s) => {
+      expect(s.meta.detail).toBe("deep");
       expect(s.meta.coverage.tiers.grimp).toBe("ran");
+      expect(s.meta.coverage.tiers["scip-python"]).toBe("ran");
       expect(s.meta.coverage.pythonResolver).toBe("grimp");
+      // scip-python indexed the repo's own module, named from the generated root
+      expect(
+        s.db
+          .prepare(
+            `SELECT d.scip_symbol FROM definitions d JOIN files f ON f.id = d.file_id
+             WHERE f.path = 'app/mod.py' AND d.qualname = 'load'`,
+          )
+          .all(),
+      ).toEqual([
+        {
+          scip_symbol:
+            "scip-python python pyright-interpreter . `app.mod`/load().",
+        },
+      ]);
     });
     expectContained(fx, { exportDir, store });
   },

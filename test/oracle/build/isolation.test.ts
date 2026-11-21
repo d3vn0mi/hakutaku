@@ -186,6 +186,7 @@ it(
         "dependency-cruiser": "ran",
         grimp: "ran",
         "scip-typescript": "ran",
+        "scip-python": "skipped",
       });
     } finally {
       s.close();

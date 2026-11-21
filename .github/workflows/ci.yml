@@ -52,12 +52,14 @@ jobs:
         run: npm run typecheck && npm run lint
       - name: unit tests
         run: npm test
+      # The deep install, scip-python included, which the oracle and hostile steps build with; its
+      # cache key is its own, so that a cache saved without scip-python is never restored here.
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/share/hakutaku/engines
-          key: hakutaku-engines-${{ runner.os }}-${{ hashFiles('engines.lock.json') }}
+          key: hakutaku-engines-deep-${{ runner.os }}-${{ hashFiles('engines.lock.json') }}
       - name: engines
-        run: sudo apt-get install -y bubblewrap strace && node dist/cli/main.js engines install --yes
+        run: sudo apt-get install -y bubblewrap strace && node dist/cli/main.js engines install --yes --deep
       # The sample's content hash is written for the determinism job, which compares it across
       # the three Node versions, each bundling its own SQLite.
       - name: oracle and golden answers

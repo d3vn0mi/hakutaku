@@ -1,9 +1,16 @@
 // scipFacts over decoded indexes written here, with the store's lines of each file. Symbols
 // are written as scip-typescript names them: a package, then one namespace per path segment of
-// the file, backtick-escaped unless it is a simple identifier.
+// the file, backtick-escaped unless it is a simple identifier; the last tests write them as
+// scip-python does, the file's dotted module name as one namespace.
 import { expect, it } from "vitest";
 import type { ScipIndex } from "../../../src/extract/scip/decode.js";
-import { positionKey, scipFacts } from "../../../src/extract/scip/facts.js";
+import {
+  isModuleOf,
+  joinScipFacts,
+  positionKey,
+  type ScipFacts,
+  scipFacts,
+} from "../../../src/extract/scip/facts.js";
 
 type Doc = ScipIndex["documents"][number];
 type Occurrence = Doc["occurrences"][number];
@@ -486,4 +493,187 @@ it("refuses a line past the end of its file", () => {
       linesOf({ "a.ts": lines("export const a = 1;") }),
     ),
   ).toThrow("a.ts has no line 3");
+});
+
+// scip-python's symbols for the repo indexed as observatory, with no version: the file's dotted
+// module name is one namespace.
+const PY = "scip-python python observatory . ";
+const pyModule = (name: string): string => `${PY}\`${name}\`/__init__:`;
+const pyName = (module: string, descriptor: string): string =>
+  `${PY}\`${module}\`/${descriptor}`;
+
+it("reads positions as Pyright reads a file: with its byte order mark a character, and only LF, CR and CRLF ending lines", () => {
+  const bom = String.fromCodePoint(0xfeff);
+  const ls = String.fromCodePoint(0x2028);
+  const ps = String.fromCodePoint(0x2029);
+  const files = {
+    "sim/bom.py": `${bom}${lines("def f():", "    return 1")}`,
+    // one line in the store, three to Pyright: it ends a line at each lone CR
+    "sim/lone.py": lines("def c():\r    return 1\rdef d():"),
+    "sim/crlf.py": "def a():\r\ndef b():\r\n",
+    // U+2028 and U+2029 are characters of their line
+    "sim/seps.py": lines(`# a${ls}b${ps}c`, "def h():"),
+  };
+  const bomIndex = index(
+    doc("sim/bom.py", [occ([0, 5, 6], pyName("sim.bom", "f()."), 1)]),
+  );
+  const facts = scipFacts(
+    index(
+      bomIndex.documents[0] as Doc,
+      doc("sim/lone.py", [
+        occ([0, 4, 5], pyName("sim.lone", "c()."), 1),
+        occ([2, 4, 5], pyName("sim.lone", "d()."), 1),
+      ]),
+      doc("sim/crlf.py", [occ([1, 4, 5], pyName("sim.crlf", "b()."), 1)]),
+      doc("sim/seps.py", [
+        // the c after both separators
+        occ([0, 6, 7], "local 0"),
+        occ([1, 4, 5], pyName("sim.seps", "h()."), 1),
+      ]),
+    ),
+    linesOf(files),
+    "pyright",
+  );
+  const at = (f: { file: string; at: { line: number; col: number } }) => [
+    f.file,
+    f.at.line,
+    f.at.col,
+  ];
+  expect(facts.definitions.map(at)).toStrictEqual([
+    // the mark is the first column of the store's line 1, and Pyright's first character
+    ["sim/bom.py", 1, 6],
+    ["sim/crlf.py", 2, 5],
+    ["sim/lone.py", 1, 5],
+    ["sim/lone.py", 1, 27],
+    ["sim/seps.py", 2, 5],
+  ]);
+  expect(facts.uses.map(at)).toStrictEqual([["sim/seps.py", 1, 7]]);
+  // read as TypeScript reads a file, the same positions fall elsewhere: past the mark, and,
+  // with the separators ending lines, past the end of a line
+  expect(scipFacts(bomIndex, linesOf(files)).definitions.map(at)).toStrictEqual(
+    [["sim/bom.py", 1, 7]],
+  );
+  expect(() =>
+    scipFacts(
+      index(
+        doc("sim/seps.py", [occ([1, 4, 5], pyName("sim.seps", "h()."), 1)]),
+      ),
+      linesOf(files),
+    ),
+  ).toThrow(/past the end of its line/);
+});
+
+it("takes scip-python's module symbol, the file's dotted module name then __init__:, as its file's module", () => {
+  for (const [symbol, file] of [
+    [pyModule("sim.sky"), "sim/sky.py"],
+    [`${PY}sim/__init__:`, "sim/__init__.py"],
+    // a file under no import root, named from the export directory
+    [pyModule("snapshot.tools.run"), "tools/run.py"],
+  ] as const) {
+    expect(isModuleOf(symbol, file), symbol).toBe(true);
+  }
+  for (const symbol of [
+    // a class's __init__ method, a variable named __init__, a class, the namespace alone
+    pyName("sim.sky", "Sky#__init__()."),
+    pyName("sim.sky", "__init__."),
+    pyName("sim.sky", "Sky#"),
+    `${PY}\`sim.sky\`/`,
+    "local 0",
+  ]) {
+    expect(isModuleOf(symbol, "sim/sky.py"), symbol).toBe(false);
+  }
+
+  const files = {
+    "sim/sky.py": lines("SCALE = 2"),
+    "tools/run.py": lines("from sim.sky import SCALE"),
+    "vendor/sim/sky.py": lines("SCALE = 3"),
+  };
+  const sky = (file: string): Doc =>
+    doc(file, [
+      occ([0, 0, 0], pyModule("sim.sky"), 1),
+      // a constant on line 1 has its name where the module is defined
+      occ([0, 0, 5], pyName("sim.sky", "SCALE."), 1),
+    ]);
+  const run = doc("tools/run.py", [
+    occ([0, 0, 0], pyModule("snapshot.tools.run"), 1),
+    occ([0, 5, 12], pyModule("sim.sky")),
+    occ([0, 20, 25], pyName("sim.sky", "SCALE.")),
+  ]);
+  // one document defines sim.sky: an import's use of its module maps there
+  const one = scipFacts(
+    index(sky("sim/sky.py"), run),
+    linesOf(files),
+    "pyright",
+  );
+  expect(one.moduleAt).toStrictEqual(
+    new Map([[positionKey("tools/run.py", { line: 1, col: 6 }), "sim/sky.py"]]),
+  );
+  expect(one.duplicates).toStrictEqual([]);
+  // two documents define it, as two import roots that each hold sim/sky.py would: no import
+  // maps to either, and its symbols are duplicates
+  const two = scipFacts(
+    index(sky("sim/sky.py"), run, sky("vendor/sim/sky.py")),
+    linesOf(files),
+    "pyright",
+  );
+  expect(two.moduleAt).toStrictEqual(new Map());
+  expect(two.duplicates).toStrictEqual([
+    pyName("sim.sky", "SCALE."),
+    pyModule("sim.sky"),
+  ]);
+});
+
+it("joins the facts of indexes of disjoint files as one, each file's in their order, and refuses a file two of them hold", () => {
+  const ts: ScipFacts = {
+    documents: new Set(["web/a.ts", "web/z.ts"]),
+    definitions: [
+      { file: "web/a.ts", at: { line: 1, col: 1 }, symbol: "ts a" },
+      { file: "web/z.ts", at: { line: 1, col: 1 }, symbol: "ts z" },
+    ],
+    uses: [
+      { file: "web/a.ts", at: { line: 2, col: 9 }, symbol: "ts z", roles: 0 },
+    ],
+    moduleAt: new Map([["web/a.ts:2:9", "web/z.ts"]]),
+    duplicates: ["ts d"],
+  };
+  const py: ScipFacts = {
+    documents: new Set(["sim/sky.py"]),
+    definitions: [
+      { file: "sim/sky.py", at: { line: 1, col: 1 }, symbol: "py m" },
+      { file: "sim/sky.py", at: { line: 4, col: 7 }, symbol: "py s" },
+    ],
+    uses: [
+      {
+        file: "sim/sky.py",
+        at: { line: 9, col: 21 },
+        symbol: "py s",
+        roles: 8,
+      },
+    ],
+    moduleAt: new Map(),
+    duplicates: ["py d"],
+  };
+  const joined = joinScipFacts(ts, py);
+  expect(joined).toStrictEqual({
+    documents: new Set(["sim/sky.py", "web/a.ts", "web/z.ts"]),
+    definitions: [...py.definitions, ...ts.definitions],
+    uses: [...py.uses, ...ts.uses],
+    moduleAt: new Map([["web/a.ts:2:9", "web/z.ts"]]),
+    duplicates: ["py d", "ts d"],
+  });
+  expect([...(joined?.documents ?? [])]).toEqual([
+    "sim/sky.py",
+    "web/a.ts",
+    "web/z.ts",
+  ]);
+  // one index, or none, comes back as it is
+  expect(joinScipFacts(ts, null)).toBe(ts);
+  expect(joinScipFacts(null, py)).toBe(py);
+  expect(joinScipFacts(null, null)).toBeNull();
+  expect(() =>
+    joinScipFacts(ts, {
+      ...py,
+      documents: new Set(["sim/sky.py", "web/a.ts"]),
+    }),
+  ).toThrow("two SCIP indexes hold the document web/a.ts");
 });

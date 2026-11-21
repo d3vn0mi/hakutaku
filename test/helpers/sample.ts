@@ -20,7 +20,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll } from "vitest";
-import { defaultEnginesDir } from "../../src/engines/index.js";
+import {
+  defaultEnginesDir,
+  readLock,
+  resolveBin,
+} from "../../src/engines/index.js";
 import { exportRepo, removeTree } from "../../src/export/index.js";
 import { extractSnapshot } from "../../src/extract/index.js";
 import type { Detail } from "../../src/model/index.js";
@@ -76,6 +80,26 @@ export function samplePythonProbe(): LiveProbe {
     };
   }
   return commandProbe(name, [installed.python, "-I", "-c", "pass"]);
+}
+
+// A live probe for requireInCI: whether the installed engines hold scip-python, which only an
+// install with --deep does, and its bin starts. A test that runs it is skipped where it does not,
+// and fails in CI, whose engines are installed with --deep.
+export function scipPythonProbe(): LiveProbe {
+  const name = "scip-python, from an engine install with --deep";
+  const entry = readLock().lock.engines["scip-python"];
+  if (entry === undefined) {
+    return {
+      name,
+      ok: false,
+      evidence: "the engine lock holds no scip-python",
+    };
+  }
+  return commandProbe(name, [
+    process.execPath,
+    resolveBin(ENGINES_DIR, entry.bin),
+    "--version",
+  ]);
 }
 
 // The files under a path relative to hakutaku's root, itself when it is a file.
