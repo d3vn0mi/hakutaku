@@ -1,6 +1,7 @@
 // Checks over the files of this repository: what git tracks, plus untracked files that
 // .gitignore does not exclude. They keep stores, images and home-directory paths out of
-// a public tree, and check that CI runs every test file.
+// a public tree, and check that CI runs every test file, with the live sandbox tests' tools
+// set up before its first test run.
 import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, readlinkSync } from "node:fs";
 import { join } from "node:path";
@@ -269,4 +270,35 @@ it("runs every test file in some CI vitest run", () => {
     missed,
     `test files no CI vitest run collects:\n${missed.join("\n")}`,
   ).toEqual([]);
+});
+
+it("installs bubblewrap, allows user namespaces and keeps a user manager before CI's first test run", () => {
+  const SETUP: Array<[string, RegExp]> = [
+    ["installs bubblewrap", /\bapt-get install\b.*\bbubblewrap\b/],
+    [
+      "allows unprivileged user namespaces",
+      /\bsysctl -w kernel\.apparmor_restrict_unprivileged_userns=0$/,
+    ],
+    ["keeps a user manager running", /\bloginctl enable-linger\b/],
+    [
+      "gives the later steps its runtime directory",
+      /\bXDG_RUNTIME_DIR=.*\$GITHUB_ENV\b/,
+    ],
+  ];
+  const lines = ciLines();
+  const workflows = [...new Set(lines.map((l) => l.file))];
+  expect(workflows.length).toBeGreaterThan(0);
+  for (const file of workflows) {
+    const own = lines.filter((l) => l.file === file);
+    const first = own.find((l) => l.runs.length > 0);
+    if (first === undefined) continue;
+    const before = own.filter((l) => l.line < first.line);
+    const missing = SETUP.filter(
+      ([, pattern]) => !before.some((l) => pattern.test(l.command)),
+    ).map(([what]) => what);
+    expect(
+      missing,
+      `${file}: what CI must do before line ${first.line}, ${first.command}`,
+    ).toEqual([]);
+  }
 });

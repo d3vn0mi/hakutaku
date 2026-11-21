@@ -31,6 +31,23 @@ jobs:
           python-version: "3.12"
       - run: npm ci
       - run: npm run build
+      # The live sandbox tests fail in CI where their tools do not work, rather than skip, so the
+      # tools come before the first test step: bubblewrap; unprivileged user namespaces, which
+      # Ubuntu's AppArmor restricts by default; and a systemd user manager that stays up for the
+      # whole job (lingering), which the later steps reach through XDG_RUNTIME_DIR. The loop waits
+      # up to 30 s for the manager to start; if it never does, the live tests say so.
+      - run: |
+          sudo apt-get install -y bubblewrap strace
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          sudo loginctl enable-linger "$(id -un)"
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR" >> "$GITHUB_ENV"
+          for _ in $(seq 30); do
+            systemd-run --user --wait --quiet --collect true && break
+            sleep 1
+          done
       - name: typecheck and lint
         run: npm run typecheck && npm run lint
       - name: unit tests
