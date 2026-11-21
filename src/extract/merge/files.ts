@@ -11,6 +11,7 @@ import {
   type FileKind,
   type GitMode,
 } from "../../model/index.js";
+import { redactText } from "../../redact/index.js";
 import type { ComponentRow, FileRow } from "../../store/index.js";
 import {
   classifyFile,
@@ -58,10 +59,30 @@ export function regularPaths(manifest: Pick<ExportManifest, "tree">): string[] {
     .sort(comparePaths);
 }
 
+// A link's target as the store keeps it: redacted, as every stored text is, and never cut.
+function storedTarget(target: string): { text: string; count: number } {
+  return redactText(target);
+}
+
+// redactText's count over the link targets fileRows stores.
+export function linkRedactions(
+  manifest: Pick<ExportManifest, "tree" | "symlinks">,
+): number {
+  const targets = new Map(manifest.symlinks.map((s) => [s.path, s.target]));
+  let count = 0;
+  for (const entry of manifest.tree) {
+    const target = targets.get(entry.path);
+    if (entry.mode === "120000" && target !== undefined) {
+      count += storedTarget(target).count;
+    }
+  }
+  return count;
+}
+
 // One row per tree entry, in path order, its id its place. Links and submodules are other,
-// with no lines and no source; a link keeps its text, never followed. A regular file is read
-// once: its first 8,000 bytes classify it, and a binary one has no lines. entry is 0 and
-// component_id null until the later passes set them.
+// with no lines and no source; a link keeps its text, redacted and never followed. A regular
+// file is read once: its first 8,000 bytes classify it, and a binary one has no lines. entry is
+// 0 and component_id null until the later passes set them.
 export function fileRows(input: MergeInput): FileRow[] {
   const { manifest } = input;
   const targets = new Map(manifest.symlinks.map((s) => [s.path, s.target]));
@@ -90,7 +111,7 @@ export function fileRows(input: MergeInput): FileRow[] {
             `the export lists no target for the link ${entry.path}`,
           );
         }
-        row.link_target = target;
+        row.link_target = storedTarget(target).text;
       }
       if (!isRegular(entry.mode)) return row;
       const bytes = input.readSnapshot(entry.path);

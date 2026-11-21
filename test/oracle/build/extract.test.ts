@@ -634,6 +634,37 @@ it(
 );
 
 it(
+  "stores a secret-shaped package name and link target redacted, and the redaction gate stays green",
+  async () => {
+    // assembled here, never written whole
+    const secret = ["gh", "p_", "Q7x2M4p9K3l8N5r6".repeat(3)].join("");
+    const repo = await oneCommit({
+      ...SKY,
+      "web/src/vault.ts": lines(
+        `import key from "${secret}";`,
+        "export { key };",
+      ),
+      "keys/current": { link: `../vault/${secret}` },
+    });
+    const out = storePath();
+    const r = await extract(await exportOf(repo), out);
+    expect(r.result).toBe("built");
+    expect(r.gates.map((g) => g.ok)).toEqual(ALL_OK);
+    inStore(out, (s) => {
+      expect(
+        s.db.prepare("SELECT ecosystem, name FROM externals").all(),
+      ).toEqual([{ ecosystem: "npm", name: "«redacted:github-token»" }]);
+      expect(
+        s.db
+          .prepare("SELECT link_target FROM files WHERE path = 'keys/current'")
+          .get(),
+      ).toEqual({ link_target: "../vault/«redacted:github-token»" });
+    });
+  },
+  TIMEOUT,
+);
+
+it(
   "records a tier that ran out of memory with its repair, and rebuilds over it only at another memory cap",
   async () => {
     const repo = await oneCommit(SKY);

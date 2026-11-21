@@ -6,12 +6,14 @@
 // - scip-duplicates: no symbol is defined by two SCIP documents;
 // - denylist: no denylisted path is a file of the store;
 // - redaction: a second scan of every stored text finds no secret.
-// runGates is pure: it reads only its input.
+// runGates is pure: it reads only its input. storedTexts lists the texts the redaction gate
+// scans again.
 import { posix } from "node:path";
 import { pythonModuleIndex } from "../manifests/index.js";
 import { comparePaths, type FileKind, type Lang } from "../model/index.js";
 import { findSecrets, isDenied } from "../redact/index.js";
 import type { FileRow, GateResult } from "../store/index.js";
+import type { MergedContent } from "./merge/index.js";
 import { listedByInclude } from "./resolve/ts.js";
 
 // A text the store holds, with the file and the line it starts at.
@@ -45,9 +47,55 @@ export interface GateInput {
   denylistExtra: readonly string[];
   // how many spans redaction replaced
   redactions: number;
-  // every stored text: sources, signatures, receiver texts, specifiers, entry names and the
-  // text index
+  // every stored text, as storedTexts lists them
   texts: Iterable<StoredText>;
+}
+
+// Every text the store holds, with the file and line it starts at: sources, signatures,
+// receiver texts, specifiers, each external's name where an import first names it, entry
+// names, the text index, and each link's target at its link.
+export function* storedTexts(c: MergedContent): Generator<StoredText> {
+  // a row's id is its place in its table
+  const pathOf = (id: number): string => c.files[id - 1]?.path ?? "";
+  for (const s of c.sources) {
+    yield { path: pathOf(s.file_id), line: 1, text: s.text };
+  }
+  for (const d of c.definitions) {
+    if (d.signature !== null) {
+      yield { path: pathOf(d.file_id), line: d.start_line, text: d.signature };
+    }
+  }
+  for (const s of c.call_sites) {
+    if (s.receiver_text !== null) {
+      yield { path: pathOf(s.file_id), line: s.line, text: s.receiver_text };
+    }
+  }
+  const named = new Set<number>();
+  for (const i of c.imports) {
+    yield { path: pathOf(i.src_file_id), line: i.line, text: i.specifier };
+    const id = i.dst_external_id;
+    if (id === null || named.has(id)) continue;
+    named.add(id);
+    const external = c.externals[id - 1];
+    if (external !== undefined) {
+      yield { path: pathOf(i.src_file_id), line: i.line, text: external.name };
+    }
+  }
+  for (const e of c.entry_points) {
+    yield {
+      path: pathOf(e.manifest_file_id),
+      line: e.manifest_line,
+      text: e.name,
+    };
+  }
+  for (const t of c.text_index) {
+    yield { path: pathOf(t.file_id), line: t.line, text: t.text };
+  }
+  for (const f of c.files) {
+    if (f.link_target !== null) {
+      yield { path: f.path, line: 1, text: f.link_target };
+    }
+  }
 }
 
 // At most this many paths or findings are named in a detail.

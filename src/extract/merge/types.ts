@@ -47,8 +47,8 @@ export interface MergeSide {
   indexed: Map<Lang, Set<string>>;
   // the symbols two or more SCIP documents define as their own
   scipDuplicates: string[];
-  // redactText's count over every stored text: sources, signatures, receivers, specifiers
-  // and entry names
+  // redactText's count over every stored text: sources, signatures, receivers, specifiers,
+  // entry names, external names and link targets
   redactions: number;
   computedImports: number;
   unmatchedScipDefinitions: number;

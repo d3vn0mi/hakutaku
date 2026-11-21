@@ -6,7 +6,7 @@
 import { mergeCalls } from "./calls.js";
 import { mergeDefinitions } from "./definitions.js";
 import { mergeEntries } from "./entries.js";
-import { fileRows, mergeFiles } from "./files.js";
+import { fileRows, linkRedactions, mergeFiles } from "./files.js";
 import { mergeImports } from "./imports.js";
 import { mergeRefs } from "./refs.js";
 import { mergeRules } from "./rules.js";
@@ -53,7 +53,8 @@ export function mergeFacts(input: MergeInput): {
         imports.redactions +
         entries.redactions +
         calls.redactions +
-        sources.redactions,
+        sources.redactions +
+        linkRedactions(input.manifest),
       computedImports: imports.computedImports,
       unmatchedScipDefinitions: defs.unmatchedScipDefinitions,
       unmatchedBoundUses: calls.unmatchedBoundUses,

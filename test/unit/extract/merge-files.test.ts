@@ -240,3 +240,17 @@ it("stores each tree entry's kind, lines, link and source by the fixed rules", (
     ),
   ).toEqual([0, 0, 0, 0, 0, 0, 0, 0, 0]);
 });
+
+it("stores a link's target redacted", () => {
+  // assembled here, never written whole
+  const github = ["gh", "p_", "Q7x2M4p9K3l8N5r6".repeat(3)].join("");
+  const files = fileRows(
+    mergeInput(
+      { "src/app.ts": "export const app = 1;\n" },
+      { links: { "keys/current": `../vault/${github}` } },
+    ),
+  );
+  expect(files.find((f) => f.path === "keys/current")?.link_target).toBe(
+    "../vault/«redacted:github-token»",
+  );
+});

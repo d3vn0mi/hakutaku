@@ -15,8 +15,9 @@
 // - Shell: the specifier as a path from the file's directory, then from the repo top.
 // A dependency-cruiser edge that no fact names gets the line of the first string literal
 // holding its specifier, else line 1 and a build warning. A computed import adds no row.
-// Specifiers are stored redacted and cut to 240 characters; rows are sorted in the store's
-// order, and a row equal to another in every column is kept once. Once the importers are
+// Specifiers, and the names of externals, are stored redacted and cut to 240 characters, and two
+// externals whose names are stored alike are one row; rows are sorted in the store's order, and
+// a row equal to another in every column is kept once. Once the importers are
 // known, each Python definition's exported flag is set: a name with no segment starting "_",
 // in a file another repo file imports.
 import { posix } from "node:path";
@@ -55,7 +56,7 @@ export interface MergedImports {
   computedImports: number;
   // per language, the files its import engine covered, metadata-only files never among them
   indexed: Map<Lang, Set<string>>;
-  // redactText's count over the stored specifiers
+  // redactText's count over the stored specifiers and external names
   redactions: number;
   warnings: string[];
 }
@@ -150,28 +151,46 @@ export function mergeImports(
     });
   }
 
-  // the externals, in (ecosystem, name) order, before any row names one
-  const externalKey = (t: { ecosystem: string; name: string }): string =>
-    JSON.stringify([t.ecosystem, t.name]);
-  const found = new Map<string, { ecosystem: Ecosystem; name: string }>();
-  for (const d of drafts) {
-    if (d.target !== null && !("file" in d.target)) {
-      found.set(externalKey(d.target), d.target);
+  // the externals, in (ecosystem, name) order, before any row names one; each is keyed by the
+  // name it is stored under, so two names that redact alike are one external
+  const storedNames = new Map<string, { text: string; count: number }>();
+  const storedName = (name: string): { text: string; count: number } => {
+    let stored = storedNames.get(name);
+    if (stored === undefined) {
+      stored = redactLine(name);
+      storedNames.set(name, stored);
     }
+    return stored;
+  };
+  const externalKey = (t: { ecosystem: string; name: string }): string =>
+    JSON.stringify([t.ecosystem, storedName(t.name).text]);
+  const found = new Map<
+    string,
+    { ecosystem: Ecosystem; name: string; count: number }
+  >();
+  for (const d of drafts) {
+    if (d.target === null || "file" in d.target) continue;
+    const key = externalKey(d.target);
+    if (found.has(key)) continue;
+    const { text, count } = storedName(d.target.name);
+    found.set(key, { ecosystem: d.target.ecosystem, name: text, count });
   }
-  const externals: ExternalRow[] = [...found.values()]
-    .sort(
-      (a, b) =>
-        comparePaths(a.ecosystem, b.ecosystem) || comparePaths(a.name, b.name),
-    )
-    .map((e, i) => ({
-      id: i + 1,
-      ecosystem: e.ecosystem,
-      name: e.name,
-      files: 0,
-    }));
-  const externalId = new Map(externals.map((e) => [externalKey(e), e.id]));
+  const sortedExternals = [...found.values()].sort(
+    (a, b) =>
+      comparePaths(a.ecosystem, b.ecosystem) || comparePaths(a.name, b.name),
+  );
+  const externals: ExternalRow[] = sortedExternals.map((e, i) => ({
+    id: i + 1,
+    ecosystem: e.ecosystem,
+    name: e.name,
+    files: 0,
+  }));
+  // keyed as externalKey keys a target: by the name it is stored under
+  const externalId = new Map(
+    externals.map((e) => [JSON.stringify([e.ecosystem, e.name]), e.id]),
+  );
 
+  let redactions = sortedExternals.reduce((n, e) => n + e.count, 0);
   const rows: Array<{ row: ImportRow; redactions: number }> = drafts.map(
     (d) => {
       const stored = redactLine(d.specifier);
@@ -201,7 +220,6 @@ export function mergeImports(
   );
   rows.sort((a, b) => compareRows(a.row, b.row));
   const imports: ImportRow[] = [];
-  let redactions = 0;
   for (const { row, redactions: count } of rows) {
     const last = imports.at(-1);
     if (last !== undefined && compareRows(last, row) === 0) continue;

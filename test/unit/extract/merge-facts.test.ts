@@ -371,7 +371,7 @@ it("builds coverage from the merge, the build's tiers and the export", () => {
   ).toBe("warn");
 });
 
-it("sums the redactions of sources, signatures, receivers, specifiers and entry names", () => {
+it("sums the redactions of sources, signatures, receivers, specifiers, entry names, external names and link targets", () => {
   const LINK = "web/src/link.ts";
   const github = join("gh", "p_", high(36));
   const SIGNATURE = `export function connect(t = "${github}") {}`;
@@ -379,6 +379,7 @@ it("sums the redactions of sources, signatures, receivers, specifiers and entry 
     `import "https://example.invalid/${github}";`,
     SIGNATURE,
     `${github}.connect();`,
+    `import "${github}";`,
   );
   const input = mergeInput(
     {
@@ -416,17 +417,19 @@ it("sums the redactions of sources, signatures, receivers, specifiers and entry 
               `https://example.invalid/${github}`,
               "side-effect",
             ),
+            importFact(LINK, P(4, 8), github, "side-effect"),
           ],
         }),
       },
+      links: { "keys/current": `../vault/${github}` },
     },
   );
   const { content, side } = mergeFacts(input);
   // the CI step is the one entry point
   expect(content.entry_points).toHaveLength(1);
-  // the workflow's source and its entry name, link.ts' source (three tokens), the
-  // specifier, the signature and the receiver
-  expect(side.redactions).toBe(8);
+  // the workflow's source and its entry name, link.ts' source (four tokens), the two
+  // specifiers, the signature, the receiver, the external's name and the link's target
+  expect(side.redactions).toBe(12);
   const stored = [
     ...content.sources.map((s) => s.text),
     ...content.text_index.map((t) => t.text),
@@ -434,7 +437,12 @@ it("sums the redactions of sources, signatures, receivers, specifiers and entry 
     ...content.call_sites.flatMap((s) => s.receiver_text ?? []),
     ...content.imports.map((i) => i.specifier),
     ...content.entry_points.map((e) => e.name),
+    ...content.externals.map((e) => e.name),
+    ...content.files.flatMap((f) => f.link_target ?? []),
   ];
+  expect(content.externals.map((e) => e.name)).toEqual([
+    "«redacted:github-token»",
+  ]);
   expect(stored.flatMap(findSecrets)).toEqual([]);
 });
 

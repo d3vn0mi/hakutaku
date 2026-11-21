@@ -50,14 +50,9 @@ import { depcruiseDriver } from "./drivers/depcruise.js";
 import { grimpDriver } from "./drivers/grimp.js";
 import { heapMiB, scipTypescriptDriver } from "./drivers/scip-typescript.js";
 import { readExportDir } from "./export-dir.js";
-import { runGates, type StoredText } from "./gates.js";
+import { runGates, storedTexts } from "./gates.js";
 import { regularPaths } from "./merge/files.js";
-import {
-  coverageOf,
-  type MergedContent,
-  type MergeInput,
-  mergeFacts,
-} from "./merge/index.js";
+import { coverageOf, type MergeInput, mergeFacts } from "./merge/index.js";
 import { computeMetrics } from "./metrics.js";
 import { extractInSandbox, SandboxedRunFailed } from "./rerun.js";
 import {
@@ -702,38 +697,6 @@ function snapshotReader(snapshotDir: string): (path: string) => Uint8Array {
     }
     return readFileSync(file);
   };
-}
-
-// Every text the store holds, with the file and line it starts at: sources, signatures,
-// receiver texts, specifiers, entry names and the text index.
-function* storedTexts(c: MergedContent): Generator<StoredText> {
-  const pathOf = (id: number): string => c.files[id - 1]?.path ?? "";
-  for (const s of c.sources) {
-    yield { path: pathOf(s.file_id), line: 1, text: s.text };
-  }
-  for (const d of c.definitions) {
-    if (d.signature !== null) {
-      yield { path: pathOf(d.file_id), line: d.start_line, text: d.signature };
-    }
-  }
-  for (const s of c.call_sites) {
-    if (s.receiver_text !== null) {
-      yield { path: pathOf(s.file_id), line: s.line, text: s.receiver_text };
-    }
-  }
-  for (const i of c.imports) {
-    yield { path: pathOf(i.src_file_id), line: i.line, text: i.specifier };
-  }
-  for (const e of c.entry_points) {
-    yield {
-      path: pathOf(e.manifest_file_id),
-      line: e.manifest_line,
-      text: e.name,
-    };
-  }
-  for (const t of c.text_index) {
-    yield { path: pathOf(t.file_id), line: t.line, text: t.text };
-  }
 }
 
 // Inside a systemd-run service the build is its own cgroup, whose peak it can read.

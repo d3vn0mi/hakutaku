@@ -1,5 +1,10 @@
 import { expect, it } from "vitest";
-import { type GateInput, runGates } from "../../../src/extract/gates.js";
+import {
+  type GateInput,
+  runGates,
+  storedTexts,
+} from "../../../src/extract/gates.js";
+import type { MergedContent } from "../../../src/extract/merge/index.js";
 import type { FileRow, GateResult } from "../../../src/store/index.js";
 
 const join = (...parts: string[]) => parts.join("");
@@ -370,5 +375,69 @@ it("reports scip-typescript did not run at quick detail", () => {
     gate: "scip-duplicates",
     ok: false,
     detail: "2 duplicate symbols, e.g. scip-typescript npm . . src/`index.ts`/",
+  });
+});
+
+it("re-scans every stored text, external names and link targets among them, each where it is read", () => {
+  const file = (id: number, path: string, link: string | null = null) => ({
+    id,
+    path,
+    lang: null,
+    kind: "code" as const,
+    component_id: null,
+    lines: 1,
+    bytes: 1,
+    blob_sha: "0".repeat(40),
+    mode: link === null ? ("100644" as const) : ("120000" as const),
+    link_target: link,
+    entry: 0 as const,
+    has_source: 0 as const,
+  });
+  const content = {
+    files: [file(1, "keys/current", "../vault/sky"), file(2, "web/a.ts")],
+    sources: [],
+    definitions: [],
+    call_sites: [],
+    entry_points: [],
+    text_index: [],
+    externals: [{ id: 1, ecosystem: "npm", name: "orbit-kit", files: 1 }],
+    imports: [
+      {
+        id: 1,
+        src_file_id: 2,
+        dst_file_id: null,
+        dst_external_id: 1,
+        kind: "static",
+        line: 3,
+        specifier: "orbit-kit/sub",
+        resolved: 1,
+        producer: "ast-grep",
+      },
+    ],
+  } as unknown as MergedContent;
+  expect([...storedTexts(content)]).toEqual([
+    { path: "web/a.ts", line: 3, text: "orbit-kit/sub" },
+    { path: "web/a.ts", line: 3, text: "orbit-kit" },
+    { path: "keys/current", line: 1, text: "../vault/sky" },
+  ]);
+  // so a secret in either fails the gate rather than reaching the store unseen
+  const leaked = runGates(
+    input({
+      texts: storedTexts({
+        ...content,
+        externals: [
+          {
+            id: 1,
+            ecosystem: "npm",
+            name: join("gh", "p_", "Q7x2M4p9K3l8N5r6".repeat(3)),
+            files: 1,
+          },
+        ],
+      } as MergedContent),
+    }),
+  );
+  expect(gate(leaked, "redaction")).toMatchObject({
+    ok: false,
+    detail: "re-scan found 1: web/a.ts:3 github-token",
   });
 });

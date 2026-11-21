@@ -694,3 +694,42 @@ it("redacts specifiers, then orders and dedupes the rows, and counts each extern
   ]);
   expect(merged.redactions).toBe(1);
 });
+
+it("stores an external's name redacted, as one row for names that redact alike, counted once", () => {
+  const A = "web/src/a.ts";
+  const B = "web/src/b.ts";
+  // two bare specifiers that are secrets, each a package name of its own
+  const first = join("gh", "p_", high(36));
+  const second = join("gh", "p_", high(40));
+  const FILES: Record<string, string> = {
+    [A]: `import a from '${first}';\nimport React from 'react';\n`,
+    [B]: `import b from '${second}';\n`,
+  };
+  const merged = importsOf(
+    mergeInput(FILES, {
+      facts: {
+        astGrep: astGrep({
+          imports: [
+            importFact(A, spot(FILES[A] ?? "", 1, `'${first}'`), first),
+            importFact(A, spot(FILES[A] ?? "", 2, "'react'"), "react"),
+            importFact(B, spot(FILES[B] ?? "", 1, `'${second}'`), second),
+          ],
+        }),
+      },
+    }),
+  );
+  const hidden = "«redacted:github-token»";
+  expect(merged.externals).toEqual([
+    { id: 1, ecosystem: "npm", name: "react", files: 1 },
+    { id: 2, ecosystem: "npm", name: hidden, files: 2 },
+  ]);
+  expect(merged.imports).toEqual(
+    rows(
+      [1, 1, null, 2, "static", 1, hidden, "hakutaku-resolver"],
+      [2, 1, null, 1, "static", 2, "react", "hakutaku-resolver"],
+      [3, 2, null, 2, "static", 1, hidden, "hakutaku-resolver"],
+    ),
+  );
+  // the two specifiers, and the one external row
+  expect(merged.redactions).toBe(3);
+});
