@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -203,6 +204,56 @@ it("reads freshness from ref files, with reasons", () => {
     reason: "the last build failed its gates: unresolved imports grew",
   });
 });
+
+// Only a build puts the store and its attempt.json in place: a link in either place is never
+// followed, so the store reads as unreadable and the attempt as none.
+it.skipIf(process.platform === "win32")(
+  "never follows a link in place of the store or its attempt",
+  () => {
+    const elsewhere = join(root, "elsewhere");
+    mkdirSync(elsewhere);
+    const failed = join(elsewhere, "attempt.json");
+    writeFileSync(
+      failed,
+      JSON.stringify({
+        at: "2026-11-16T10:00:00Z",
+        commit: TINY_COMMIT,
+        result: "failed",
+        reason: "planted",
+      }),
+    );
+    symlinkSync(failed, join(dirname(storePathFor("tiny")), "attempt.json"));
+    const h = createRegistryHost(
+      { repos: ["tiny"], allowRefresh: true },
+      fake(),
+    );
+    expect(h.freshness("tiny")).toEqual({
+      headCommit: TINY_COMMIT,
+      stale: false,
+    });
+    expect(refreshOf(h)("tiny")).toEqual({
+      state: "queued",
+      retryAfterSeconds: 600,
+    });
+    const store = join(elsewhere, "store.sqlite");
+    copyFileSync(TINY, store);
+    rmSync(storePathFor("tiny"));
+    symlinkSync(store, storePathFor("tiny"));
+    const g = createRegistryHost(
+      { repos: ["tiny"], allowRefresh: false },
+      fake(),
+    );
+    expect(g.open(null, "tiny")).toEqual({
+      code: "not_built",
+      reason: "store unreadable",
+    });
+    expect(g.freshness("tiny")).toEqual({
+      headCommit: TINY_COMMIT,
+      stale: true,
+      reason: "not built: store unreadable",
+    });
+  },
+);
 
 it("gives unknown when the ref cannot be read", () => {
   saveEntry({ ...entry("tiny"), ref: "refs/heads/nope" });

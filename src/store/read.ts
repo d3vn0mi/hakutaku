@@ -1,7 +1,7 @@
 // openStore: a store opened read-only, with its meta and run read, or the reason it cannot serve.
 // No reason names a path, and openStore never throws. Also the shape checks that hakutaku's
 // readers of its own JSON use.
-import { statSync } from "node:fs";
+import { lstatSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import type { Detail, EngineName, Severity } from "../model/index.js";
 import { SCHEMA_VERSION, TABLE_COLUMNS } from "./schema.js";
@@ -156,8 +156,9 @@ const notBuilt = (reason: string): NotBuilt => ({ code: "not_built", reason });
 
 export function openStore(path: string): Store | NotBuilt {
   // A FIFO or a directory is never opened: SQLite would block on the one and fail on the other.
+  // Nor is a link: only a build puts a store in place, by a rename, never as a link.
   try {
-    if (!statSync(path).isFile()) return notBuilt(UNREADABLE);
+    if (!lstatSync(path).isFile()) return notBuilt(UNREADABLE);
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     return notBuilt(

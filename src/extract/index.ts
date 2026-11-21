@@ -17,7 +17,7 @@
 // explained. Any error removes this build's temporary files, records the attempt as failed,
 // and is thrown again. Every reason and warning the build writes is cleaned first: each of its
 // directories, and the home directory, named by token, and every secret redacted.
-import { lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import {
   defaultEnginesDir,
@@ -49,7 +49,7 @@ import { astGrepDriver } from "./drivers/ast-grep.js";
 import { depcruiseDriver } from "./drivers/depcruise.js";
 import { grimpDriver } from "./drivers/grimp.js";
 import { heapMiB, scipTypescriptDriver } from "./drivers/scip-typescript.js";
-import { readExportDir } from "./export-dir.js";
+import { readExportDir, snapshotReader } from "./export-dir.js";
 import { runGates, storedTexts } from "./gates.js";
 import { regularPaths } from "./merge/files.js";
 import { coverageOf, type MergeInput, mergeFacts } from "./merge/index.js";
@@ -695,18 +695,6 @@ function currentStore(
   } finally {
     store.close();
   }
-}
-
-// A regular file's bytes in the snapshot. Export writes nothing else there, so anything else is
-// refused rather than followed.
-function snapshotReader(snapshotDir: string): (path: string) => Uint8Array {
-  return (path) => {
-    const file = join(snapshotDir, path);
-    if (!lstatSync(file).isFile()) {
-      throw new Error(`the snapshot's ${path} is not a regular file`);
-    }
-    return readFileSync(file);
-  };
 }
 
 // Inside a systemd-run service the build is its own cgroup, whose peak it can read.

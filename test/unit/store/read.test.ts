@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -298,6 +298,24 @@ it.skipIf(process.platform === "win32")(
     const path = join(tmp(), "store.sqlite");
     execFileSync("mkfifo", [path]);
     expect(openStore(path)).toEqual({
+      code: "not_built",
+      reason: "store unreadable",
+    });
+  },
+);
+
+// Only a build puts a store in place, by a rename: a link there is never followed, whatever it
+// names.
+it.skipIf(process.platform === "win32")(
+  "answers store unreadable for a link, even to a valid store",
+  () => {
+    const store = miniStore(emptyContent());
+    const control = openStore(store) as Store;
+    expect(control.meta.repoId).toBe("observatory");
+    control.close();
+    const link = join(tmp(), "store.sqlite");
+    symlinkSync(store, link);
+    expect(openStore(link)).toEqual({
       code: "not_built",
       reason: "store unreadable",
     });

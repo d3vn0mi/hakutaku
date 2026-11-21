@@ -3,6 +3,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -291,3 +292,23 @@ it("leaves no file when it refuses content, and never writes over a file", () =>
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// SQLite follows a link at the path it creates, so a link there, even one naming no file yet, is
+// refused as a file that already exists.
+it.skipIf(process.platform === "win32")(
+  "never writes through a link at its path, even one that names no file yet",
+  () => {
+    const dir = mkdtempSync(join(tmpdir(), "hakutaku-write-"));
+    try {
+      const path = join(dir, "store.tmp.sqlite");
+      const target = join(dir, "planted.sqlite");
+      symlinkSync(target, path);
+      expect(() => writeStore(path, emptyContent())).toThrow(
+        `writeStore: ${path} already exists`,
+      );
+      expect(existsSync(target)).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+);

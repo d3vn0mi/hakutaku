@@ -2,13 +2,17 @@
 // temporary store and work directory, build.json and attempt.json. The two JSON files are
 // written to a temporary file and renamed, so a reader finds the old file or the new one, never
 // a part of either; a reader answers null for a file that is missing, not JSON, or not of its
-// type's shape.
+// type's shape. Only a build writes them, and never as links: a link in their place is read as
+// unreadable and written over, never followed.
 import {
+  closeSync,
+  constants,
+  fstatSync,
   mkdirSync,
-  readFileSync,
+  openSync,
+  readSync,
   renameSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
@@ -106,29 +110,69 @@ export function writeBuildFacts(storePath: string, f: BuildFacts): void {
   writeJson(besideStore(storePath).build, f);
 }
 
-// A file that is not a regular one is never read: a read of a FIFO would block until a writer
-// opened it.
+// The most bytes a JSON file beside a store may hold. A larger one reads as unreadable.
+export const MAX_JSON_BYTES = 64 * 1024 * 1024;
+
 function readJson<T>(path: string, guard: Guard<T>): T | null {
+  const bytes = readRegularFile(path, MAX_JSON_BYTES);
+  if (bytes === null) return null;
   let value: unknown;
   try {
-    if (!statSync(path).isFile()) return null;
-    value = JSON.parse(readFileSync(path, "utf8"));
+    value = JSON.parse(bytes.toString("utf8"));
   } catch {
     return null;
   }
   return guard(value) ? value : null;
 }
 
+// The bytes of a regular file, opened without following a link at its last component and
+// without blocking on a FIFO; null when it is missing, a link or anything but a regular file,
+// or larger than max bytes.
+export function readRegularFile(path: string, max: number): Buffer | null {
+  let fd: number;
+  try {
+    fd = openSync(
+      path,
+      constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+    );
+  } catch {
+    return null;
+  }
+  try {
+    const stats = fstatSync(fd);
+    if (!stats.isFile() || stats.size > max) return null;
+    // read to the end, but never past max: a file that grew since fstat is refused
+    const chunks: Buffer[] = [];
+    let total = 0;
+    for (;;) {
+      const chunk = Buffer.alloc(Math.min(1024 * 1024, max + 1 - total));
+      const n = readSync(fd, chunk, 0, chunk.length, null);
+      if (n === 0) break;
+      total += n;
+      if (total > max) return null;
+      chunks.push(chunk.subarray(0, n));
+    }
+    return Buffer.concat(chunks, total);
+  } catch {
+    return null;
+  } finally {
+    closeSync(fd);
+  }
+}
+
 // The temporary file is named like the store's, <name>.tmp-<pid>.json, and sits in the same
-// directory, so the rename never crosses a file system. The directory is made when missing, so
-// that a build that fails before anything else made it can still record why.
+// directory, so the rename never crosses a file system. Whatever is at that name is removed
+// first, and the file is created only where nothing is, so a link there is never written
+// through. The directory is made when missing, so that a build that fails before anything else
+// made it can still record why.
 function writeJson(path: string, value: unknown): void {
   const dir = dirname(path);
   const ext = extname(path);
   const tmp = join(dir, `${basename(path, ext)}.tmp-${process.pid}${ext}`);
   mkdirSync(dir, { recursive: true });
   try {
-    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
+    rmSync(tmp, { force: true });
+    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, { flag: "wx" });
     renameSync(tmp, path);
   } catch (error) {
     rmSync(tmp, { force: true });

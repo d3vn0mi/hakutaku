@@ -3,13 +3,16 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, expect, it } from "vitest";
+import { MAX_JSON_BYTES } from "../../../src/store/files.js";
 import {
   type Attempt,
   type BuildFacts,
@@ -199,5 +202,53 @@ it.skipIf(process.platform === "win32")(
     mkdirSync(besideStore(dir).build, { recursive: true });
     expect(readAttempt(dir)).toBeNull();
     expect(readBuildFacts(dir)).toBeNull();
+  },
+);
+
+// Only a build writes these files, and never as links: a link in their place is never followed,
+// whatever it names.
+it.skipIf(process.platform === "win32")(
+  "reads null for an attempt.json or build.json that is a link, even to a valid file",
+  () => {
+    const elsewhere = join(tmp(), "store.sqlite");
+    writeAttempt(elsewhere, attempt);
+    writeBuildFacts(elsewhere, facts);
+    expect(readAttempt(elsewhere)).toEqual(attempt);
+    const path = join(tmp(), "store.sqlite");
+    symlinkSync(besideStore(elsewhere).attempt, besideStore(path).attempt);
+    symlinkSync(besideStore(elsewhere).build, besideStore(path).build);
+    expect(readAttempt(path)).toBeNull();
+    expect(readBuildFacts(path)).toBeNull();
+  },
+);
+
+it("reads null for a file larger than the limit, however valid its JSON", () => {
+  const path = join(tmp(), "store.sqlite");
+  const text = JSON.stringify(attempt);
+  // JSON allows whitespace after the value
+  writeFileSync(
+    besideStore(path).attempt,
+    text.padEnd(MAX_JSON_BYTES + 1, " "),
+  );
+  expect(readAttempt(path)).toBeNull();
+  writeFileSync(besideStore(path).attempt, text.padEnd(MAX_JSON_BYTES, " "));
+  expect(readAttempt(path)).toEqual(attempt);
+});
+
+it.skipIf(process.platform === "win32")(
+  "writes each file without following a link at its temporary name",
+  () => {
+    const dir = tmp();
+    const path = join(dir, "store.sqlite");
+    const canary = join(tmp(), "canary.txt");
+    writeFileSync(canary, "canary\n");
+    symlinkSync(canary, join(dir, `attempt.tmp-${process.pid}.json`));
+    symlinkSync(canary, join(dir, `build.tmp-${process.pid}.json`));
+    writeAttempt(path, attempt);
+    writeBuildFacts(path, facts);
+    expect(readFileSync(canary, "utf8")).toBe("canary\n");
+    expect(readAttempt(path)).toEqual(attempt);
+    expect(readBuildFacts(path)).toEqual(facts);
+    expect(readdirSync(dir).sort()).toEqual(["attempt.json", "build.json"]);
   },
 );

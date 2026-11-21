@@ -1,8 +1,10 @@
 export { createStoreCache } from "./cache.js";
 export {
   besideStore,
+  MAX_JSON_BYTES,
   readAttempt,
   readBuildFacts,
+  readRegularFile,
   writeAttempt,
   writeBuildFacts,
 } from "./files.js";

@@ -3,7 +3,7 @@
 // key hashes. Every path the merge will read must be a repo path, so that no read leaves
 // snapshot/. A message names a file of the export and a field, never a host path, since a
 // build's failure reason can reach an agent's answer.
-import { readFileSync, statSync } from "node:fs";
+import { lstatSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   type ExportManifest,
@@ -18,6 +18,7 @@ import {
   type Profile,
   type Rules,
 } from "../profile/index.js";
+import { readRegularFile } from "../store/index.js";
 import { isRepoPath } from "./resolve/ts.js";
 
 export interface ExportInput {
@@ -56,6 +57,32 @@ export function readExportDir(dir: string): ExportInput {
 }
 
 // A file of the export as JSON. It must be a regular file: a read of a FIFO would block.
+// A regular file's bytes in the snapshot. Export writes only directories and regular files
+// there, so a link, or anything else, at any part of the path is refused rather than followed:
+// each directory on the path is checked with lstat, and the file is opened without following a
+// link, in case it changed since.
+export function snapshotReader(
+  snapshotDir: string,
+): (path: string) => Uint8Array {
+  return (path) => {
+    const parts = path.split("/");
+    let at = snapshotDir;
+    parts.forEach((part, i) => {
+      at = join(at, part);
+      if (i < parts.length - 1 && !lstatSync(at).isDirectory()) {
+        throw new Error(
+          `the snapshot's ${parts.slice(0, i + 1).join("/")} is not a directory`,
+        );
+      }
+    });
+    const bytes = readRegularFile(at, Number.POSITIVE_INFINITY);
+    if (bytes === null) {
+      throw new Error(`the snapshot's ${path} is not a regular file`);
+    }
+    return bytes;
+  };
+}
+
 function readJson(dir: string, name: string): unknown {
   let text: string;
   try {

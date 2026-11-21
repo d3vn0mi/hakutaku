@@ -2,7 +2,7 @@
 // file: meta's one row, each table's row order, ids 1..n in that order, and the type of every
 // cell. Then it writes every table and run in one transaction, and leaves the file closed, in
 // rollback-journal mode. A store it refuses leaves no file behind.
-import { existsSync, rmSync } from "node:fs";
+import { lstatSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { deflateSync } from "node:zlib";
 import { comparePaths } from "../model/order.js";
@@ -99,7 +99,11 @@ export function writeStore(
   content: StoreContent,
 ): { contentHash: string } {
   checkContent(content);
-  if (existsSync(path)) throw new Error(`writeStore: ${path} already exists`);
+  // SQLite would follow a link at path, even one that names no file yet, so a link counts as a
+  // file that exists.
+  if (lstatSync(path, { throwIfNoEntry: false }) !== undefined) {
+    throw new Error(`writeStore: ${path} already exists`);
+  }
   const db = new DatabaseSync(path);
   let written = false;
   try {
