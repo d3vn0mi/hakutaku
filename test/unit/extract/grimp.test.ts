@@ -2,6 +2,7 @@
 // directory, then plays the given part. What the real driver reads from a snapshot is pinned
 // by test/oracle/drivers/grimp.test.ts.
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -9,6 +10,8 @@ import {
   readFileSync,
   readlinkSync,
   realpathSync,
+  rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -300,6 +303,66 @@ it("links each module file of a chosen package into its view, with an empty stan
   );
   expect(stand.isFile() && stand.size === 0).toBe(true);
 });
+
+// grimp follows the links of its view, so the view refuses, on its own and before grimp runs,
+// what ast-grep's view refuses: anything but a directory on a linked file's path, a linked file
+// that is not a regular one, and one this process cannot read.
+it("refuses a snapshot entry that is not what the tree says, rather than link to it, and runs nothing", async () => {
+  const elsewhere = (ctx: ExtractContext): string => {
+    const dir = join(dirname(ctx.exportDir), "elsewhere");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "__init__.py"), "");
+    writeFileSync(join(dir, "cli.py"), "import secrets\n");
+    return dir;
+  };
+  const refused = async (
+    plant: (ctx: ExtractContext) => void,
+    reason: RegExp,
+  ): Promise<void> => {
+    const { ctx } = standIn(SKY);
+    plant(ctx);
+    await expect(grimpDriver.run(ctx)).rejects.toThrow(reason);
+    expect(existsSync(join(ctx.workDir, "record.json"))).toBe(false);
+  };
+  const replace = (ctx: ExtractContext, path: string, target: string) => {
+    rmSync(join(ctx.snapshotDir, path), { recursive: true });
+    symlinkSync(target, join(ctx.snapshotDir, path));
+  };
+  // a package's module file, replaced by a link
+  await refused(
+    (ctx) =>
+      replace(ctx, "sim/src/observatory/a.py", join(elsewhere(ctx), "cli.py")),
+    /^the snapshot's sim\/src\/observatory\/a\.py is not a regular file$/,
+  );
+  // a directory on the path, replaced by a link to a directory that holds the same files
+  await refused(
+    (ctx) => replace(ctx, "sim/src/observatory/ephemeris", elsewhere(ctx)),
+    /^the snapshot's sim\/src\/observatory\/ephemeris is not a directory$/,
+  );
+  // a single-file module, replaced by a link
+  await refused(
+    (ctx) => replace(ctx, "tools/skyctl.py", join(elsewhere(ctx), "cli.py")),
+    /^the snapshot's tools\/skyctl\.py is not a regular file$/,
+  );
+  // a module file of the tree that the snapshot lacks
+  await refused(
+    (ctx) => rmSync(join(ctx.snapshotDir, "sim/src/observatory/a.py")),
+    /^cannot read the snapshot's sim\/src\/observatory\/a\.py \(ENOENT\)$/,
+  );
+});
+
+// grimp would stop on a file it cannot read, but only after it had followed every link.
+it.skipIf(process.getuid?.() === 0)(
+  "refuses a module file this process cannot read, and runs nothing",
+  async () => {
+    const { ctx } = standIn(SKY);
+    chmodSync(join(ctx.snapshotDir, "sim/src/observatory/a.py"), 0o000);
+    await expect(grimpDriver.run(ctx)).rejects.toThrow(
+      /^cannot read the snapshot's sim\/src\/observatory\/a\.py \(EACCES\)$/,
+    );
+    expect(existsSync(join(ctx.workDir, "record.json"))).toBe(false);
+  },
+);
 
 it("leaves out a package whose name a module under an earlier root, the standard library or grimp holds, and says so", async () => {
   const { ctx, logged } = standIn({

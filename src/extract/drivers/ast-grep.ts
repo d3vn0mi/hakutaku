@@ -15,12 +15,8 @@
 // at a few thousand deep paths, and the rules' own ignores lists would pass the per-file node
 // budget of ast-grep's YAML reader at about ten thousand files of one language.
 import {
-  accessSync,
-  constants,
   createReadStream,
-  lstatSync,
   mkdirSync,
-  readFileSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -31,7 +27,7 @@ import { readLock, resolveBin } from "../../engines/index.js";
 import type { ExportManifest } from "../../export/index.js";
 import { comparePaths, type ImportKind } from "../../model/index.js";
 import type { EngineDriver, ExtractContext } from "../context.js";
-import { checkSnapshotDirs } from "../export-dir.js";
+import { checkSnapshotFile, snapshotReader } from "../export-dir.js";
 import type { CallFact, ImportFact, OutlineDef, Pos } from "../facts.js";
 import {
   buildOutline,
@@ -129,17 +125,7 @@ function makeView(
   mkdirSync(view);
   const checked = new Set<string>();
   for (const path of paths) {
-    try {
-      checkSnapshotDirs(snapshotDir, path, checked);
-      if (!lstatSync(join(snapshotDir, path)).isFile()) {
-        throw new Error(`the snapshot's ${path} is not a regular file`);
-      }
-      accessSync(join(snapshotDir, path), constants.R_OK);
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (code === undefined) throw error;
-      throw new Error(`cannot read the snapshot's ${path} (${code})`);
-    }
+    checkSnapshotFile(snapshotDir, path, checked);
     mkdirSync(dirname(join(view, path)), { recursive: true });
     symlinkSync(join(snapshotDir, path), join(view, path));
   }
@@ -242,15 +228,17 @@ async function readMatches(
 }
 
 // The raw bytes of a snapshot file's lines, without their line feeds. A few files are kept,
-// since ast-grep writes one file's matches together.
+// since ast-grep writes one file's matches together. Each file is read as the merge reads one,
+// through no link, since ast-grep may name a file the view never held.
 function snapshotLines(
   snapshotDir: string,
 ): (file: string, line0: number) => Uint8Array {
+  const read = snapshotReader(snapshotDir);
   const cache = new Map<string, { bytes: Uint8Array; starts: number[] }>();
   return (file, line0) => {
     let entry = cache.get(file);
     if (entry === undefined) {
-      const bytes = readFileSync(join(snapshotDir, file));
+      const bytes = read(file);
       const starts = [0];
       for (let i = 0; i < bytes.length; i++)
         if (bytes[i] === 0x0a) starts.push(i + 1);

@@ -3,7 +3,13 @@
 // key hashes. Every path the merge will read must be a repo path, so that no read leaves
 // snapshot/. A message names a file of the export and a field, never a host path, since a
 // build's failure reason can reach an agent's answer.
-import { lstatSync, readFileSync, statSync } from "node:fs";
+import {
+  accessSync,
+  constants,
+  lstatSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { join } from "node:path";
 import {
   type ExportManifest,
@@ -75,6 +81,29 @@ export function snapshotReader(
     }
     return bytes;
   };
+}
+
+// Checks a snapshot file before a link to it is made for an engine that follows links: each
+// directory on its path, as checkSnapshotDirs does; the file itself, which must be a regular
+// file, not a link; and that this process can read it, since an engine may skip a file it cannot
+// read without a word. A refusal names the snapshot's path, never a host path; `checked` is
+// checkSnapshotDirs'.
+export function checkSnapshotFile(
+  snapshotDir: string,
+  path: string,
+  checked: Set<string> = new Set(),
+): void {
+  try {
+    checkSnapshotDirs(snapshotDir, path, checked);
+    if (!lstatSync(join(snapshotDir, path)).isFile()) {
+      throw new Error(`the snapshot's ${path} is not a regular file`);
+    }
+    accessSync(join(snapshotDir, path), constants.R_OK);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === undefined) throw error;
+    throw new Error(`cannot read the snapshot's ${path} (${code})`);
+  }
 }
 
 // Checks each directory on a snapshot path with lstat, from the top: one that is a link, or

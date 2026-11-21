@@ -21,6 +21,7 @@ import { join, resolve } from "node:path";
 import { readLock, resolveBin } from "../../engines/index.js";
 import { SOURCE_CAP } from "../../export/source-policy.js";
 import type { EngineDriver, ExtractContext } from "../context.js";
+import { snapshotReader } from "../export-dir.js";
 import { hasTsconfigInput } from "../resolve/ts.js";
 import {
   EngineFailure,
@@ -141,15 +142,17 @@ function failIfFailed(r: EngineRunResult, f: FailureContext): void {
 
 // The store's lines of a snapshot file: the file decoded as the store decodes text (each
 // invalid UTF-8 sequence one U+FFFD, a byte order mark kept), split at LF, each line without
-// the CR of a CRLF. A few files are kept, as the facts are read one document at a time.
+// the CR of a CRLF. A few files are kept, as the facts are read one document at a time. Each file
+// is read as the merge reads one, through no link, since the index may name any repo path.
 function snapshotLines(
   snapshotDir: string,
 ): (file: string, line0: number) => string {
+  const read = snapshotReader(snapshotDir);
   const cache = new Map<string, string[]>();
   return (file, line0) => {
     let lines = cache.get(file);
     if (lines === undefined) {
-      lines = decoder.decode(readFileSync(join(snapshotDir, file))).split("\n");
+      lines = decoder.decode(read(file)).split("\n");
       if (cache.size >= LINE_CACHE) {
         cache.delete(cache.keys().next().value as string);
       }

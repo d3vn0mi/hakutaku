@@ -38,6 +38,7 @@ import {
 } from "../../model/index.js";
 import type { Profile } from "../../profile/index.js";
 import type { EngineDriver, ExtractContext } from "../context.js";
+import { checkSnapshotFile } from "../export-dir.js";
 import {
   EngineFailure,
   engineEnv,
@@ -250,10 +251,15 @@ async function runGrimp(ctx: ExtractContext): Promise<GrimpFacts> {
 
   // The view: <workDir>/grimp/roots/<root index>/ for the packages, and
   // <workDir>/grimp/single/ for the single-file modules, which are never on Python's path.
+  // grimp follows the view's links, so each snapshot file is checked before a link to it is made,
+  // as ast-grep's view checks it: anything but a directory on its path, anything but a regular
+  // file, and a file this process cannot read are refused, before grimp runs.
   const view = join(workDir, "grimp");
   rmSync(view, { recursive: true, force: true });
   const byView = new Map<string, { path: string; module: string }>();
+  const checked = new Set<string>();
   const place = (at: string, path: string, standIn: boolean): void => {
+    if (!standIn) checkSnapshotFile(snapshotDir, path, checked);
     mkdirSync(dirname(at), { recursive: true });
     if (standIn) writeFileSync(at, "");
     else symlinkSync(join(snapshotDir, path), at);

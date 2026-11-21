@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   realpathSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -168,6 +169,63 @@ it("fails when scip-typescript leaves no index, or one that does not decode", as
     /^index\.scip is not a SCIP index: /,
   );
   expect(existsSync(join(broken.workDir, "index.scip"))).toBe(false);
+});
+
+// A SCIP index, as hex, of one document at path with one definition at its first character. As
+// protobuf: Index.documents (2) holds Document.relative_path (1) and Document.occurrences (2),
+// whose Occurrence holds range (1, packed) [0, 0, 1], symbol (2) and symbol_roles (3) 1.
+function oneDefinition(path: string): string {
+  const field = (n: number, bytes: number[]): number[] => [
+    (n << 3) | 2,
+    bytes.length,
+    ...bytes,
+  ];
+  const text = (s: string): number[] => [...Buffer.from(s, "utf8")];
+  const occurrence = [
+    ...field(1, [0, 0, 1]),
+    ...field(2, text("local 0")),
+    0x18,
+    1,
+  ];
+  const document = [...field(1, text(path)), ...field(2, occurrence)];
+  return Buffer.from(field(2, document)).toString("hex");
+}
+
+// The driver reads the lines of each document the index names, as an engine could name any
+// path: through no link, so that no path it reports leads this process out of the snapshot.
+it("reads the lines of a document the index names through no link", async () => {
+  const planted = (dir: string): string => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "secret.ts"), "export const secret = 1;\n");
+    return dir;
+  };
+  const write = (path: string): string =>
+    `fs.writeFileSync(output, Buffer.from("${oneDefinition(path)}", "hex"));`;
+  // the file planted as a link out
+  const file = standIn(write("web/secret.ts"));
+  mkdirSync(join(file.snapshotDir, "web"));
+  symlinkSync(
+    join(planted(join(dirname(file.exportDir), "elsewhere")), "secret.ts"),
+    join(file.snapshotDir, "web", "secret.ts"),
+  );
+  await expect(scipTypescriptDriver.run(file)).rejects.toThrow(
+    /^the snapshot's web\/secret\.ts is not a regular file$/,
+  );
+  // a directory on its path planted as a link out
+  const dir = standIn(write("web/secret.ts"));
+  symlinkSync(
+    planted(join(dirname(dir.exportDir), "elsewhere")),
+    join(dir.snapshotDir, "web"),
+  );
+  await expect(scipTypescriptDriver.run(dir)).rejects.toThrow(
+    /^the snapshot's web is not a directory$/,
+  );
+  // the control: the same index over a regular file reads its line
+  const plain = standIn(write("web/secret.ts"));
+  planted(join(plain.snapshotDir, "web"));
+  expect((await scipTypescriptDriver.run(plain)).definitions).toEqual([
+    { file: "web/secret.ts", at: { line: 1, col: 1 }, symbol: "local 0" },
+  ]);
 });
 
 const treeCtx = (

@@ -282,6 +282,66 @@ it("refuses a snapshot entry that is not what the tree says, rather than follow 
   expect(c.runs).toEqual([]);
 });
 
+// One stream line: a definition of a function named secret on the first line of a file under the
+// scanned directory, whose name line the driver reads from the snapshot.
+const defLine = (scanned: string, file: string): string => {
+  const range = (from: number, to: number) => ({
+    byteOffset: { start: from, end: to },
+    start: { line: 0, column: from },
+    end: { line: 0, column: to },
+  });
+  return JSON.stringify({
+    text: "export function secret() {}",
+    range: range(0, 27),
+    file: `${scanned}/${file}`,
+    metaVariables: {
+      single: { NAME: { text: "secret", range: range(16, 22) } },
+      multi: {},
+      transformed: {},
+    },
+    ruleId: "ts-def-function",
+  });
+};
+
+// The driver reads the lines of each file ast-grep names, a file the view never held included,
+// as an engine could name one: through no link, so that no path it reports leads this process
+// out of the snapshot.
+it("reads the lines of a file a match names through no link, even one the view never held", async () => {
+  const secret = (root: string, dir: string): string => {
+    mkdirSync(join(root, dir), { recursive: true });
+    writeFileSync(
+      join(root, dir, "secret.ts"),
+      "export function secret() {}\n",
+    );
+    return join(root, dir);
+  };
+  // a file the tree holds as a link, which export never writes, planted as a link out
+  const a = standIn({
+    files: {
+      "web/orbit.ts": "export function orbit() {}\n",
+      "web/link.ts": "",
+    },
+    modes: { "web/link.ts": "120000" },
+    stream: (scanned) => defLine(scanned, "web/link.ts"),
+  });
+  symlinkSync(
+    join(secret(a.root, "elsewhere"), "secret.ts"),
+    join(a.ctx.snapshotDir, "web", "link.ts"),
+  );
+  await expect(astGrepDriver.run(a.ctx)).rejects.toThrow(
+    /^the snapshot's web\/link\.ts is not a regular file$/,
+  );
+  // a directory planted as a link out, which the tree does not hold
+  const b = standIn({
+    files: { "web/orbit.ts": "export function orbit() {}\n" },
+    stream: (scanned) => defLine(scanned, "docs/secret.ts"),
+  });
+  symlinkSync(secret(b.root, "elsewhere"), join(b.ctx.snapshotDir, "docs"));
+  await expect(astGrepDriver.run(b.ctx)).rejects.toThrow(
+    /^the snapshot's docs is not a directory$/,
+  );
+});
+
 // One stream line: a call of orbit at the start of a file under the scanned directory.
 const callLine = (scanned: string, file: string): string => {
   const range = (column: number) => ({
