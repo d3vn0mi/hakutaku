@@ -10,7 +10,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { createConnection, createServer } from "node:net";
+import { createConnection } from "node:net";
 import { networkInterfaces, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, afterEach, expect, it, vi } from "vitest";
@@ -1231,28 +1231,29 @@ it("runs systemd-run's service with no core dumps", (ctx) => {
 // A unix socket is reached through a read-only file system too, as one under /run is, and the
 // service's own control group would let it lift its memory cap. The socket listens in the
 // engines directory, which the service sees read-only, and this process counts what reached it.
+// A unix socket's address holds at most 108 bytes, which the engines directory's path can pass
+// under a long TMPDIR: this process reaches the socket at the short address listenAt gives, and
+// the service from the engines directory, by its name alone, as the confinement probe's does.
 it("keeps a systemd-run service from every unix socket on this machine, and from its own memory cap", async (ctx) => {
   requireInCI(ctx, confiningManager);
   const { p } = liveLayout();
   const socket = join(p.enginesDir, "socket");
-  let reached = 0;
-  const server = createServer((c) => {
-    reached += 1;
-    c.destroy();
-  });
-  await new Promise<void>((done) => server.listen(socket, done));
+  const listening = await listenAt(socket);
   try {
     // the control: the socket listens, and this process reaches it
     await new Promise<void>((done, fail) =>
-      createConnection(socket, () => done()).once("error", fail),
+      createConnection(listening.address, () => done()).once("error", fail),
     );
-    while (reached === 0) await new Promise((r) => setTimeout(r, 10));
+    while (listening.reached() === 0) {
+      await new Promise((r) => setTimeout(r, 10));
+    }
     const script = `
 const fs = require("node:fs");
 const cgroup = fs.readFileSync("/proc/self/cgroup", "utf8").trim().split("::")[1];
 let cap;
 try { fs.writeFileSync("/sys/fs/cgroup" + cgroup + "/memory.max", "max"); cap = "lifted"; } catch (e) { cap = e.code; }
-const s = require("node:net").connect(${JSON.stringify(socket)});
+process.chdir(${JSON.stringify(p.enginesDir)});
+const s = require("node:net").connect("socket");
 s.on("connect", () => { console.log(JSON.stringify({ cap, socket: "reached" })); process.exit(0); });
 s.on("error", (e) => console.log(JSON.stringify({ cap, socket: e.code })));`;
     const argv = systemdRunArgv(p, [process.execPath, "-e", script]);
@@ -1267,9 +1268,9 @@ s.on("error", (e) => console.log(JSON.stringify({ cap, socket: e.code })));`;
       child.once("close", () => done(text));
     });
     expect(JSON.parse(out)).toEqual({ cap: "EROFS", socket: "EAFNOSUPPORT" });
-    expect(reached).toBe(1);
+    expect(listening.reached()).toBe(1);
   } finally {
-    await new Promise((done) => server.close(done));
+    await listening.close();
   }
 }, 60_000);
 
