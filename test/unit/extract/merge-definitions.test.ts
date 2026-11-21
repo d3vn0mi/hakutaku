@@ -520,3 +520,51 @@ it("keys a local SCIP symbol by its file, and leaves a symbol two definitions jo
   );
   expect(defs.unmatchedScipDefinitions).toBe(0);
 });
+
+it("takes a decorated definition's signature from its name's line, not its decorator's", () => {
+  const FILE = "sim/src/observatory/sky.py";
+  const input = mergeInput(
+    { [FILE]: "@cached\ndef chart():\n    pass\n" },
+    {
+      profile: SIM,
+      facts: {
+        astGrep: astGrep({
+          defs: [
+            // a decorated def starts at its first decorator
+            outlineDef(
+              FILE,
+              "chart",
+              "function",
+              P(1, 1),
+              P(3, 9),
+              [P(2, 5)],
+              "def chart():",
+            ),
+          ],
+        }),
+      },
+    },
+  );
+  const defs = mergeDefinitions(input, fileRows(input));
+  expect(defs.definitions).toEqual([
+    moduleRow(1, 1, 3),
+    {
+      id: 2,
+      file_id: 1,
+      qualname: "chart",
+      ordinal: 1,
+      name: "chart",
+      kind: "function",
+      start_line: 1,
+      start_col: 1,
+      end_line: 3,
+      end_col: 9,
+      exported: 0,
+      parent_id: null,
+      scip_symbol: null,
+      signature: "def chart():",
+      producer: "ast-grep",
+    },
+  ]);
+  expect(defs.redactions).toBe(0);
+});

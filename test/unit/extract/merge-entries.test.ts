@@ -184,3 +184,56 @@ it("names a console script's definition by its qualname, and redacts entry names
   ]);
   expect(redactions).toBe(1);
 });
+
+it("names no test file and no metadata-only file, and keeps one row of two the 240 cut makes alike", () => {
+  const GUARD =
+    'def main():\n    pass\n\nif __name__ == "__main__":\n    main()\n';
+  const LONG = `sky-${"x".repeat(240)}`;
+  const input = mergeInput(
+    {
+      // a generated module is never read, so its guard is never seen
+      "sim/src/observatory/bundle.py": GUARD,
+      "sim/src/observatory/run.py": GUARD,
+      "sim/tests/test_sky.py": GUARD,
+      "web/bin/sky.js": "console.log('sky');\n",
+      // two commands on one line, alike in their first 240 characters
+      "web/package.json": `{ "name": "web", "bin": { "${LONG}a": "./bin/sky.js", "${LONG}b": "./bin/sky.js" } }\n`,
+    },
+    {
+      profile: SIM,
+      metadataOnly: { "sim/src/observatory/bundle.py": "generated" },
+    },
+  );
+  const files = fileRows(input);
+  const { entryPoints, redactions } = mergeEntries(
+    input,
+    files,
+    mergeDefinitions(input, files),
+  );
+  expect(entryPoints).toEqual([
+    {
+      file_id: 2,
+      def_id: null,
+      kind: "main-guard",
+      manifest_file_id: 2,
+      manifest_line: 4,
+      name: "sim/src/observatory/run.py",
+    },
+    {
+      file_id: 4,
+      def_id: null,
+      kind: "bin",
+      manifest_file_id: 5,
+      manifest_line: 1,
+      name: `sky-${"x".repeat(236)}`,
+    },
+  ]);
+  expect(redactions).toBe(0);
+  expect(files.map((f) => [f.path, f.kind, f.entry])).toEqual([
+    ["sim/src/observatory/bundle.py", "code", 0],
+    ["sim/src/observatory/run.py", "code", 1],
+    ["sim/tests/test_sky.py", "test", 0],
+    ["web/bin/sky.js", "code", 1],
+    ["web/package.json", "config", 0],
+  ]);
+});
