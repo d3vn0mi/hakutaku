@@ -1161,12 +1161,12 @@ it(
       // the scope that caps bubblewrap's memory is read from outside it
       expect(facts?.peakRssBytes).toBeGreaterThan(0);
       expect(facts?.warnings).not.toContain(
-        "no memory cap: systemd-run is unavailable",
+        "no memory cap: systemd-run cannot start a scope on this machine, so nothing caps bubblewrap's memory",
       );
     } else {
       expect(facts?.peakRssBytes).toBeNull();
       expect(facts?.warnings).toContain(
-        "no memory cap: systemd-run is unavailable",
+        "no memory cap: systemd-run cannot start a scope on this machine, so nothing caps bubblewrap's memory",
       );
     }
     // the build ran as pid 2 of bubblewrap's namespace, and left nothing behind

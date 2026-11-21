@@ -35,8 +35,10 @@ export interface SandboxPaths {
   memoryMax: string; // systemd's MemoryMax, such as "3G"
 }
 
-// The warning a bubblewrap build records when nothing caps its memory.
-export const NO_MEMORY_CAP = "no memory cap: systemd-run is unavailable";
+// The warning a bubblewrap build records when nothing caps its memory. A user manager may start a
+// service and still refuse a scope, so it names the scope, not systemd-run as a whole.
+export const NO_MEMORY_CAP =
+  "no memory cap: systemd-run cannot start a scope on this machine, so nothing caps bubblewrap's memory";
 
 // The warning every systemd-run build records. Its service shares this machine's process IDs and
 // host name: another process's environment, working directory and root are refused, but its

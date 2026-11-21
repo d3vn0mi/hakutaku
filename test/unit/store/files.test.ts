@@ -91,7 +91,9 @@ const facts: BuildFacts = {
       exitCode: null,
     },
   },
-  warnings: ["no memory cap: systemd-run is unavailable"],
+  warnings: [
+    "no memory cap: systemd-run cannot start a scope on this machine, so nothing caps bubblewrap's memory",
+  ],
 };
 
 it("reads null for a missing or malformed attempt.json and build.json", () => {

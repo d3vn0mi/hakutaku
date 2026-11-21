@@ -841,7 +841,9 @@ it("caps bubblewrap's memory only where systemd-run starts a scope, whatever a s
   expect(await s.capsMemory("bubblewrap")).toBe(false);
   expect(await s.sandboxCommand("bubblewrap", paths, inner)).toEqual({
     argv: s.bwrapArgv(paths, inner),
-    warnings: ["no memory cap: systemd-run is unavailable"],
+    warnings: [
+      "no memory cap: systemd-run cannot start a scope on this machine, so nothing caps bubblewrap's memory",
+    ],
   });
   expect(logged(log)).toEqual([SCOPE_PROBE]);
   // a service still starts, so systemd-run alone keeps its cap
@@ -853,7 +855,9 @@ it("runs bubblewrap without a memory cap, and warns, when systemd-run does not w
   const s = await freshSandbox();
   expect(await s.sandboxCommand("bubblewrap", paths, inner)).toEqual({
     argv: s.bwrapArgv(paths, inner),
-    warnings: ["no memory cap: systemd-run is unavailable"],
+    warnings: [
+      "no memory cap: systemd-run cannot start a scope on this machine, so nothing caps bubblewrap's memory",
+    ],
   });
 });
 
