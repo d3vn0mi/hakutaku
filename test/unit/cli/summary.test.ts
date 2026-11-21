@@ -169,6 +169,13 @@ it("says why hakutaku's resolver read the Python imports, from grimp's tier", ()
   expect(pythonWhy("failed", failed)).toBe(
     "grimp failed: timed out after 600 s",
   );
+  // an engine's error can quote a repository's line: no control character reaches the terminal
+  const quoting = facts({
+    warnings: ["grimp failed: exit code 1: x\x1b]0;title\x07\x1b[2Jy\ttab"],
+  });
+  expect(pythonWhy("failed", quoting)).toBe(
+    "grimp failed: exit code 1: x?]0;title??[2Jy?tab",
+  );
   expect(pythonWhy("failed", null)).toBe("grimp failed");
   expect(pythonWhy("failed", facts())).toBe("grimp failed");
   expect(pythonWhy("skipped", null)).toBe(

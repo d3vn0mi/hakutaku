@@ -9,6 +9,7 @@ import {
 } from "../model/index.js";
 import { displayLang } from "../query/tiers.js";
 import type { BuildFacts, Coverage, Store } from "../store/index.js";
+import { printable } from "./table.js";
 
 // What the summary counts in a store.
 export interface SummaryCounts {
@@ -143,8 +144,9 @@ function built(s: SummaryInput, commit12: string): string {
 }
 
 // Why hakutaku's resolver read the Python imports, from grimp's tier in the store: grimp not
-// installed, grimp failed (as its warning in the build's facts says, when they are given), or
-// grimp had no package to read.
+// installed, grimp failed (as its warning in the build's facts says, when they are given, made
+// safe for a terminal, since an engine's error can quote a repository's line), or grimp had no
+// package to read.
 export function pythonWhy(
   tier: Coverage["tiers"]["grimp"],
   build: BuildFacts | null,
@@ -153,10 +155,10 @@ export function pythonWhy(
     case "fallback":
       return "grimp is not installed: no suitable Python was found when the engines were installed";
     case "failed":
-      return (
+      return printable(
         build?.warnings
           .find((w) => w.startsWith("grimp failed"))
-          ?.split("\n", 1)[0] ?? "grimp failed"
+          ?.split("\n", 1)[0] ?? "grimp failed",
       );
     case "skipped":
       return "grimp found no Python package to read";
