@@ -35,6 +35,8 @@ Everyone who takes part follows the [Code of Conduct](CODE_OF_CONDUCT.md).
   manager, to run the live sandbox tests and the hostile fixtures inside a real sandbox. Without a
   working sandbox those tests are skipped locally, each saying why; in CI (`CI=true`) they fail
   instead, so a sandbox that does not start cannot pass as a skip.
+- Optional, on Linux: strace, for the test that traces the MCP server while it answers. Without it
+  that test is skipped locally, saying why; in CI it fails instead.
 
 **Then:**
 
