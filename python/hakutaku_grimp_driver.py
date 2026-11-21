@@ -24,8 +24,11 @@ site-packages and no .pth file, so that nothing installed on the machine can sta
 package of the snapshot) and without writing bytecode (-B: nothing is written beside grimp in
 the engines directory). The driver imports everything it needs before the roots go on
 sys.path, and appends them at its end, so no file under them can stand in for a module the
-driver or grimp imports; from then on an audit hook refuses every import. grimp parses the
-files it reads and never imports them, and the single-file modules are parsed with ast.
+driver or grimp imports. From then on an audit hook refuses the import statement and
+__import__, and a finder first on sys.meta_path refuses to load any module found under the
+roots, however it is imported: importlib.import_module raises no import audit event. grimp
+parses the files it reads and never imports them, and the single-file modules are parsed with
+ast.
 
 Written for Python 3.10, the oldest Python grimp supports.
 """
@@ -40,13 +43,66 @@ import warnings
 MAX_UNREADABLE = 50
 
 
+REFUSED = "the grimp driver imports nothing once the roots are on sys.path: "
+
+
 def refuse_imports(event, args):
     # A codec named in a file's coding line is the one import allowed: it comes from the
     # standard library's encodings package, which searches only its own directory.
     if event == "import" and not args[0].startswith("encodings."):
-        raise ImportError(
-            "the grimp driver imports nothing once the roots are on sys.path: " + args[0]
-        )
+        raise ImportError(REFUSED + args[0])
+
+
+class RefusingLoader:
+    """The loader a module found under a root gets: creating or running the module is refused,
+    and every other question goes to the loader it replaces."""
+
+    def __init__(self, name, loader):
+        self._name = name
+        self._loader = loader
+
+    def create_module(self, spec):
+        raise ImportError(REFUSED + self._name)
+
+    def exec_module(self, module):
+        raise ImportError(REFUSED + self._name)
+
+    def load_module(self, fullname):
+        raise ImportError(REFUSED + fullname)
+
+    def __getattr__(self, attribute):
+        return getattr(self._loader, attribute)
+
+
+class RootsFinder:
+    """First on sys.meta_path once the roots are on sys.path. It asks the other finders, and
+    when the module they find lies under a root, it hands back the same spec with a loader that
+    refuses to load it: find_spec still answers where a name would come from, which the driver
+    asks, but no file under a root runs. Any other module is left to the other finders."""
+
+    def __init__(self, roots):
+        self._roots = tuple(root.rstrip(os.sep) + os.sep for root in roots)
+
+    def find_spec(self, name, path=None, target=None):
+        if name.startswith("encodings."):
+            return None
+        for finder in sys.meta_path:
+            find = getattr(finder, "find_spec", None)
+            if finder is self or find is None:
+                continue
+            spec = find(name, path, target)
+            if spec is None:
+                continue
+            if not self._under_roots(spec):
+                return None
+            spec.loader = RefusingLoader(name, spec.loader)
+            return spec
+        return None
+
+    def _under_roots(self, spec):
+        places = [spec.origin] if isinstance(spec.origin, str) else []
+        places.extend(spec.submodule_search_locations or [])
+        return any(os.path.abspath(place).startswith(self._roots) for place in places)
 
 
 def main(argv):
@@ -63,6 +119,7 @@ def main(argv):
     roots = [os.path.abspath(root) for root in job["roots"]]
     sys.path.extend(roots)
     sys.addaudithook(refuse_imports)
+    sys.meta_path.insert(0, RootsFinder(roots))
 
     notes = []
     packages = []

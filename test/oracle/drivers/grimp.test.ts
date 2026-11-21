@@ -2,7 +2,7 @@
 // dist/cli/main.js engines install --yes` once before this file. Each repo is made with
 // makeRepo, exported with exportRepo (its profile generated), then grimpDriver.run over the
 // export.
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -32,6 +32,8 @@ import {
 } from "../../../src/extract/drivers/grimp.js";
 import { loadProfile, loadRules } from "../../../src/profile/index.js";
 import { makeRepo } from "../../helpers/git.js";
+import { requireInCI } from "../../helpers/live.js";
+import { samplePythonProbe } from "../../helpers/sample.js";
 
 const made: string[] = [];
 afterAll(() => {
@@ -204,6 +206,66 @@ it("imports nothing from the snapshot", async () => {
   expect(facts.modules.size).toBe(3);
   expect(readdirSync(markers)).toStrictEqual([]);
 }, 300_000);
+
+// The real grimp never imports what it reads, so only a stand-in that does shows the driver's
+// own guard: once the roots are on sys.path, a module under them is not loaded, whether through
+// importlib.import_module, which raises no import audit event, or through __import__.
+it("refuses to load a module from the roots once they are on sys.path, however it is imported", (ctx) => {
+  requireInCI(ctx, samplePythonProbe());
+  const root = mkdtempSync(join(tmpdir(), "hakutaku-oracle-grimp-guard-"));
+  made.push(root);
+  const marker = join(root, "marker");
+  // a grimp whose graph imports the module planted, as a library that imports lazily would
+  const engines = join(root, "engines");
+  mkdirSync(join(engines, "grimp"), { recursive: true });
+  writeFileSync(
+    join(engines, "grimp", "__init__.py"),
+    lines(
+      "import importlib",
+      "import sys",
+      '__version__ = "0.0.0"',
+      "class ImportGraph:",
+      "    modules = ()",
+      "    def __init__(self):",
+      "        for load in (importlib.import_module, __import__):",
+      "            try:",
+      '                load("planted")',
+      "            except ImportError as error:",
+      '                sys.stderr.write("refused: %s\\n" % error)',
+    ),
+  );
+  writeFileSync(join(engines, "grimp", "exceptions.py"), "");
+  const roots = join(root, "src");
+  mkdirSync(roots);
+  writeFileSync(
+    join(roots, "planted.py"),
+    lines(
+      `with open(${JSON.stringify(marker)}, "a") as handle:`,
+      '    handle.write("imported\\n")',
+    ),
+  );
+  const input = join(root, "input.json");
+  writeFileSync(
+    input,
+    JSON.stringify({
+      enginesPython: engines,
+      roots: [roots],
+      packages: [],
+      singleFileModules: [],
+      layers: [],
+    }),
+  );
+  const run = spawnSync(pinnedPython(), ["-I", "-S", "-B", DRIVER, input], {
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  const refused =
+    "refused: the grimp driver imports nothing once the roots are on sys.path: planted\n";
+  expect(run.stderr).toBe(refused + refused);
+  expect(run.status).toBe(0);
+  expect(JSON.parse(run.stdout)).toMatchObject({ grimp: "0.0.0", modules: [] });
+  expect(existsSync(marker)).toBe(false);
+});
 
 it("leaves out a package another root's module, the standard library or grimp holds the name of, and reads the others", async () => {
   const { ctx, logged } = await exportOf({
