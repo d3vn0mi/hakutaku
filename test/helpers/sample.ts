@@ -115,8 +115,8 @@ function filesUnder(path: string): string[] {
 }
 
 // A SHA-256 over each file under the paths, as its path, its size and its bytes, in path
-// order, then over `extra`.
-function hashOf(paths: readonly string[], extra = ""): string {
+// order, then over `extra`. scale.ts keys its cache with it too.
+export function hashOf(paths: readonly string[], extra = ""): string {
   const hash = createHash("sha256");
   for (const file of paths.flatMap(filesUnder).sort()) {
     const bytes = readFileSync(join(ROOT, file));
@@ -128,8 +128,8 @@ function hashOf(paths: readonly string[], extra = ""): string {
 }
 
 // The cache directory `name`, built by `build` into a fresh temporary directory first when it
-// is missing.
-async function cached(
+// is missing. scale.ts caches its repositories and stores with it too.
+export async function cached(
   name: string,
   build: (dir: string) => Promise<void>,
 ): Promise<string> {
