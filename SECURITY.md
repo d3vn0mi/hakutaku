@@ -6,12 +6,12 @@ counts as one.
 
 ## Supported versions
 
-hakutaku is **pre-release**: it is in design, and 0.1 is in progress. Nothing has been released, and
-there is nothing to install yet.
+hakutaku is **pre-release**, with 0.1 in progress. Nothing has been released, and there is nothing
+to install yet.
 
 | Version | Supported |
 |---|---|
-| `main`, unreleased | The design is open for review. Reports about a flaw in it are welcome now |
+| `main`, unreleased | Reports about a flaw in the design or in the code are welcome now |
 | 0.x, once released | The latest minor release receives security fixes |
 
 ## Reporting a vulnerability

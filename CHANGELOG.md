@@ -8,10 +8,18 @@ until the tool contract is frozen, and even before 1.0, `code_explain` changes o
 
 ## [Unreleased]
 
-Pre-release: in design, with 0.1 in progress. Nothing is installable yet.
+Pre-release, with 0.1 in progress. Nothing is installable yet.
 
 ### Added
 
+- 2026-11-21: the 13 tools and the MCP server. `hakutaku mcp` serves the tools over stdio, and
+  `hakutaku query` runs any of them from a shell. The golden answers pin each tool's answers to a
+  fixed set of calls on the synthetic sample, and [`docs/tools.md`](docs/tools.md) is the reference.
+- 2026-11-21: the engine and the store. Export, the sandboxed extract, the SQLite store, redaction,
+  the gates, the synthetic sample and its hand-written oracle, and the commands `map`, `list`,
+  `profile`, `doctor`, `engines`, `export` and `extract`.
+- 2026-11-17: the hostile-repository fixtures in `fixtures/hostile/`, repositories that try to run
+  code, leak secrets or inject markup.
 - 2026-11-17: the README, with the pipeline, the tools, the labels, the viewer and the security
   model, all planned for 0.1. Also a contributing guide, the Contributor Covenant 2.1 as the code of
   conduct, a security policy, issue forms, a pull request template, Dependabot updates, a NOTICE file,
