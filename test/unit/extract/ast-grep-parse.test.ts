@@ -380,30 +380,38 @@ it("turns import matches into facts at the specifier, unquoted, with their kind 
   const imp = (
     file: string,
     at: Pos,
-    endLine: number,
+    [startLine, endLine]: [number, number],
     specifier: string,
     kind: string,
     names: string[] = [],
-  ) => ({ file, at, endLine, specifier, kind, names });
-  // in file order, then statement order; a binding joins the statement whose match holds it
+  ) => ({ file, at, startLine, endLine, specifier, kind, names });
+  // in file order, then statement order; a binding joins the statement whose match holds it.
+  // A statement's lines run from its match's first line to its last: the TS import on lines
+  // 1-3 names its specifier on line 3
   expect(facts.imports).toEqual([
-    imp("scripts/sync.sh", P(1, 8), 1, "./lib.sh", "source"),
-    imp("scripts/sync.sh", P(2, 6), 2, "./run me.sh", "exec"),
-    imp("scripts/sync.sh", P(3, 1), 3, "./x y.sh", "exec"),
-    imp("scripts/sync.sh", P(4, 3), 4, "./b.sh", "source"),
-    imp("sim/sky.py", P(1, 6), 2, "..pkg", "static", ["a", "b"]),
-    imp("sim/sky.py", P(3, 8), 3, "os.path", "static"),
-    imp("sim/sky.py", P(3, 17), 3, "sys", "static"),
-    imp("sim/sky.py", P(4, 6), 4, ".", "static", ["*"]),
-    imp("sim/sky.py", P(5, 12), 5, "obs.ervatory", "dynamic"),
-    imp("sim/sky.py", P(7, 12), 7, "obs\\x2eervatory", "dynamic"),
-    imp(f, P(3, 15), 3, "./sky", "static", ["default", "*", "a", "b", "a-b"]),
-    imp(f, P(4, 27), 4, "./body", "type-only", ["Body"]),
-    imp(f, P(5, 8), 5, "./polyfill", "side-effect"),
-    imp(f, P(6, 15), 6, "./stars", "re-export", ["*"]),
-    imp(f, P(7, 25), 7, "./x", "re-export", ["x"]),
-    imp(f, P(8, 24), 8, "./sky", "dynamic"),
-    imp(f, P(9, 19), 9, "./a/b", "require"),
+    imp("scripts/sync.sh", P(1, 8), [1, 1], "./lib.sh", "source"),
+    imp("scripts/sync.sh", P(2, 6), [2, 2], "./run me.sh", "exec"),
+    imp("scripts/sync.sh", P(3, 1), [3, 3], "./x y.sh", "exec"),
+    imp("scripts/sync.sh", P(4, 3), [4, 4], "./b.sh", "source"),
+    imp("sim/sky.py", P(1, 6), [1, 2], "..pkg", "static", ["a", "b"]),
+    imp("sim/sky.py", P(3, 8), [3, 3], "os.path", "static"),
+    imp("sim/sky.py", P(3, 17), [3, 3], "sys", "static"),
+    imp("sim/sky.py", P(4, 6), [4, 4], ".", "static", ["*"]),
+    imp("sim/sky.py", P(5, 12), [5, 5], "obs.ervatory", "dynamic"),
+    imp("sim/sky.py", P(7, 12), [7, 7], "obs\\x2eervatory", "dynamic"),
+    imp(f, P(3, 15), [1, 3], "./sky", "static", [
+      "default",
+      "*",
+      "a",
+      "b",
+      "a-b",
+    ]),
+    imp(f, P(4, 27), [4, 4], "./body", "type-only", ["Body"]),
+    imp(f, P(5, 8), [5, 5], "./polyfill", "side-effect"),
+    imp(f, P(6, 15), [6, 6], "./stars", "re-export", ["*"]),
+    imp(f, P(7, 25), [7, 7], "./x", "re-export", ["x"]),
+    imp(f, P(8, 24), [8, 8], "./sky", "dynamic"),
+    imp(f, P(9, 19), [9, 9], "./a/b", "require"),
   ]);
   expect(facts.computed).toEqual([
     { file: "sim/sky.py", line: 6 },
@@ -441,6 +449,7 @@ it("keeps a code-point escape with no closing brace as written, and ends", () =>
     {
       file: f,
       at: P(1, 9),
+      startLine: 1,
       endLine: 1,
       specifier: "\\u{41",
       kind: "require",
@@ -449,6 +458,7 @@ it("keeps a code-point escape with no closing brace as written, and ends", () =>
     {
       file: f,
       at: P(2, 28),
+      startLine: 2,
       endLine: 2,
       specifier: "./sky",
       kind: "static",

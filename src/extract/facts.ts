@@ -28,9 +28,12 @@ export interface CallFact {
   receiver: string | null;
 }
 
+// An import statement: its specifier's position, and the lines the statement covers, which
+// for a TS import spread over several lines begin above its specifier's.
 export interface ImportFact {
   file: string;
   at: Pos;
+  startLine: number;
   endLine: number;
   specifier: string | null; // null for a computed import
   kind: ImportKind;

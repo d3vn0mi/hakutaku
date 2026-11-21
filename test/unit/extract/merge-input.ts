@@ -47,14 +47,16 @@ export function spot(text: string, line: number, needle: string): Pos {
   return { line, col: [...found.slice(0, i)].length + 1 };
 }
 
-// An import statement's fact, its specifier at `at`.
+// An import statement's fact, its specifier at `at`, on one line unless `lines` gives the
+// statement's first and last.
 export const importFact = (
   file: string,
   at: Pos,
   specifier: string,
   kind: ImportKind = "static",
   names: string[] = [],
-): ImportFact => ({ file, at, endLine: at.line, specifier, kind, names });
+  [startLine, endLine]: [number, number] = [at.line, at.line],
+): ImportFact => ({ file, at, startLine, endLine, specifier, kind, names });
 
 // An outline definition; its name is the last segment of its qualname.
 export const outlineDef = (

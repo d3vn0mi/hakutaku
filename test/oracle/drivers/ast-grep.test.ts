@@ -113,6 +113,13 @@ async function extractSample(): Promise<{
           "web/body.ts": "export interface Body { mass: number }\n",
           "web/sky.ts": "export const sky = 1;\n",
           "web/stars.ts": `${STARS_LINE}\n`,
+          // an import whose names sit on the lines above its specifier
+          "web/view.ts": lines(
+            "import {",
+            "  Orbit,",
+            "  solve,",
+            '} from "./orbit";',
+          ),
           "sim/sky.py": SKY,
           "scripts/sync.sh": SYNC,
           "scripts/lib.sh": "log() { :; }\n",
@@ -250,6 +257,7 @@ it("extracts definitions, calls and imports in TS, Python and Bash", async () =>
     {
       file: "web/orbit.ts",
       at: P(1, 27),
+      startLine: 1,
       endLine: 1,
       specifier: "./body",
       kind: "type-only",
@@ -258,10 +266,23 @@ it("extracts definitions, calls and imports in TS, Python and Bash", async () =>
     {
       file: "web/orbit.ts",
       at: P(19, 26),
+      startLine: 19,
       endLine: 19,
       specifier: "./sky",
       kind: "dynamic",
       names: [],
+    },
+  ]);
+  // the statement's lines start at its first line, above the specifier's
+  expect(facts.imports.filter((i) => i.file === "web/view.ts")).toEqual([
+    {
+      file: "web/view.ts",
+      at: P(4, 8),
+      startLine: 1,
+      endLine: 4,
+      specifier: "./orbit",
+      kind: "static",
+      names: ["Orbit", "solve"],
     },
   ]);
   expect(facts.computed).toEqual([{ file: "web/orbit.ts", line: 20 }]);
@@ -269,6 +290,7 @@ it("extracts definitions, calls and imports in TS, Python and Bash", async () =>
     {
       file: "sim/sky.py",
       at: P(1, 6),
+      startLine: 1,
       endLine: 1,
       specifier: "functools",
       kind: "static",
@@ -279,6 +301,7 @@ it("extracts definitions, calls and imports in TS, Python and Bash", async () =>
     {
       file: "scripts/sync.sh",
       at: P(5, 8),
+      startLine: 5,
       endLine: 5,
       specifier: "./lib.sh",
       kind: "source",

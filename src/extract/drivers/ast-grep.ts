@@ -365,6 +365,7 @@ export function astGrepFacts(matches: readonly RawMatch[]): AstGrepFacts {
     const fact: ImportFact = {
       file: match.file,
       at: spec.start,
+      startLine: match.start.line,
       endLine: lastLine(match),
       specifier,
       kind: rule.what as ImportKind,
