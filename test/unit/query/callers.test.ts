@@ -696,14 +696,16 @@ describe("blind spots", () => {
   };
   const NOT_FOLLOWED = "1 dynamic import with a computed path is not followed";
 
-  it("words the computed imports for a file, without labels and with unscoped", () => {
+  it("words the computed imports for a file, and for labels with and without unscoped", () => {
     expect(blindSpots(s, "typescript", { fileTarget: true })).toEqual([
       NOT_FOLLOWED,
     ]);
     expect(
       blindSpots(s, "typescript", { labels: ["unscoped"], fileTarget: true }),
     ).toEqual([NOT_FOLLOWED]);
-    expect(blindSpots(s, "javascript", {})).toEqual([BLIND]);
+    expect(
+      blindSpots(s, "javascript", { labels: ["bound", "scoped"] }),
+    ).toEqual([BLIND]);
     const two = variant({ computedImports: 2 });
     expect(blindSpots(two, "typescript", { labels: ["unscoped"] })).toEqual([
       "2 dynamic imports with a computed path are not followed; the unscoped matches include calls made through them",
@@ -713,9 +715,22 @@ describe("blind spots", () => {
     ).toEqual([]);
   });
 
+  it("sends an answer without labels to code_callers, never asking for labels", () => {
+    expect(blindSpots(s, "typescript", {})).toEqual([
+      '1 dynamic import with a computed path is not followed; code_callers lists name matches with labels ["unscoped"]',
+    ]);
+    expect(
+      blindSpots(variant({ computedImports: 2 }), "javascript", {}),
+    ).toEqual([
+      '2 dynamic imports with a computed path are not followed; code_callers lists name matches with labels ["unscoped"]',
+    ]);
+  });
+
   it("names the compiler tier that did not run, first", () => {
     const quick = openTiny({ detail: "quick" });
-    expect(blindSpots(quick, "typescript", {})).toEqual([
+    expect(
+      blindSpots(quick, "typescript", { labels: ["bound", "scoped"] }),
+    ).toEqual([
       "no compiler ran for TypeScript in this build (quick detail), so no site is bound",
       BLIND,
     ]);

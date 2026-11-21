@@ -71,6 +71,7 @@ export function queryImpact(
     case "definition":
       id = ix.idOfDef(target.defId);
       byHop = fromDefinition(store, ix, target.defId, target.fileId, args);
+      // no labels, which code_impact does not take: the computed-import line names code_callers
       opts = {};
       break;
   }

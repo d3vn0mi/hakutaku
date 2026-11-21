@@ -132,12 +132,28 @@ it("keeps the contract's key order, and a reference weakens every link beyond it
         },
       ],
       counts: { definitions: 2, files: 2, tests: 0 },
-      // a definition's blind spots are those of code_callers asked without labels
+      // code_impact takes no labels, so the computed-import line names the tool that does
       blindSpots: [
-        '1 dynamic import with a computed path is not followed; ask with labels ["unscoped"] to see name matches',
+        '1 dynamic import with a computed path is not followed; code_callers lists name matches with labels ["unscoped"]',
       ],
     }),
   );
+});
+
+it("sends a definition's computed imports to code_callers, since code_impact takes no labels", () => {
+  const lines = (target: string, store: Store = s) =>
+    answer(im({ target }, store)).blindSpots;
+  expect(lines("lib/orbit.ts#solve")).toEqual([
+    '1 dynamic import with a computed path is not followed; code_callers lists name matches with labels ["unscoped"]',
+  ]);
+  const two = openTiny({ coverage: { computedImports: 2 } });
+  expect(lines("lib/orbit.ts#solve", two)).toEqual([
+    '2 dynamic imports with a computed path are not followed; code_callers lists name matches with labels ["unscoped"]',
+  ]);
+  // a file's answer names no tool
+  expect(lines("lib/units.ts", two)).toEqual([
+    "2 dynamic imports with a computed path are not followed",
+  ]);
 });
 
 it("stops a definition's walk at depth", () => {

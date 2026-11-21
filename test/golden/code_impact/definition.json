@@ -73,7 +73,7 @@
         "tests": 1
       },
       "blindSpots": [
-        "1 dynamic import with a computed path is not followed; ask with labels [\"unscoped\"] to see name matches",
+        "1 dynamic import with a computed path is not followed; code_callers lists name matches with labels [\"unscoped\"]",
         "compiler-bound uses that match no outline definition are counted in coverage only (36)"
       ]
     }

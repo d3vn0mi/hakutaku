@@ -119,8 +119,10 @@ const OWN_RESOLVER =
   "Python imports come from hakutaku's own resolver, because grimp did not run";
 
 // What an answer about callers cannot see in this build, one line per gap, in a fixed order.
-// labels are the labels asked for. fileTarget marks an answer that takes no labels, about a file
-// or a call path, so the computed-import line names none.
+// labels are the labels asked for, given only by a tool that takes them. Without them, the
+// computed-import line names code_callers, which lists those name matches, so an answer of a
+// tool that takes no labels never asks for them. fileTarget marks an answer about a file or a
+// call path, whose computed-import line ends at "not followed".
 export function blindSpots(
   store: Store,
   lang: Lang | null,
@@ -147,7 +149,11 @@ export function blindSpots(
   if (isScript(lang) && computed > 0) {
     const line = computedImports(computed);
     if (opts.fileTarget === true) out.push(line);
-    else if (opts.labels?.includes("unscoped") === true) {
+    else if (opts.labels === undefined) {
+      out.push(
+        `${line}; code_callers lists name matches with labels ["unscoped"]`,
+      );
+    } else if (opts.labels.includes("unscoped")) {
       out.push(`${line}; the unscoped matches include calls made through them`);
     } else {
       out.push(`${line}; ask with labels ["unscoped"] to see name matches`);
