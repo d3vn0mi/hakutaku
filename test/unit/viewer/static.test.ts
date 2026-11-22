@@ -115,6 +115,23 @@ it("refuses a base or API address outside the allowed form", () => {
     expect(() => viewerStatic("assets/app.js", { base: "/", apiBase })).toThrow(
       TypeError,
     );
+  // A relative climb, a percent-encoded dot or slash, a backslash, an empty segment and a line
+  // feed are refused in either place: no escape a browser might decode gets into the page.
+  for (const bad of [
+    "../",
+    "%2e%2e/",
+    "/%2e%2e/",
+    "/a%2Fb/",
+    "/..%2F/",
+    "/a\\b/",
+    "/a//",
+    "/a/\n",
+  ]) {
+    expect(() => viewerStatic("", { base: bad }), bad).toThrow(TypeError);
+    expect(() => viewerStatic("", { base: "/", apiBase: bad }), bad).toThrow(
+      TypeError,
+    );
+  }
 });
 
 it("answers internal for the page and assets when the bundle is missing", async () => {
