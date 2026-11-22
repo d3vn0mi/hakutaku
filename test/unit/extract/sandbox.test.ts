@@ -591,6 +591,64 @@ it("keeps each failed probe's evidence: its error code, its exit, and the last l
   ]);
 });
 
+// An XDG_RUNTIME_DIR whose user manager's socket, <dir>/systemd/private, is a path of the given
+// number of bytes.
+const runtimeDir = (pathBytes: number, letter = "1"): string => {
+  const room = pathBytes - "/run/user/".length - "/systemd/private".length;
+  const width = Buffer.byteLength(letter);
+  if (room % width !== 0) throw new Error(`no ${pathBytes}-byte path`);
+  return `/run/user/${letter.repeat(room / width)}`;
+};
+
+// systemd-run reaches the user manager through a unix socket under XDG_RUNTIME_DIR, and a unix
+// socket's address holds at most 108 bytes on Linux.
+it("says, beside what systemd-run said, that the user manager's socket path is longer than a unix socket's address holds", async () => {
+  const said = "Failed to connect to bus: No such file or directory";
+  const note = (bytes: number): string =>
+    `the user manager's socket, $XDG_RUNTIME_DIR/systemd/private, is a path of ${bytes} bytes, longer than the 108 bytes a unix socket's address holds`;
+  const evidence = async (
+    runtime: string | undefined,
+    codes: Partial<Record<"bwrap" | "systemd-run", number>>,
+    words = said,
+  ): Promise<string[]> => {
+    fakeTools(codes, { said: { "systemd-run": words } });
+    vi.stubEnv("XDG_RUNTIME_DIR", runtime);
+    return (await freshSandbox()).noSandboxEvidence("linux");
+  };
+  const failing = { bwrap: 1, "systemd-run": 1 };
+  expect(await evidence(runtimeDir(109), failing)).toEqual([
+    "bwrap: exit code 1",
+    `systemd-run: exit code 1: ${said}; ${note(109)}`,
+  ]);
+  // counted in bytes: each e with an acute accent is two
+  expect(
+    await evidence(runtimeDir(110, String.fromCharCode(0xe9)), failing),
+  ).toEqual([
+    "bwrap: exit code 1",
+    `systemd-run: exit code 1: ${said}; ${note(110)}`,
+  ]);
+  // after the excerpt is cut, so the note is never cut with it, and alone where systemd-run said
+  // nothing
+  const long = "x".repeat(400);
+  expect((await evidence(runtimeDir(200), failing, long))[1]).toBe(
+    `systemd-run: exit code 1: ${"x".repeat(300)}...; ${note(200)}`,
+  );
+  expect((await evidence(runtimeDir(200), failing, ""))[1]).toBe(
+    `systemd-run: exit code 1: ${note(200)}`,
+  );
+  // nothing where the path fits, where XDG_RUNTIME_DIR is unset or where systemd-run never ran
+  expect((await evidence(runtimeDir(108), failing))[1]).toBe(
+    `systemd-run: exit code 1: ${said}`,
+  );
+  expect((await evidence(undefined, failing))[1]).toBe(
+    `systemd-run: exit code 1: ${said}`,
+  );
+  expect(await evidence(runtimeDir(200), {})).toEqual([
+    "bwrap: could not start: ENOENT",
+    "systemd-run: could not start: ENOENT",
+  ]);
+});
+
 it("finds no problem where bubblewrap and systemd-run both work, and none off Linux", async () => {
   const log = fakeTools({ bwrap: 0, "systemd-run": 0 });
   const s = await freshSandbox();

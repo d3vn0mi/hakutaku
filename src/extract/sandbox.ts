@@ -456,7 +456,8 @@ export async function detectSandbox(
 // What keeps this machine's sandbox from its strongest form, each problem with the line that
 // names its repair and the evidence of the probe that found it: bubblewrap not installed, or
 // refused the user namespaces it needs; systemd-run unable to reach a user manager, which also
-// leaves bubblewrap without a memory cap; where bubblewrap works, a user manager that starts a
+// leaves bubblewrap without a memory cap, its evidence saying when the manager's socket path is
+// too long for a unix socket's address; where bubblewrap works, a user manager that starts a
 // service but refuses the scope that caps bubblewrap's memory; and, where bubblewrap does not
 // work, a systemd-run service that still sees the host's network, or that reaches a unix socket,
 // writes outside its bound directory, reads outside it or can write its own control group. None
@@ -480,7 +481,7 @@ export async function sandboxProblems(
   if (!systemdRun.ok) {
     problems.push({
       line: SANDBOX_REPAIRS.noUserManager,
-      evidence: evidenceOf(systemdRun),
+      evidence: withSocketNote(evidenceOf(systemdRun)),
     });
   } else if (!bwrap.ok) {
     const isolation = await isolationProbe();
@@ -548,6 +549,28 @@ export async function noSandboxEvidence(
 
 function evidenceOf({ ok: _, ...evidence }: Probe): ProbeEvidence {
   return evidence;
+}
+
+// The most bytes a unix socket's address holds on Linux.
+const SOCKET_ADDRESS_BYTES = 108;
+
+// A failed systemd-run probe's evidence, with what systemd-run's own words may leave out: it
+// reaches the user manager through a unix socket under XDG_RUNTIME_DIR, the manager's own at
+// systemd/private, and no unix socket's address holds a longer path than SOCKET_ADDRESS_BYTES.
+// Nothing is added where systemd-run did not start, where XDG_RUNTIME_DIR is unset, or where the
+// path fits; the note comes after the excerpt, which is already cut, so that it is never cut.
+function withSocketNote(evidence: ProbeEvidence): ProbeEvidence {
+  const runtime = process.env.XDG_RUNTIME_DIR;
+  if (evidence.errno !== null || runtime === undefined || runtime === "") {
+    return evidence;
+  }
+  const bytes = Buffer.byteLength(`${runtime}/systemd/private`);
+  if (bytes <= SOCKET_ADDRESS_BYTES) return evidence;
+  const note = `the user manager's socket, $XDG_RUNTIME_DIR/systemd/private, is a path of ${bytes} bytes, longer than the ${SOCKET_ADDRESS_BYTES} bytes a unix socket's address holds`;
+  return {
+    ...evidence,
+    excerpt: evidence.excerpt === "" ? note : `${evidence.excerpt}; ${note}`,
+  };
 }
 
 // Whether a sandbox detectSandbox found caps memory: systemd-run always does, and bubblewrap
