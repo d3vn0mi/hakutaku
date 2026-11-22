@@ -7,6 +7,11 @@ on:
 permissions:
   contents: read
 
+# The IBM Plex font packages, which the viewer bundles, run IBM's telemetry collector when npm
+# installs them, and it collects only in CI or a container. This turns it off in every job.
+env:
+  IBM_TELEMETRY_DISABLED: "true"
+
 jobs:
   linux:
     runs-on: ubuntu-latest
