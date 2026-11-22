@@ -1,0 +1,148 @@
+import { describe, expect, it } from "vitest";
+import {
+  fileIdOf,
+  historyData,
+  outlineData,
+  sourceData,
+} from "../../../src/query/view/index.js";
+import { openStore } from "../../../src/store/index.js";
+import { emptyContent, miniStore } from "../../helpers/mini-store.js";
+import { TINY_SOURCES, TINY_TIME, tinyStore } from "../viewer/tiny-store.js";
+
+const open = (p: string) => {
+  const s = openStore(p);
+  if ("code" in s) throw new Error(s.reason);
+  return s;
+};
+// The source of a tiny store file, which always has one.
+const sourceOf = (fileId: number) => {
+  const s = sourceData(open(tinyStore()), fileId);
+  if (s === null) throw new Error(`file ${fileId} has no source`);
+  return s;
+};
+
+describe("outlineData", () => {
+  it("gives a file's definitions with their IDs, and its co-change partners", () => {
+    const o = outlineData(open(tinyStore()), 4);
+    expect([o.builtCommit, o.file]).toEqual([
+      "4f2a9c1e07b3",
+      "tiny:src/core/graph.ts",
+    ]);
+    expect(o.defs.map((d) => d.id)).toEqual([
+      "tiny:src/core/graph.ts#Graph",
+      "tiny:src/core/graph.ts#Graph.add",
+      "tiny:src/core/graph.ts#helper",
+      "tiny:src/core/graph.ts#helper(2)",
+    ]);
+    expect(o.defs[1]).toEqual({
+      id: "tiny:src/core/graph.ts#Graph.add",
+      qualname: "Graph.add",
+      ordinal: 1,
+      kind: "method",
+      line: 9,
+      endLine: 12,
+      exported: true,
+      usedByFiles: 1,
+      mentionedByTests: true,
+    });
+    expect(o.cochange).toEqual([
+      { id: "tiny:src/core/graph.test.ts", commits: 3 },
+    ]);
+  });
+});
+describe("sourceData", () => {
+  it("gives the redacted text, its definitions and the call sites in the file", () => {
+    const s = sourceOf(2);
+    expect([s.file, s.lines, s.text]).toEqual([
+      "tiny:src/cli/main.ts",
+      12,
+      TINY_SOURCES["src/cli/main.ts"],
+    ]);
+    expect(s.defs).toEqual([
+      {
+        id: "tiny:src/cli/main.ts#main",
+        kind: "function",
+        line: 3,
+        endLine: 10,
+      },
+    ]);
+    expect(s.sites).toEqual([
+      {
+        line: 5,
+        col: 3,
+        target: "tiny:src/core/graph.ts#Graph.add",
+        label: "bound",
+        collision: false,
+      },
+    ]);
+  });
+  it("counts redactions and keeps call sites inside the file", () => {
+    const s = sourceOf(4);
+    expect(s.redactions).toBe(1);
+    expect(s.sites).toEqual([
+      {
+        line: 32,
+        col: 5,
+        target: "tiny:src/core/graph.ts#Graph.add",
+        label: "bound",
+        collision: false,
+      },
+    ]);
+  });
+  it("is null for a file without stored source", () => {
+    expect(sourceData(open(tinyStore({ noSource: true })), 2)).toBeNull();
+  });
+});
+describe("historyData", () => {
+  it("gives the 26 weeks, oldest first", () => {
+    const h = historyData(open(tinyStore()));
+    expect(h.weeks).toHaveLength(26);
+    expect(h.weeks[0]).toEqual({ start: TINY_TIME - 26 * 604800, commits: 0 });
+    expect(h.weeks[25]).toEqual({ start: TINY_TIME - 604800, commits: 3 });
+  });
+});
+describe("fileIdOf", () => {
+  it("matches a stored path exactly and nothing else", () => {
+    const st = open(tinyStore());
+    expect(fileIdOf(st, "src/core/graph.ts")).toBe(4);
+    for (const p of [
+      "src/core/Graph.ts",
+      "./src/core/graph.ts",
+      "src/core/",
+      "../src/core/graph.ts",
+      "/src/core/graph.ts",
+      "",
+    ])
+      expect(fileIdOf(st, p)).toBeNull();
+  });
+  it("does not take a lone surrogate for the U+FFFD that SQLite compares it as", () => {
+    const replacement = `a${String.fromCharCode(0xfffd)}.ts`;
+    const content = emptyContent("odd");
+    content.files.push({
+      id: 1,
+      path: replacement,
+      lang: null,
+      kind: "doc",
+      component_id: null,
+      lines: 1,
+      bytes: 2,
+      blob_sha: "c".repeat(40),
+      mode: "100644",
+      link_target: null,
+      entry: 0,
+      has_source: 0,
+    });
+    const st = open(miniStore(content));
+    expect(fileIdOf(st, replacement)).toBe(1);
+    expect(fileIdOf(st, `a${String.fromCharCode(0xd800)}.ts`)).toBeNull();
+  });
+});
+describe("a file id the store does not hold", () => {
+  it("is refused, not answered with another file's data", () => {
+    const st = open(tinyStore());
+    for (const id of [0, 6]) {
+      expect(() => outlineData(st, id)).toThrow(RangeError);
+      expect(() => sourceData(st, id)).toThrow(RangeError);
+    }
+  });
+});
