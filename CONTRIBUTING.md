@@ -168,6 +168,11 @@ through `engines.lock.json`, with its integrity hash, and only once its release 
 least two weeks. Every shipped licence must be on the allowlist: MIT, ISC, 0BSD, BSD-2-Clause,
 BSD-3-Clause, Apache-2.0, OFL-1.1, Unlicense, CC0-1.0, Python-2.0 or BlueOak-1.0.0.
 
+**An engine's temporary directory.** An engine runs with `TMPDIR` set to
+`<store directory>/work.tmp-<pid>/tmp`, in the build's work directory, so that path grows with the
+store directory's. A unix socket's address holds at most 108 bytes on Linux: an engine that binds a
+unix socket under `TMPDIR` must keep the socket's path under 108 bytes.
+
 **Out of scope.** These will not be merged, however they are framed:
 
 - anything that runs code from the analysed repository: its configs, scripts, hooks, filters or tests;
