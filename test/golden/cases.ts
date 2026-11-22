@@ -13,6 +13,7 @@ import {
 import type { Store } from "../../src/store/index.js";
 import {
   type CallersAnswer,
+  type DepsAnswer,
   type ExplainDefinitionAnswer,
   type FindAnswer,
   type LibraryReferencesAnswer,
@@ -50,6 +51,8 @@ const REPO = "observatory";
 const KEPLER = "web/src/orbits/kepler.ts";
 const KEPLER_TEST = "web/src/orbits/kepler.test.ts";
 const CONSTANTS = "web/src/orbits/constants.ts";
+// A Python test module outside the importable packages: sim/tests holds no __init__.py.
+const MOON_TEST = "sim/tests/test_moon.py";
 const METHOD = `${KEPLER}#Orbit.position`;
 const SOLVE = `${KEPLER}#solveKepler`;
 const SNIPPET = { file: KEPLER, from: 1, to: 120 };
@@ -114,6 +117,29 @@ function unusedPythonDefinition({
       ordinal: row.ordinal as number,
     }),
   };
+}
+
+// How many files of these languages hold an import that hakutaku's own resolver read.
+function resolverFiles(
+  { store }: CaseContext,
+  langs: readonly string[],
+): number {
+  const row = store.db
+    .prepare(
+      `SELECT COUNT(DISTINCT i.src_file_id) AS n FROM imports AS i JOIN files AS f ON f.id = i.src_file_id WHERE i.producer = 'hakutaku-resolver' AND f.lang IN (${langs.map(() => "?").join(", ")})`,
+    )
+    .get(...langs) as Row | undefined;
+  return Number(row?.n ?? 0);
+}
+
+// The producers of a file's imports, each once, in name order.
+function importProducers({ store }: CaseContext, path: string): string[] {
+  const rows = store.db
+    .prepare(
+      "SELECT DISTINCT i.producer FROM imports AS i JOIN files AS f ON f.id = i.src_file_id WHERE f.path = ? ORDER BY i.producer",
+    )
+    .all(path) as Row[];
+  return rows.map((r) => r.producer as string);
 }
 
 // The library the most files import, ties by ecosystem, then name.
@@ -310,12 +336,48 @@ export const CASES: readonly GoldenCase[] = Object.freeze([
     { premise: (r) => expect(answerOf(r)).toMatchObject({ hasMore: true }) },
   ),
 
-  golden("code_deps", "out", { file: KEPLER, direction: "out" }),
+  golden(
+    "code_deps",
+    "out",
+    { file: KEPLER, direction: "out" },
+    {
+      // dependency-cruiser ran, and no TypeScript or JavaScript file of the sample holds an import
+      // from hakutaku's own resolver, so no line counts them
+      premise: (r, c) => {
+        expect(c.store.meta.coverage.tiers["dependency-cruiser"]).toBe("ran");
+        expect(resolverFiles(c, ["typescript", "javascript"])).toBe(0);
+        expect(
+          answerOf<DepsAnswer>(r).blindSpots.filter((line) =>
+            line.endsWith(", not dependency-cruiser"),
+          ),
+        ).toEqual([]);
+      },
+    },
+  ),
   golden("code_deps", "in-transitive", {
     file: CONSTANTS,
     direction: "in",
     transitive: true,
   }),
+  golden(
+    "code_deps",
+    "python-out",
+    { file: MOON_TEST, direction: "out" },
+    {
+      // grimp ran, but reads only the packages under the profile's Python roots, so every import
+      // of this test module is hakutaku's own resolver's, and the answer counts the Python files
+      // that hold one
+      premise: (r, c) => {
+        expect(c.store.meta.coverage.pythonResolver).toBe("grimp");
+        expect(importProducers(c, MOON_TEST)).toEqual(["hakutaku-resolver"]);
+        const n = resolverFiles(c, ["python"]);
+        expect(n).toBeGreaterThan(1);
+        expect(answerOf<DepsAnswer>(r).blindSpots).toContain(
+          `${n} Python files have imports that come from hakutaku's own resolver, not grimp`,
+        );
+      },
+    },
+  ),
 
   golden(
     "code_path",

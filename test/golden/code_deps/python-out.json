@@ -1,0 +1,40 @@
+{
+  "call": {
+    "tool": "code_deps",
+    "args": {
+      "repo": "observatory",
+      "file": "sim/tests/test_moon.py",
+      "direction": "out"
+    },
+    "detail": "standard"
+  },
+  "result": {
+    "answer": {
+      "id": "observatory:sim/tests/test_moon.py",
+      "builtCommit": "5f7b72a77e7a",
+      "stale": false,
+      "direction": "out",
+      "edges": [
+        {
+          "id": "observatory:sim/src/observatory/ephemeris/moon.py",
+          "kind": "static",
+          "line": 3,
+          "specifier": "observatory.ephemeris.moon",
+          "text": "from observatory.ephemeris.moon import NEW_MOON_JD, SYNODIC_MONTH, age, illumination, phase_name"
+        },
+        {
+          "id": "observatory:pypi:pytest",
+          "kind": "static",
+          "line": 1,
+          "specifier": "pytest",
+          "text": "import pytest"
+        }
+      ],
+      "blindSpots": [
+        "13 Python files have imports that come from hakutaku's own resolver, not grimp",
+        "1 denylisted file is left out of the map, with its imports"
+      ],
+      "view": "#sim~tests~test_moon.py"
+    }
+  }
+}
