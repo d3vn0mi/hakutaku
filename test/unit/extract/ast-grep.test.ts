@@ -17,7 +17,10 @@ import { dirname, join } from "node:path";
 import { afterAll, expect, it } from "vitest";
 import { type ExportManifest, removeTree } from "../../../src/export/index.js";
 import type { ExtractContext } from "../../../src/extract/context.js";
-import { astGrepDriver } from "../../../src/extract/drivers/ast-grep.js";
+import {
+  astGrepDriver,
+  lineFeedSplitter,
+} from "../../../src/extract/drivers/ast-grep.js";
 import type { EngineRun, EngineRunResult } from "../../../src/extract/run.js";
 import { comparePaths, type GitMode } from "../../../src/model/index.js";
 import { DEFAULT_PROFILE } from "../../../src/profile/index.js";
@@ -50,6 +53,8 @@ interface Setup {
   metadataOnly?: string[];
   // the stream the stand-in writes, given the directory it was asked to scan
   stream?: (scanned: string) => string;
+  // what the stand-in says on stderr, else nothing
+  stderr?: string;
 }
 
 interface Run {
@@ -59,7 +64,8 @@ interface Run {
 }
 
 // An export of the given files, a link or a submodule never made on disk, and a context over it
-// whose runner records each run and writes the stream it is given, else an empty one.
+// whose runner records each run, writes the stream it is given, else an empty one, and ends with
+// the stderr it is given, else none.
 function standIn(s: Setup): { ctx: ExtractContext; runs: Run[]; root: string } {
   const root = mkdtempSync(join(tmpdir(), "hakutaku-ast-grep-unit-"));
   made.push(root);
@@ -116,7 +122,9 @@ function standIn(s: Setup): { ctx: ExtractContext; runs: Run[]; root: string } {
       const scanned = run.argv.at(-1) as string;
       runs.push({ run, links: linksUnder(scanned) });
       writeFileSync(run.stdoutFile as string, s.stream?.(scanned) ?? "");
-      return ENDED;
+      return s.stderr === undefined
+        ? ENDED
+        : { ...ENDED, stderrTail: s.stderr };
     },
   };
   return { ctx, runs, root };
@@ -387,5 +395,62 @@ it("reads each match's path below the view, and refuses a match in a metadata-on
   });
   await expect(astGrepDriver.run(bad.ctx)).rejects.toThrow(
     /^ast-grep failed: it scanned web\/gen\.ts, which is metadata-only$/,
+  );
+});
+
+// ast-grep's JSON keeps U+2028 and U+2029 raw inside a string, such as a file's path, and
+// node:readline would take either for a line break.
+it("cuts ast-grep's stream into matches at line feeds only, so a path that holds U+2028 or U+2029 names one match", async () => {
+  const file = "web/sky\u2028line\u2029map.ts";
+  const { ctx } = standIn({
+    files: { [file]: "export function secret() {}\n" },
+    stream: (scanned) => `${defLine(scanned, file)}\r\n`,
+  });
+  const { defs } = await astGrepDriver.run(ctx);
+  expect(defs.map((d) => [d.file, d.qualname])).toEqual([[file, "secret"]]);
+});
+
+it("splits bytes that come in chunks at line feeds only, each line without a CRLF's CR, and decodes a character cut between two chunks whole", () => {
+  const separator = Buffer.from("\u2028");
+  const split = lineFeedSplitter();
+  const lines = [
+    ...split.push(
+      Buffer.concat([Buffer.from('{"file":"a'), separator.subarray(0, 2)]),
+    ),
+    ...split.push(
+      Buffer.concat([separator.subarray(2), Buffer.from('b\u2029c"}\r')]),
+    ),
+    ...split.push(Buffer.from('\n{"next":1}\n\nlast')),
+    ...split.end(),
+  ];
+  expect(lines).toEqual([
+    '{"file":"a\u2028b\u2029c"}',
+    '{"next":1}',
+    "",
+    "last",
+  ]);
+  // a stream that ends with a line feed has no last line after it
+  const ended = lineFeedSplitter();
+  expect([...ended.push(Buffer.from("one\ntwo\n")), ...ended.end()]).toEqual([
+    "one",
+    "two",
+  ]);
+});
+
+// ast-grep says it could not read a directory on a stderr line that starts with ERROR. Only a
+// line feed starts a line: a path on another line may hold U+2028 or a CR before the word.
+it("fails on a stderr line that starts with ERROR, and not on a word ERROR after a U+2028 or a CR inside a line", async () => {
+  const files = { "web/orbit.ts": "export function orbit() {}\n" };
+  const quiet = standIn({
+    files,
+    stderr: "skipped web/sky\u2028ERROR.ts\nskipped web/map\rERROR.ts\n",
+  });
+  expect(await astGrepDriver.run(quiet.ctx)).toEqual(NO_FACTS);
+  const loud = standIn({
+    files,
+    stderr: "warning: one\nERROR: cannot read the directory web/sky\n",
+  });
+  await expect(astGrepDriver.run(loud.ctx)).rejects.toThrow(
+    /^ast-grep failed: warning: one\nERROR: cannot read the directory web\/sky$/,
   );
 });

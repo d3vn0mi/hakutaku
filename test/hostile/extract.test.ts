@@ -3,8 +3,9 @@
 // where nothing can run it, a check of the fixture's shape; the canary is emptied again before
 // hakutaku runs. Then the case's checkout is exported with exportRepo and extracted with
 // extractSnapshot and no sandbox, and every engine's own status is checked, never the build's
-// result alone. Every export and store is made outside the fixtures, under a directory removed
-// afterwards. Run `node dist/cli/main.js engines install --yes` once before this file.
+// result alone; separator-names runs hakutaku map itself, with no sandbox. Every export and store
+// is made outside the fixtures, under a directory removed afterwards. Run `node dist/cli/main.js
+// engines install --yes` once before this file.
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -16,7 +17,8 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { PassThrough } from "node:stream";
+import { createInterface } from "node:readline";
+import { PassThrough, Readable } from "node:stream";
 import { afterAll, expect, it, vi } from "vitest";
 import type { CliIO } from "../../src/cli/commands/index.js";
 import { main } from "../../src/cli/main.js";
@@ -38,6 +40,7 @@ import type { Detail, EngineName } from "../../src/model/index.js";
 import {
   createRefReader,
   createRegistryHost,
+  exportDirFor,
   profilePathFor,
   saveEntry,
   storePathFor,
@@ -667,6 +670,173 @@ it(
         expectNoHostPath(text);
       }
       expectContained(fx, { exportDir, store: null });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  },
+  TIMEOUT,
+);
+
+// The two characters separator-names puts in its file names, as escapes, so that no file of the
+// tree holds one raw.
+const LINE_SEPARATOR = "\u2028";
+const PARAGRAPH_SEPARATOR = "\u2029";
+
+// The lines node:readline reads a text as.
+async function readlineLines(text: string): Promise<string[]> {
+  const lines: string[] = [];
+  const reader = createInterface({
+    input: Readable.from([text]),
+    crlfDelay: Number.POSITIVE_INFINITY,
+  });
+  for await (const line of reader) lines.push(line);
+  return lines;
+}
+
+it(
+  "separator-names: maps files whose names hold U+2028 or U+2029, and indexes them",
+  async (ctx) => {
+    requireInCI(ctx, PYTHON, SCIP_PYTHON);
+    const fx = await hostileFixtures();
+    const id: HostileCaseId = "separator-names";
+    const lineTs = `src/line${LINE_SEPARATOR}sep.ts`;
+    const paraTs = `src/para${PARAGRAPH_SEPARATOR}sep.ts`;
+    const linePy = `pkg/line${LINE_SEPARATOR}sep.py`;
+    const paraPy = `pkg/para${PARAGRAPH_SEPARATOR}sep.py`;
+    // stock ast-grep, run with a pattern in a copy of the checkout, writes each match's path with
+    // the character raw, and node:readline reads its two matches as four lines
+    const copy = scratchCopy(fx, id);
+    const control = stock(
+      bin("ast-grep"),
+      [
+        "run",
+        "--pattern",
+        "export function $NAME(): number { $$$ }",
+        "--lang",
+        "ts",
+        "--json=stream",
+        ".",
+      ],
+      copy,
+    );
+    expect(control.status).toBe(0);
+    const records = control.stdout.split("\n").filter((line) => line !== "");
+    expect(records.map((record) => JSON.parse(record).file).sort()).toEqual([
+      lineTs,
+      paraTs,
+    ]);
+    expect(control.stdout).toContain(LINE_SEPARATOR);
+    expect(control.stdout).toContain(PARAGRAPH_SEPARATOR);
+    expect(await readlineLines(control.stdout)).toHaveLength(4);
+    expect(takeCanary(fx)).toEqual({});
+
+    const root = tmp();
+    vi.stubEnv("XDG_DATA_HOME", join(root, "data"));
+    vi.stubEnv("XDG_CONFIG_HOME", join(root, "config"));
+    vi.stubEnv("XDG_CACHE_HOME", join(root, "cache"));
+    try {
+      // hakutaku map, with the installed engines and no sandbox, at deep detail, where every
+      // engine reads the files; what it says on stderr is the message of a failure
+      const c = { out: "", err: "" };
+      const io: CliIO = {
+        stdout: (s) => {
+          c.out += s;
+        },
+        stderr: (s) => {
+          c.err += s;
+        },
+        stdin: new PassThrough(),
+        env: process.env,
+        isTTY: false,
+      };
+      const argv = ["map", join(fx.dir, id), "--id", id, "--sandbox", "none"];
+      argv.push("--engines-dir", ENGINES_DIR, "--detail", "deep");
+      expect(await main(argv, io), c.err).toBe(0);
+      expect(c.out).toMatch(
+        /^hakutaku \S+ \S+ separator-names at [0-9a-f]{12} /,
+      );
+      const store = storePathFor(id);
+      const all = {
+        "ast-grep": "ran",
+        "dependency-cruiser": "ran",
+        grimp: "ran",
+        "scip-typescript": "ran",
+        "scip-python": "ran",
+      };
+      expect(statuses(readBuildFacts(store))).toEqual(all);
+      const commit = inStore(store, (s) => {
+        expect(s.meta.coverage.tiers).toEqual(all);
+        // each name is a file of the store, with its source
+        expect(
+          s.db.prepare("SELECT path, has_source FROM files ORDER BY id").all(),
+        ).toEqual(
+          [
+            "pkg/__init__.py",
+            "pkg/core.py",
+            linePy,
+            paraPy,
+            lineTs,
+            "src/main.ts",
+            paraTs,
+          ].map((path) => ({ path, has_source: 1 })),
+        );
+        // ast-grep's outline holds each file's function, and scip-typescript and scip-python
+        // name a symbol for each
+        expect(
+          s.db
+            .prepare(
+              `SELECT f.path, d.qualname, d.producer, d.scip_symbol IS NOT NULL AS scip
+               FROM definitions d JOIN files f ON f.id = d.file_id
+               WHERE d.kind <> 'module' ORDER BY d.id`,
+            )
+            .all(),
+        ).toEqual(
+          [
+            ["pkg/core.py", "dump"],
+            [linePy, "line_sep"],
+            [paraPy, "para_sep"],
+            [lineTs, "lineSep"],
+            ["src/main.ts", "both"],
+            [paraTs, "paraSep"],
+          ].map(([path, qualname]) => ({
+            path,
+            qualname,
+            producer: "ast-grep",
+            scip: 1,
+          })),
+        );
+        // dependency-cruiser resolves main.ts's imports to both files, and grimp read the package
+        expect(importsOf(s, "src/main.ts")).toEqual([
+          {
+            specifier: `./line${LINE_SEPARATOR}sep`,
+            line: 1,
+            file: lineTs,
+            external: null,
+            resolved: 1,
+            producer: "dependency-cruiser",
+          },
+          {
+            specifier: `./para${PARAGRAPH_SEPARATOR}sep`,
+            line: 2,
+            file: paraTs,
+            external: null,
+            resolved: 1,
+            producer: "dependency-cruiser",
+          },
+        ]);
+        expect(importsOf(s, "pkg/core.py")).toEqual([
+          {
+            specifier: "json",
+            line: 1,
+            file: null,
+            external: "json",
+            resolved: 1,
+            producer: "grimp",
+          },
+        ]);
+        return s.meta.commit;
+      });
+      expectContained(fx, { exportDir: exportDirFor(id, commit), store });
     } finally {
       vi.unstubAllEnvs();
     }

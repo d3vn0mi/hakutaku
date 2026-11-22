@@ -626,9 +626,8 @@ it(
   "names a file it could not write after the swap on a stderr line safe for a terminal, the store's path included",
   async () => {
     const repo = await oneCommit(SKY);
-    // the hostile name without its line separator, which ast-grep's output lines cannot hold
-    const name = HOSTILE.replace(String.fromCharCode(0x2028), "");
-    const out = join(tmp(), name, "store.sqlite");
+    // the hostile name, line separator included, is in the path of every file ast-grep names
+    const out = join(tmp(), HOSTILE, "store.sqlite");
     const written: string[] = [];
     const write = vi
       .spyOn(process.stderr, "write")
@@ -657,7 +656,7 @@ it(
     expect(r.result).toBe("built");
     const text = written.join("");
     expect(text).toMatch(
-      /^hakutaku: the store is built, but extract could not write build\.json: .*sky\?\[2J\?31m\?map/m,
+      /^hakutaku: the store is built, but extract could not write build\.json: .*sky\?\[2J\?31m; \?map/m,
     );
     expect(rawLines(text)).toEqual([]);
   },

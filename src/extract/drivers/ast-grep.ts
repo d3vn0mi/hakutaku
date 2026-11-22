@@ -22,7 +22,7 @@ import {
   symlinkSync,
 } from "node:fs";
 import { dirname, join, posix, resolve } from "node:path";
-import { createInterface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 import { readLock, resolveBin } from "../../engines/index.js";
 import type { ExportManifest } from "../../export/index.js";
 import { comparePaths, type ImportKind } from "../../model/index.js";
@@ -170,13 +170,15 @@ async function runAstGrep(ctx: ExtractContext): Promise<AstGrepFacts> {
     // Every non-zero exit is a failure, since the rules keep ast-grep's default severity and a
     // scan that matches nothing exits 0; so is an ERROR line on stderr, which is how ast-grep
     // reports a directory it could not read. A file it could not read it skips without a word,
-    // which is why the view refuses one first.
+    // which is why the view refuses one first. Only a line feed starts a line: a path ast-grep
+    // names can hold a U+2028, U+2029 or CR before the word, where a ^ in a multiline regular
+    // expression would start one too.
     const f = failureContext(ctx, timeoutMs);
     const failure = runFailure(result, f);
     if (failure !== null) {
       throw new EngineFailure(`ast-grep failed: ${failure.text}`, failure.end);
     }
-    if (/^ERROR/m.test(result.stderrTail)) {
+    if (result.stderrTail.split("\n").some((l) => l.startsWith("ERROR"))) {
       throw new Error(
         `ast-grep failed: ${excerptOf(result.stderrTail, result.stderrCut, f.clean)}`,
       );
@@ -214,17 +216,55 @@ async function readMatches(
     block = [];
     size = 0;
   };
-  const lines = createInterface({
-    input: createReadStream(path, { encoding: "utf8" }),
-    crlfDelay: Number.POSITIVE_INFINITY,
-  });
-  for await (const line of lines) {
+  const take = (line: string): void => {
     block.push(line);
     size += line.length;
     if (size >= BLOCK_CHARS) flush();
+  };
+  const lines = lineFeedSplitter();
+  for await (const chunk of createReadStream(path)) {
+    for (const line of lines.push(chunk as Buffer)) take(line);
   }
+  for (const line of lines.end()) take(line);
   flush();
   return matches.sort(compareMatches);
+}
+
+// Cuts UTF-8 bytes that come in chunks into lines at each line feed and nowhere else, each line
+// without the CR of a CRLF; end() gives the last line when no line feed ends it. node:readline
+// would also cut at U+2028 and U+2029, which ast-grep's JSON keeps raw inside a string, such as
+// a file's path. A character whose bytes come in two chunks is decoded once both are in.
+export function lineFeedSplitter(): {
+  push(chunk: Buffer): string[];
+  end(): string[];
+} {
+  const decoder = new StringDecoder("utf8");
+  let partial: string[] = [];
+  const whole = (text: string): string =>
+    text.endsWith("\r") ? text.slice(0, -1) : text;
+  const cut = (text: string): string[] => {
+    const lines: string[] = [];
+    let from = 0;
+    let lf = text.indexOf("\n");
+    while (lf !== -1) {
+      partial.push(text.slice(from, lf));
+      lines.push(whole(partial.join("")));
+      partial = [];
+      from = lf + 1;
+      lf = text.indexOf("\n", from);
+    }
+    if (from < text.length) partial.push(text.slice(from));
+    return lines;
+  };
+  return {
+    push: (chunk) => cut(decoder.write(chunk)),
+    end: () => {
+      const lines = cut(decoder.end());
+      const last = partial.join("");
+      partial = [];
+      return last === "" ? lines : [...lines, whole(last)];
+    },
+  };
 }
 
 // The raw bytes of a snapshot file's lines, without their line feeds. A few files are kept,

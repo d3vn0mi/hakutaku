@@ -110,5 +110,13 @@
     "expect": "No attempt, answer or list row holds the token or a path of this machine: the paths are named by token, and the token is redacted",
     "control": "The failing stand-in, run on a copy of the checkout, prints the token and the file's absolute path.",
     "detail": "quick"
+  },
+  {
+    "id": "separator-names",
+    "stage": "extract",
+    "vector": "A TypeScript file and a Python module whose names hold U+2028 (line separator), two more whose names hold U+2029 (paragraph separator), and a TypeScript file that imports the two TypeScript ones. An engine's JSON keeps both characters raw inside a string, such as a match's path, and node:readline takes each for a line break.",
+    "expect": "File names that hold U+2028 or U+2029 are mapped like any other: every engine's output is cut into records at line feeds only, so the map completes and indexes those files",
+    "control": "Stock ast-grep, run with a pattern in a copy of the checkout, writes each match's path with the character raw, and node:readline reads its two matches as four lines.",
+    "detail": "deep"
   }
 ]

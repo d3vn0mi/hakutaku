@@ -36,6 +36,9 @@
 //                        file of hakutaku's tree holds it whole. A test's failing engine prints that line with the
 //                        paths it was given; neither the token nor a path must reach an attempt, an answer or a
 //                        list row
+//   separator-names      no canary: TypeScript and Python files whose names hold U+2028 or U+2029, which an engine's
+//                        JSON keeps raw inside a string and node:readline takes for a line break. The map must cut
+//                        every engine's output at line feeds only, and index the files
 //
 // Nothing hostile is in hakutaku's own tree. This script writes every hostile file, .git/config entry and hook into
 // <outDir> when it runs. The `..` tree entry, the symlink and the 50 MB file exist only there. The planted scripts
@@ -269,6 +272,20 @@ const BUILD = {
     const token = ["gh", "p_", "Fx7Kq2Lm9Rt4", "Vb8Nc3Hs6Jd1", "Pw5Zy0Ag2Ue4"].join("");
     put(dir, "src/keys.js", `// The key a deploy script reads.\nexport const token = "${token}";\n`);
     commit(dir, "test: a file whose line holds a fake token");
+  },
+  "separator-names"(id) {
+    const dir = newRepo(id);
+    // as escapes, so that no file of hakutaku's tree holds either character raw
+    const line = "\u2028", paragraph = "\u2029";
+    put(dir, `src/line${line}sep.ts`, "export function lineSep(): number {\n  return 1;\n}\n");
+    put(dir, `src/para${paragraph}sep.ts`, "export function paraSep(): number {\n  return 2;\n}\n");
+    put(dir, "src/main.ts", `import { lineSep } from "./line${line}sep";\nimport { paraSep } from "./para${paragraph}sep";\n\n` +
+      "export const both = lineSep() + paraSep();\n");
+    put(dir, "pkg/__init__.py", "");
+    put(dir, `pkg/line${line}sep.py`, "def line_sep():\n    return 1\n");
+    put(dir, `pkg/para${paragraph}sep.py`, "def para_sep():\n    return 2\n");
+    put(dir, "pkg/core.py", "import json\n\n\ndef dump(value):\n    return json.dumps(value)\n");
+    commit(dir, "test: file names that hold a line or a paragraph separator");
   },
 };
 

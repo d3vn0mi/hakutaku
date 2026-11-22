@@ -45,6 +45,7 @@ const IDS: HostileCaseId[] = [
   "markup-names",
   "minified-50mb",
   "engine-failure-text",
+  "separator-names",
 ];
 
 const made: string[] = [];

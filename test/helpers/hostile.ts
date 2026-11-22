@@ -40,7 +40,8 @@ export type HostileCaseId =
   | "injected-comment"
   | "markup-names"
   | "minified-50mb"
-  | "engine-failure-text";
+  | "engine-failure-text"
+  | "separator-names";
 
 export interface HostileCase {
   id: HostileCaseId;
