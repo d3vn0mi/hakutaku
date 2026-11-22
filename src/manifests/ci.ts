@@ -8,9 +8,10 @@ import type { EntryFact, ReadContext } from "./types.js";
 
 const WORKFLOW = /^\.github\/workflows\/[^/]+\.ya?ml$/;
 // "run:" as a key at the start of a line, or of a sequence entry; group 1 ends where "run"
-// starts, group 2 is its value
-const RUN = /^(\s*(?:-\s+)?)run:(?:\s+(.*))?$/;
-const BLOCK = /^[|>][-+0-9]*\s*(?:#.*)?$/;
+// starts, group 2 is its value. Both with the s flag, since only a line feed ends a line here,
+// after its CR is dropped: a line may hold U+2028 or U+2029, which . does not match otherwise.
+const RUN = /^(\s*(?:-\s+)?)run:(?:\s+(.*))?$/s;
+const BLOCK = /^[|>][-+0-9]*\s*(?:#.*)?$/s;
 
 // An inline scalar's text: a quoted one unquoted, a plain one without its comment.
 function scalar(value: string): string {

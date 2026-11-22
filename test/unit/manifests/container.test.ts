@@ -120,3 +120,24 @@ it("reads shell-form, continued and lower-case instructions of every Dockerfile.
       name: "web",
     },
   ]));
+
+// JavaScript's . matches neither U+2028 nor U+2029, which may stand anywhere in a Procfile line.
+it("reads a Procfile line that holds U+2028 or U+2029", () =>
+  expect(
+    readEntryPoints(
+      input({
+        Procfile:
+          "web: node web/dist/server.js --title sky\u2028map\r\nsim: node web/dist/server.js --title sky\u2029map\n",
+        "web/src/server.ts": "",
+      }),
+    ),
+  ).toEqual(
+    [1, 2].map((line) => ({
+      file: "web/src/server.ts",
+      qualname: null,
+      kind: "procfile",
+      manifest: "Procfile",
+      line,
+      name: line === 1 ? "web" : "sim",
+    })),
+  ));

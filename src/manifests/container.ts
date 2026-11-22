@@ -8,7 +8,9 @@ import { posix } from "node:path";
 import { commandFiles, launchedFiles, relativeTo } from "./commands.js";
 import type { EntryFact, ReadContext } from "./types.js";
 
-const PROCESS = /^([A-Za-z0-9_-]+)\s*:\s*(.*)$/;
+// with the s flag, since only a line feed ends a Procfile line: a command may hold U+2028 or
+// U+2029, which . does not match otherwise
+const PROCESS = /^([A-Za-z0-9_-]+)\s*:\s*(.*)$/s;
 
 // A Dockerfile's instructions, as Docker reads them: a line ending in "\" continues on the
 // next; comment lines, and empty lines inside a continued instruction, are dropped; the keyword

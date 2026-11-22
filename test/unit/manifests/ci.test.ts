@@ -65,3 +65,28 @@ it("reads every run: line, inline or in a | or > block, line by line, from the r
     ci("web/x.mjs", sky, 12, "node web/x.mjs"),
   ]);
 });
+
+// YAML ends a line only at a line feed or CR, and JavaScript's . matches neither U+2028 nor
+// U+2029, which may stand anywhere in a run: line, such as in a comment.
+it("reads a run: line, inline or a block's key, that holds U+2028 or U+2029", () => {
+  const sky = ".github/workflows/sky.yml";
+  expect(
+    readEntryPoints(
+      input({
+        [sky]: [
+          "jobs:", // 1
+          "  check:", // 2
+          "    steps:", // 3
+          "      - run: bash scripts/check-sky.sh # sky\u2028map", // 4
+          "      - run: | # sky\u2029map", // 5
+          "          bash scripts/sync-sky.sh", // 6
+        ].join("\r\n"),
+        "scripts/check-sky.sh": "",
+        "scripts/sync-sky.sh": "",
+      }),
+    ),
+  ).toEqual([
+    ci("scripts/check-sky.sh", sky, 4, "bash scripts/check-sky.sh"),
+    ci("scripts/sync-sky.sh", sky, 6, "bash scripts/sync-sky.sh"),
+  ]);
+});
