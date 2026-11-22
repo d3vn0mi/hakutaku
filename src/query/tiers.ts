@@ -91,32 +91,92 @@ const isScript = (lang: Lang | null): boolean =>
 const isCompiled = (lang: Lang | null): boolean =>
   isScript(lang) || lang === "python";
 
-// A count line: "1 <one>" at 1, "<n> <many>" otherwise. Each caller writes both forms in full,
-// since the singular changes more than "is" and "are".
-function counted(n: number, one: string, many: string): string {
-  return n === 1 ? `1 ${one}` : `${n} ${many}`;
+// The wording of the blind-spot lines, which the functions below and BLIND_SPOT_LINES both build
+// their lines from.
+
+// A count line in both its forms, each in full, since the singular changes more than "is" and
+// "are": "1 <one>" at 1, "<n> <many>" otherwise.
+interface CountLine {
+  one: string;
+  many: string;
 }
 
-// A compiler tier that did not run for lang, then what that leaves out of the answer.
-function noCompiler(lang: Lang | null, reason: string, so: string): string {
-  return `no compiler ran for ${displayLang(lang)} in this build (${reason}), so ${so}`;
+// A count, or the placeholder that stands for one in BLIND_SPOT_LINES.
+type Count = number | "<n>";
+
+function counted(n: Count, line: CountLine): string {
+  return n === 1 ? `1 ${line.one}` : `${n} ${line.many}`;
 }
 
-function computedImports(n: number): string {
-  return counted(
-    n,
-    "dynamic import with a computed path is not followed",
-    "dynamic imports with a computed path are not followed",
-  );
+// A compiler tier that did not run for a language, by its display name, then what that leaves
+// out of the answer.
+function noCompiler(language: string, reason: string, so: string): string {
+  return `no compiler ran for ${language} in this build (${reason}), so ${so}`;
 }
+const NO_SITE = "no site is bound";
+const NO_REFERENCE = "no reference is recorded";
+
+const COMPUTED: CountLine = {
+  one: "dynamic import with a computed path is not followed",
+  many: "dynamic imports with a computed path are not followed",
+};
+
+// How the computed-import line ends in an answer about callers: by the labels asked for, or, from
+// a tool that takes no labels, by naming code_callers. In an answer about a file or a call path
+// it ends at "not followed".
+const COMPUTED_ENDING = Object.freeze({
+  noLabels: '; code_callers lists name matches with labels ["unscoped"]',
+  withUnscoped: "; the unscoped matches include calls made through them",
+  withoutUnscoped: '; ask with labels ["unscoped"] to see name matches',
+});
 
 // A count in parentheses, plural even at 1.
-function unmatchedBoundUses(n: number): string {
+function unmatchedBoundUses(n: Count): string {
   return `compiler-bound uses that match no outline definition are counted in coverage only (${n})`;
 }
 
 const OWN_RESOLVER =
   "Python imports come from hakutaku's own resolver, because grimp did not run";
+const NOT_READ = "Python imports were not read in this build";
+const RESOLVED_PYTHON: CountLine = {
+  one: "Python file has imports that come from hakutaku's own resolver, not grimp",
+  many: "Python files have imports that come from hakutaku's own resolver, not grimp",
+};
+const RESOLVED_SCRIPTS: CountLine = {
+  one: "TypeScript or JavaScript file has imports that come from hakutaku's own resolver, not dependency-cruiser",
+  many: "TypeScript and JavaScript files have imports that come from hakutaku's own resolver, not dependency-cruiser",
+};
+
+const noCallers = (lang: Lang): string =>
+  `hakutaku extracts no callers for ${lang}`;
+const SHELL_CALLERS =
+  "shell callers are name matches in the file and the files that source it";
+const noReferences = (lang: Lang): string =>
+  `hakutaku records no references for ${lang}`;
+
+const UNRESOLVED: CountLine = {
+  one: "relative import did not resolve to a file and is not an edge",
+  many: "relative imports did not resolve to a file and are not edges",
+};
+const DENIED_WITH_IMPORTS: CountLine = {
+  one: "denylisted file is left out of the map, with its imports",
+  many: "denylisted files are left out of the map, with their imports",
+};
+
+const NO_SOURCE = "this map stores no source text, so no file is searched";
+const NO_SOURCE_FILES: CountLine = {
+  one: "file over 1 MB, minified or generated keeps no stored text and is not searched",
+  many: "files over 1 MB, minified or generated keep no stored text and are not searched",
+};
+const DENIED: CountLine = {
+  one: "denylisted file is left out of the map",
+  many: "denylisted files are left out of the map",
+};
+const SPANS: CountLine = { one: "span", many: "spans" };
+
+function redactedSpans(n: Count): string {
+  return `secret-shaped text is redacted (${counted(n, SPANS)} across the map), so it cannot be found`;
+}
 
 // The count of files with at least one import that hakutaku's own resolver read, for Python or
 // for TypeScript and JavaScript together, taken from the store once for each Store object
@@ -157,13 +217,7 @@ function resolvedFiles(store: Store, group: keyof typeof RESOLVED_SQL): number {
 function resolvedScriptLines(store: Store): string[] {
   const n = resolvedFiles(store, "scripts");
   if (n === 0) return [];
-  return [
-    counted(
-      n,
-      "TypeScript or JavaScript file has imports that come from hakutaku's own resolver, not dependency-cruiser",
-      "TypeScript and JavaScript files have imports that come from hakutaku's own resolver, not dependency-cruiser",
-    ),
-  ];
+  return [counted(n, RESOLVED_SCRIPTS)];
 }
 
 // The line a Python answer gets when grimp ran: the count of Python files with imports from the
@@ -171,13 +225,7 @@ function resolvedScriptLines(store: Store): string[] {
 function resolvedPythonLines(store: Store): string[] {
   const n = resolvedFiles(store, "python");
   if (n === 0) return [];
-  return [
-    counted(
-      n,
-      "Python file has imports that come from hakutaku's own resolver, not grimp",
-      "Python files have imports that come from hakutaku's own resolver, not grimp",
-    ),
-  ];
+  return [counted(n, RESOLVED_PYTHON)];
 }
 
 // What an answer about callers cannot see in this build, one line per gap, in a fixed order.
@@ -194,7 +242,9 @@ export function blindSpots(
   const out: string[] = [];
   if (isCompiled(lang)) {
     const tier = compilerTier(store, lang);
-    if (!tier.ran) out.push(noCompiler(lang, tier.reason, "no site is bound"));
+    if (!tier.ran) {
+      out.push(noCompiler(displayLang(lang), tier.reason, NO_SITE));
+    }
   }
   if (lang === "python") {
     if (coverage.pythonResolver === "hakutaku-resolver") out.push(OWN_RESOLVER);
@@ -203,26 +253,18 @@ export function blindSpots(
     }
   }
   if (isScript(lang)) out.push(...resolvedScriptLines(store));
-  if (lang !== null && !CALLER_LANGS.has(lang)) {
-    out.push(`hakutaku extracts no callers for ${lang}`);
-  }
-  if (lang === "shell") {
-    out.push(
-      "shell callers are name matches in the file and the files that source it",
-    );
-  }
+  if (lang !== null && !CALLER_LANGS.has(lang)) out.push(noCallers(lang));
+  if (lang === "shell") out.push(SHELL_CALLERS);
   const computed = coverage.computedImports;
   if (isScript(lang) && computed > 0) {
-    const line = computedImports(computed);
+    const line = counted(computed, COMPUTED);
     if (opts.fileTarget === true) out.push(line);
     else if (opts.labels === undefined) {
-      out.push(
-        `${line}; code_callers lists name matches with labels ["unscoped"]`,
-      );
+      out.push(`${line}${COMPUTED_ENDING.noLabels}`);
     } else if (opts.labels.includes("unscoped")) {
-      out.push(`${line}; the unscoped matches include calls made through them`);
+      out.push(`${line}${COMPUTED_ENDING.withUnscoped}`);
     } else {
-      out.push(`${line}; ask with labels ["unscoped"] to see name matches`);
+      out.push(`${line}${COMPUTED_ENDING.withoutUnscoped}`);
     }
   }
   if (isCompiled(lang) && coverage.unmatchedBoundUses > 0) {
@@ -238,10 +280,10 @@ export function referenceBlindSpots(store: Store, lang: Lang | null): string[] {
   if (isCompiled(lang)) {
     const tier = compilerTier(store, lang);
     if (!tier.ran) {
-      out.push(noCompiler(lang, tier.reason, "no reference is recorded"));
+      out.push(noCompiler(displayLang(lang), tier.reason, NO_REFERENCE));
     }
   } else if (lang !== null) {
-    out.push(`hakutaku records no references for ${lang}`);
+    out.push(noReferences(lang));
   }
   const unmatched = store.meta.coverage.unmatchedBoundUses;
   if (isCompiled(lang) && unmatched > 0) {
@@ -256,34 +298,21 @@ export function importBlindSpots(store: Store, lang: Lang | null): string[] {
   const { coverage } = store.meta;
   const out: string[] = [];
   if (isScript(lang) && coverage.computedImports > 0) {
-    out.push(computedImports(coverage.computedImports));
+    out.push(counted(coverage.computedImports, COMPUTED));
   }
   if (coverage.unresolvedImports > 0) {
-    out.push(
-      counted(
-        coverage.unresolvedImports,
-        "relative import did not resolve to a file and is not an edge",
-        "relative imports did not resolve to a file and are not edges",
-      ),
-    );
+    out.push(counted(coverage.unresolvedImports, UNRESOLVED));
   }
   if (lang === "python") {
     if (coverage.pythonResolver === "hakutaku-resolver") out.push(OWN_RESOLVER);
-    else if (coverage.pythonResolver === "none") {
-      out.push("Python imports were not read in this build");
-    } else if (coverage.pythonResolver === "grimp") {
+    else if (coverage.pythonResolver === "none") out.push(NOT_READ);
+    else if (coverage.pythonResolver === "grimp") {
       out.push(...resolvedPythonLines(store));
     }
   }
   if (isScript(lang)) out.push(...resolvedScriptLines(store));
   if (coverage.denied > 0) {
-    out.push(
-      counted(
-        coverage.denied,
-        "denylisted file is left out of the map, with its imports",
-        "denylisted files are left out of the map, with their imports",
-      ),
-    );
+    out.push(counted(coverage.denied, DENIED_WITH_IMPORTS));
   }
   return out;
 }
@@ -317,32 +346,61 @@ export function pathBlindSpots(
 export function searchBlindSpots(store: Store): string[] {
   const { noSource, coverage } = store.meta;
   const out: string[] = [];
-  if (noSource) {
-    out.push("this map stores no source text, so no file is searched");
-  }
+  if (noSource) out.push(NO_SOURCE);
   if (coverage.noSourceFiles > 0) {
-    out.push(
-      counted(
-        coverage.noSourceFiles,
-        "file over 1 MB, minified or generated keeps no stored text and is not searched",
-        "files over 1 MB, minified or generated keep no stored text and are not searched",
-      ),
-    );
+    out.push(counted(coverage.noSourceFiles, NO_SOURCE_FILES));
   }
-  if (coverage.denied > 0) {
-    out.push(
-      counted(
-        coverage.denied,
-        "denylisted file is left out of the map",
-        "denylisted files are left out of the map",
-      ),
-    );
-  }
-  if (coverage.redactions > 0) {
-    const spans = counted(coverage.redactions, "span", "spans");
-    out.push(
-      `secret-shaped text is redacted (${spans} across the map), so it cannot be found`,
-    );
-  }
+  if (coverage.denied > 0) out.push(counted(coverage.denied, DENIED));
+  if (coverage.redactions > 0) out.push(redactedSpans(coverage.redactions));
   return out;
 }
+
+const N = "<n>";
+const LANGUAGE = "<language>";
+const WHY = "<why>";
+
+// Every line a blindSpots list can carry, by the answers that carry it, as docs/tools.md lists
+// them: a count as <n>, in the plural, though a count line reads in the singular at 1; a language
+// as <language>, and a reason as <why>. Each is built from the wording the functions above build
+// their lines from. searchBlindSpots' line for a map that stores no source text is left out:
+// code_search_text answers no_source for such a map, so no answer carries that line.
+export const BLIND_SPOT_LINES = Object.freeze({
+  // code_callers, code_impact, and code_path via calls, from its from definition
+  callers: Object.freeze([
+    noCompiler(LANGUAGE, WHY, NO_SITE),
+    OWN_RESOLVER,
+    counted(N, RESOLVED_PYTHON),
+    counted(N, RESOLVED_SCRIPTS),
+    noCallers(LANGUAGE),
+    SHELL_CALLERS,
+    `${counted(N, COMPUTED)}${COMPUTED_ENDING.withoutUnscoped}`,
+    `${counted(N, COMPUTED)}${COMPUTED_ENDING.withUnscoped}`,
+    `${counted(N, COMPUTED)}${COMPUTED_ENDING.noLabels}`,
+    counted(N, COMPUTED),
+    unmatchedBoundUses(N),
+  ]),
+  // code_references for a definition
+  references: Object.freeze([
+    noCompiler(LANGUAGE, WHY, NO_REFERENCE),
+    noReferences(LANGUAGE),
+    unmatchedBoundUses(N),
+  ]),
+  // code_deps, and code_path via imports, from its from file
+  imports: Object.freeze([
+    counted(N, COMPUTED),
+    counted(N, UNRESOLVED),
+    OWN_RESOLVER,
+    NOT_READ,
+    counted(N, RESOLVED_PYTHON),
+    counted(N, RESOLVED_SCRIPTS),
+    counted(N, DENIED_WITH_IMPORTS),
+  ]),
+  // code_path via calls, after its from definition's lines
+  unfollowed: UNFOLLOWED,
+  // code_search_text
+  search: Object.freeze([
+    counted(N, NO_SOURCE_FILES),
+    counted(N, DENIED),
+    redactedSpans(N),
+  ]),
+});

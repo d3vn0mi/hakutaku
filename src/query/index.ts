@@ -40,6 +40,7 @@ export {
   storeIndex,
 } from "./store-index.js";
 export {
+  BLIND_SPOT_LINES,
   blindSpots,
   type CompilerTier,
   compilerTier,

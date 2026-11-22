@@ -1,7 +1,7 @@
 // docs/tools.md and README.md against the code they document. docs/tools.md: a section for every
-// tool, in order, with the arguments its input schema declares, and every error code and every
-// label's wording. Both pages: their worked examples, copied from the golden answers unchanged,
-// and only IDs of nodes the sample has.
+// tool, in order, with the arguments its input schema declares, every error code and every
+// label's wording, and every blind-spot line under the answers that carry it. Both pages: their
+// worked examples, copied from the golden answers unchanged, and only IDs of nodes the sample has.
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import {
@@ -9,6 +9,7 @@ import {
   type NodeRef,
   parseId,
 } from "../../../src/model/index.js";
+import { BLIND_SPOT_LINES } from "../../../src/query/index.js";
 import {
   ERROR_CODES,
   LABEL_WORDING,
@@ -42,6 +43,42 @@ it("has a section for every tool, in order", () => {
 it("lists every error code and quotes every label's wording", () => {
   for (const c of ERROR_CODES) expect(doc).toContain(`\`${c}\``);
   for (const w of Object.values(LABEL_WORDING)) expect(doc).toContain(w);
+});
+
+// The line of "Limits and blind spots" that starts the list of each group of BLIND_SPOT_LINES.
+const BLIND_SPOT_HEADS: Record<keyof typeof BLIND_SPOT_LINES, string> = {
+  callers: "For `code_callers` and `code_impact`",
+  references: "For `code_references`",
+  imports: "For `code_deps`",
+  unfollowed: "For `code_path` via calls, last",
+  search: "For `code_search_text`",
+};
+
+// A group's list: from its head up to the next "For" line, or to "What the map leaves out", in
+// the part of "Limits and blind spots" about blindSpots. A code span may wrap, so each run of
+// spaces and line breaks reads as one space.
+function blindSpotList(head: string): string {
+  const from = doc.indexOf("\n**`blindSpots`**");
+  const to = doc.indexOf("\n**What the map leaves out.**", from);
+  if (from < 0 || to < 0) {
+    throw new Error("docs/tools.md has no part about blindSpots in its limits");
+  }
+  const part = doc.slice(from, to);
+  const at = part.indexOf(`\n${head}`);
+  if (at < 0) throw new Error(`docs/tools.md has no line "${head}"`);
+  const next = part.indexOf("\nFor `", at + 1);
+  return part.slice(at, next < 0 ? undefined : next).replace(/\s+/g, " ");
+}
+
+it("quotes every blind-spot line word for word, under the answers that carry it", () => {
+  expect(Object.keys(BLIND_SPOT_HEADS)).toEqual(Object.keys(BLIND_SPOT_LINES));
+  for (const [group, lines] of Object.entries(BLIND_SPOT_LINES)) {
+    const list = blindSpotList(
+      BLIND_SPOT_HEADS[group as keyof typeof BLIND_SPOT_LINES],
+    );
+    // in backticks, so that a line quoted only inside a longer one is missing
+    for (const line of lines) expect(list, group).toContain(`\`${line}\``);
+  }
 });
 
 for (const page of PAGES) {

@@ -1068,10 +1068,11 @@ its `from` definition's:
   Python and shell
 - `shell callers are name matches in the file and the files that source it`, for shell
 - `<n> dynamic imports with a computed path are not followed; ask with labels ["unscoped"] to see name matches`,
-  for TypeScript and JavaScript, from `code_callers`. With `labels` that hold `unscoped`, it ends
-  `; the unscoped matches include calls made through them`. From `code_impact` on a definition,
-  which takes no `labels`, it ends `; code_callers lists name matches with labels ["unscoped"]`,
-  and for a file, or a path, it ends after `not followed`.
+  for TypeScript and JavaScript, from `code_callers`. With `labels` that hold `unscoped`, it reads
+  `<n> dynamic imports with a computed path are not followed; the unscoped matches include calls made through them`.
+  From `code_impact` on a definition, which takes no `labels`, it reads
+  `<n> dynamic imports with a computed path are not followed; code_callers lists name matches with labels ["unscoped"]`,
+  and for a file, or a path, `<n> dynamic imports with a computed path are not followed`.
 - `compiler-bound uses that match no outline definition are counted in coverage only (<n>)`, for
   TypeScript, JavaScript and Python
 
