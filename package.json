@@ -38,8 +38,8 @@
     "darwin"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json && node scripts/build-viewer.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p src/viewer/app/tsconfig.json --noEmit",
     "lint": "biome check .",
     "test": "vitest run test/unit",
     "test:oracle": "vitest run test/oracle",
@@ -53,7 +53,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.5",
+    "@ibm/plex-mono": "2.5.0",
+    "@ibm/plex-sans-condensed": "2.0.0",
     "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
     "typescript": "7.0.2",
     "vitest": "5.1.0"
   },

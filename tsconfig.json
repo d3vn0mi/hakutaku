@@ -12,5 +12,5 @@
     "noEmit": true
   },
   "include": ["src", "test"],
-  "exclude": ["dist", "fixtures"]
+  "exclude": ["dist", "fixtures", "src/viewer/app/**"]
 }

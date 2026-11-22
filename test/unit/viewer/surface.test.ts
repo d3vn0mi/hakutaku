@@ -10,9 +10,10 @@ import type { ViewerRequest, ViewerResponse } from "../../../src/index.js";
 
 const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 
-it("the library exports the viewer API and its CSP", async () => {
+it("the library exports the viewer API, its static pages and its CSP", async () => {
   const lib = await import("../../../src/index.js");
   expect(typeof lib.viewerApi).toBe("function");
+  expect(typeof lib.viewerStatic).toBe("function");
   expect(lib.VIEWER_CSP).toBe(
     "default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'",
   );

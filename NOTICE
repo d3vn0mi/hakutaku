@@ -13,6 +13,20 @@ Licence: Apache-2.0
 Copyright: not stated in the licence file
 Use: the SCIP index format, created by Sourcegraph: src/extract/scip/scip.proto is its protobuf schema, and hakutaku's decoder of index.scip is written from that schema
 
+### IBM Plex Mono
+Package: npm:@ibm/plex-mono
+Version: 2.5.0
+Licence: OFL-1.1
+Copyright: Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
+Use: the viewer's monospaced font, regular and medium, as the unmodified Latin-1 woff2 files, bundled with the viewer and inlined into an exported page
+
+### IBM Plex Sans Condensed
+Package: npm:@ibm/plex-sans-condensed
+Version: 2.0.0
+Licence: OFL-1.1
+Copyright: Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
+Use: the viewer's text font, light, regular, medium and semibold, as the unmodified Latin-1 woff2 files, bundled with the viewer and inlined into an exported page
+
 ## Installed with the package
 
 ### @modelcontextprotocol/sdk
@@ -108,3 +122,9 @@ Version: 26.6.6
 Licence: MIT
 Copyright: Copyright (c) Microsoft Corporation.
 Use: Node.js type declarations for the typechecker; development only
+
+### esbuild
+Version: 0.28.2
+Licence: MIT
+Copyright: Copyright (c) 2020 Evan Wallace
+Use: bundles the viewer's browser code and styles at build time; development only

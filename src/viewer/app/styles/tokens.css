@@ -1,0 +1,42 @@
+/* The viewer's palette and fonts: one dark theme, a warm black ground, ivory ink and one orange
+   accent. Every colour that text is set in reaches 4.5:1 (WCAG AA) on all four surfaces: --muted
+   is #918a7c, which reaches 4.67:1 on --panel-2, the lightest surface, and so is the comment
+   colour. --faint, at about 2.4:1 on the ground, is for decoration only, never for text. */
+:root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --ground: #12100e;
+  --ground-2: #181512;
+  --panel: #1c1915;
+  --panel-2: #25211b;
+
+  /* lines */
+  --line: #2a2520;
+  --line-2: #3a332b;
+
+  /* ink */
+  --ink: #eae4d6;
+  --ink-2: #b9b1a2;
+  --muted: #918a7c;
+  --faint: #574f45;
+  --accent: #e8613c;
+  --accent-soft: rgba(232, 97, 60, 0.16);
+
+  /* source highlighting */
+  --hl-keyword: #d6a980;
+  --hl-string: #a9b78f;
+  --hl-number: #e8613c;
+  --hl-comment: #918a7c;
+  --hl-title: #eae4d6;
+  --hl-class: #e3c9a0;
+  --hl-builtin: #c8b89a;
+  --hl-attr: #cdbfa6;
+  --hl-params: #b9b1a2;
+  --hl-meta: #918a7c;
+
+  /* type */
+  --font-ui: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-mono:
+    "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}

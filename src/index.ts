@@ -91,4 +91,4 @@ export type {
 export { runTool, TOOL_NAMES, TOOL_SPECS } from "./tools/index.js";
 export { HAKUTAKU_VERSION } from "./version.js";
 export type { ViewerRequest, ViewerResponse } from "./viewer/index.js";
-export { VIEWER_CSP, viewerApi } from "./viewer/index.js";
+export { VIEWER_CSP, viewerApi, viewerStatic } from "./viewer/index.js";
