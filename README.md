@@ -95,10 +95,10 @@ sandbox. A new store is checked against five gates before it replaces the old on
 store is kept:
 
 - **`files-indexed`** wants each TypeScript and JavaScript file given to the engines indexed by
-  dependency-cruiser and scip-typescript when they ran. It wants each module of a Python package, a
-  directory with an `__init__.py`, named under the profile's Python roots, and each single-file
-  module the profile declares named there or by its file name. It skips files stored as metadata
-  only.
+  dependency-cruiser and scip-typescript when they ran. It wants each Python module that an import
+  statement can name, in a package below the repository's top, named under the profile's Python
+  roots, and each single-file module the profile declares named there or by its file name. It skips
+  files stored as metadata only.
 - **`unresolved-imports`** wants the share of relative imports left unresolved within the profile's
   limit, and no more of them than the current store has.
 - **`scip-duplicates`** wants no symbol in scip-typescript's index that two files define as their
