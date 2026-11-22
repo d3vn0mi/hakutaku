@@ -255,7 +255,8 @@ function parsePacked(text: string): PackedRefs {
       last = undefined;
       continue;
     }
-    const ref = /^([0-9a-fA-F]{40}) (.+)$/.exec(line);
+    // with the s flag, since only a line feed ends a line here: a name may hold U+2028 or U+2029
+    const ref = /^([0-9a-fA-F]{40}) (.+)$/s.exec(line);
     last = undefined;
     if (ref !== null && !refs.has(ref[2])) {
       last = { sha: ref[1].toLowerCase() };

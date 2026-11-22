@@ -93,6 +93,27 @@ it("prefers a loose ref over packed-refs", async () => {
   expect(read(repo, "HEAD")).toEqual({ commit: newer });
 });
 
+// git takes a ref name that holds U+2028 or U+2029, and packed-refs writes it raw on its line;
+// JavaScript's . matches neither character.
+it("resolves a packed ref whose name holds U+2028 or U+2029, by itself and through HEAD", async () => {
+  const repo = await makeRepo(commits(2));
+  const line = "orbit\u2028line";
+  const paragraph = "orbit\u2029paragraph";
+  git(repo, "branch", line, "HEAD~1");
+  git(repo, "branch", paragraph, "HEAD~1");
+  git(repo, "pack-refs", "--all");
+  expect(existsSync(join(repo, ".git/refs/heads", line))).toBe(false);
+  expect(readFileSync(join(repo, ".git/packed-refs"), "utf8")).toContain(
+    `${rev(repo, "HEAD~1")} refs/heads/${line}\n`,
+  );
+  const first = { commit: rev(repo, "HEAD~1") };
+  git(repo, "symbolic-ref", "HEAD", `refs/heads/${paragraph}`);
+  const read = createRefReader();
+  expect(read(repo, line)).toEqual(first);
+  expect(read(repo, `refs/heads/${paragraph}`)).toEqual(first);
+  expect(read(repo, "HEAD")).toEqual(first);
+});
+
 it("resolves a detached HEAD", async () => {
   const repo = await makeRepo(commits(2));
   const first = rev(repo, "HEAD~1");
