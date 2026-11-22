@@ -7,7 +7,12 @@ import {
 } from "../../../src/query/view/index.js";
 import { openStore } from "../../../src/store/index.js";
 import { emptyContent, miniStore } from "../../helpers/mini-store.js";
-import { TINY_SOURCES, TINY_TIME, tinyStore } from "../viewer/tiny-store.js";
+import {
+  TINY_SOURCES,
+  TINY_TIME,
+  tinyContent,
+  tinyStore,
+} from "../viewer/tiny-store.js";
 
 const open = (p: string) => {
   const s = openStore(p);
@@ -87,6 +92,62 @@ describe("sourceData", () => {
         label: "bound",
         collision: false,
       },
+    ]);
+  });
+  it("counts every redaction mark, two on one line included", () => {
+    const content = emptyContent("marks");
+    const text =
+      "a = «redacted:generic-api-key» b = «redacted:generic-api-key»\nc = «redacted:generic-api-key»\n";
+    content.files.push({
+      id: 1,
+      path: "keys.py",
+      lang: "python",
+      kind: "code",
+      component_id: null,
+      lines: 2,
+      bytes: new TextEncoder().encode(text).length,
+      blob_sha: "c".repeat(40),
+      mode: "100644",
+      link_target: null,
+      entry: 0,
+      has_source: 1,
+    });
+    content.sources.push({ file_id: 1, text });
+    const s = sourceData(open(miniStore(content)), 1);
+    expect(s?.redactions).toBe(3);
+  });
+  it("orders call sites by line, then column", () => {
+    const content = tinyContent();
+    // main.ts line 12 calls main at column 20, after the call at 5:3 and before the other files'
+    const at = 1;
+    content.call_sites.splice(at, 0, {
+      id: 0,
+      file_id: 2,
+      line: 12,
+      col: 20,
+      enclosing_def_id: 1,
+      callee_name: "main",
+      receiver_text: null,
+      producer: "ast-grep",
+    });
+    content.call_targets.splice(at, 0, {
+      site_id: 0,
+      def_id: 2,
+      label: "bound",
+      collision: 0,
+    });
+    content.call_sites = content.call_sites.map((c, i) => ({
+      ...c,
+      id: i + 1,
+    }));
+    content.call_targets = content.call_targets.map((t, i) => ({
+      ...t,
+      site_id: i + 1,
+    }));
+    const s = sourceData(open(miniStore(content)), 2);
+    expect(s?.sites.map((x) => [x.line, x.col, x.target])).toEqual([
+      [5, 3, "tiny:src/core/graph.ts#Graph.add"],
+      [12, 20, "tiny:src/cli/main.ts#main"],
     ]);
   });
   it("is null for a file without stored source", () => {

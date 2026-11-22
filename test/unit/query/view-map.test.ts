@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   ENTRY_KINDS,
+  F,
+  FILE_KINDS,
   INLINE_OUTLINES_UP_TO,
   mapData,
 } from "../../../src/query/view/index.js";
 import { openStore } from "../../../src/store/index.js";
 import { emptyContent, miniStore } from "../../helpers/mini-store.js";
-import { tinyStore } from "../viewer/tiny-store.js";
+import { TINY_TIME, tinyContent, tinyStore } from "../viewer/tiny-store.js";
 
 const open = (p: string) => {
   const s = openStore(p);
@@ -221,5 +223,53 @@ describe("mapData", () => {
       [".", 0, 0, 0],
       ["lib", 0, 0, 0],
     ]);
+  });
+  it("still inlines outlines and co-change at exactly the limit", () => {
+    const at = tiny({ inlineUpTo: 3 }); // 3 production files
+    expect(at.outline?.endLine).toHaveLength(6);
+    expect(at.cochange).toEqual([2, 3, 3, 3, 2, 3]);
+  });
+  it("keeps four significant digits of pagerank, and counts whole days down", () => {
+    const content = tinyContent();
+    const main = content.file_metrics[0];
+    if (main === undefined) throw new Error("the tiny store has no metrics");
+    // 10 days and about 0.58 of a day before the built commit
+    content.file_metrics[0] = {
+      ...main,
+      pagerank: 0.123456,
+      last_change: TINY_TIME - 10 * 86_400 - 50_000,
+    };
+    const file = mapData(open(miniStore(content)), {
+      stale: false,
+      snippets: true,
+    }).files[1];
+    expect([file?.[F.pagerank], file?.[F.changedDaysAgo]]).toEqual([
+      0.1235, 10,
+    ]);
+  });
+  it("counts test-support files with the tests", () => {
+    const content = tinyContent();
+    content.files = content.files.map((f) =>
+      f.kind === "test" ? { ...f, kind: "test-support" } : f,
+    );
+    const m = mapData(open(miniStore(content)), {
+      stale: false,
+      snippets: true,
+    });
+    expect(m.counts.tests).toBe(1);
+    expect(m.files[2]?.[F.kind]).toBe(FILE_KINDS.indexOf("test-support"));
+  });
+  it("points an entry point at its definition's place in defs, module scope left out", () => {
+    const content = tinyContent();
+    content.entry_points = content.entry_points.map((e) => ({
+      ...e,
+      def_id: 2, // main, store id 2 behind main.ts's module row, first in defs
+    }));
+    const m = mapData(open(miniStore(content)), {
+      stale: false,
+      snippets: true,
+    });
+    const def = m.entries[0]?.[5] ?? -1;
+    expect([def, m.defs.name[def]]).toEqual([0, "main"]);
   });
 });
