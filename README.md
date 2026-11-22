@@ -91,10 +91,20 @@ flowchart TD
 
 The two stages are separate on purpose. Export needs git and reads your repository. Extract needs
 neither: it runs the parsers over untrusted input, with no network. So each stage can run in its own
-sandbox. A new store is checked against gates before it replaces the old one, and the previous store
-is kept. The gates want each TypeScript and JavaScript file given to the engines indexed by
-dependency-cruiser and scip-typescript when they ran, each module of a Python package named under the
-profile's Python roots, unresolved imports under a threshold, no denylisted path, and redaction done.
+sandbox. A new store is checked against five gates before it replaces the old one, and the previous
+store is kept:
+
+- **`files-indexed`** wants each TypeScript and JavaScript file given to the engines indexed by
+  dependency-cruiser and scip-typescript when they ran. It wants each module of a Python package, a
+  directory with an `__init__.py`, named under the profile's Python roots, and each single-file
+  module the profile declares named there or by its file name. It skips files stored as metadata
+  only.
+- **`unresolved-imports`** wants the share of relative imports left unresolved within the profile's
+  limit, and no more of them than the current store has.
+- **`scip-duplicates`** wants no symbol in scip-typescript's index that two files define as their
+  own.
+- **`denylist`** wants no denylisted path among the store's files.
+- **`redaction`** scans the redacted text a second time, and wants no secret-looking span left.
 
 ### What the store knows
 
@@ -626,7 +636,7 @@ not write. So every byte of an analysed repository is treated as data.
   `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`, `.netrc`, `*.kdbx`, `secrets/**`, and your profile's
   extras) never leave the export. A redaction pass replaces secret-looking spans with
   `«redacted:<rule>»` before any text enters the store, and keeps the line numbers. A store that holds
-  a denylisted path, or skipped redaction, is never swapped in.
+  a denylisted path, or a secret-looking span that a second scan still finds, is never swapped in.
 - **No tool opens what a model names.** No tool takes a filesystem path, glob or URL from a model and
   opens it. After start-up, the MCP server starts no process and opens no network socket, except a
   build when it runs with `--allow-refresh`. A test runs the server under strace, without that flag,
