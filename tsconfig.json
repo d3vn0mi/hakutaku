@@ -12,5 +12,11 @@
     "noEmit": true
   },
   "include": ["src", "test"],
-  "exclude": ["dist", "fixtures", "src/viewer/app/**"]
+  "exclude": [
+    "dist",
+    "fixtures",
+    "src/viewer/app/**",
+    "test/e2e/**",
+    "playwright.config.ts"
+  ]
 }

@@ -7,6 +7,7 @@ import { mapCommand } from "./map.js";
 import { mcpCommand } from "./mcp.js";
 import { profileCommand } from "./profile.js";
 import { queryCommand } from "./query.js";
+import { view } from "./view.js";
 
 export interface CliIO {
   stdout(s: string): void;
@@ -37,6 +38,7 @@ export interface Command {
 // The order is fixed: map, view, mcp, query, list, profile, engines, export, extract, doctor.
 export const COMMANDS: readonly Command[] = [
   mapCommand,
+  view,
   mcpCommand,
   queryCommand,
   listCommand,

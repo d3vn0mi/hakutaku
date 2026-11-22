@@ -89,6 +89,13 @@ jobs:
       # percentile under 300 ms and every call under 1.5 s.
       - name: MCP conformance
         run: npm run test:mcp
+      # The viewer in Chromium and Firefox, served by hakutaku view from dist/: the global setup
+      # maps the sample twice, the big-file sample, a hostile case and the 20,000-file repository,
+      # with the engines installed above. On one Node leg only: the other legs would build the same
+      # stores again and test nothing the unit tests miss.
+      - name: viewer end-to-end
+        if: matrix.node == 'lts/*'
+        run: npx playwright install --with-deps chromium firefox && npm run test:e2e
       - name: secret scan
         run: npm run check:secrets
       - name: home paths and stray stores

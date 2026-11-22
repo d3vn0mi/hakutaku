@@ -5,6 +5,8 @@
       "**",
       "!!**/dist",
       "!!**/coverage",
+      "!!**/test-results",
+      "!!**/playwright-report",
       "!!fixtures",
       "!engines.lock.json",
       "!test/golden/**/*.json"

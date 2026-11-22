@@ -128,3 +128,9 @@ Version: 0.28.2
 Licence: MIT
 Copyright: Copyright (c) 2020 Evan Wallace
 Use: bundles the viewer's browser code and styles at build time; development only
+
+### @playwright/test
+Version: 1.65.0
+Licence: Apache-2.0
+Copyright: Portions Copyright (c) Microsoft Corporation. Portions Copyright 2017 Google Inc.
+Use: runs the viewer's end-to-end tests in Chromium and Firefox; development only

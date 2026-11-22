@@ -370,6 +370,7 @@ it("aligns the summaries of --help in one column", async () => {
 it("registers the commands in their fixed order, each summary in lower case", () => {
   expect(COMMANDS.map((c) => c.name)).toEqual([
     "map",
+    "view",
     "mcp",
     "query",
     "list",

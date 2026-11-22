@@ -65,29 +65,54 @@ function simpleCommands(line: string): string[][] {
   return out;
 }
 
+type Runner = "vitest" | "playwright";
+
 // The filters of each vitest run a command line starts, in order: run directly (vitest,
 // npx vitest, a path ending /vitest), or through the package.json scripts that npm test and
 // npm run name, whose extra arguments go to the end of the script's command, as npm passes
 // them. A run of every test file has no filter. A vitest subcommand or flag this does not read
 // throws, so that a new way of running vitest is taught here before it counts.
-function vitestRuns(
+function vitestRuns(line: string, scripts: Record<string, string>): string[][] {
+  return testRuns("vitest", line, scripts, []);
+}
+
+// The same for Playwright's test command (playwright test, npx playwright test, a path ending
+// /playwright); its other commands, such as install, run no test. A flag throws, as vitest's do.
+function playwrightRuns(
   line: string,
   scripts: Record<string, string>,
-  seen: string[] = [],
+): string[][] {
+  return testRuns("playwright", line, scripts, []);
+}
+
+function testRuns(
+  runner: Runner,
+  line: string,
+  scripts: Record<string, string>,
+  seen: string[],
 ): string[][] {
   const runs: string[][] = [];
   for (const words of simpleCommands(line)) {
     const [command, sub, ...rest] = words;
     if (command === "npm" && (sub === "test" || sub === "t")) {
-      runs.push(...scriptRuns("test", rest, scripts, seen));
+      runs.push(...scriptRuns(runner, "test", rest, scripts, seen));
     } else if (command === "npm" && (sub === "run" || sub === "run-script")) {
       const [name = "", ...args] = rest;
-      runs.push(...scriptRuns(name, args, scripts, seen));
+      runs.push(...scriptRuns(runner, name, args, scripts, seen));
     } else {
       const at = command === "npx" ? 1 : 0;
       const bin = words[at] ?? "";
-      if (bin === "vitest" || bin.endsWith("/vitest")) {
+      if (
+        runner === "vitest" &&
+        (bin === "vitest" || bin.endsWith("/vitest"))
+      ) {
         runs.push(vitestFilters(words.slice(at + 1)));
+      } else if (
+        runner === "playwright" &&
+        (bin === "playwright" || bin.endsWith("/playwright")) &&
+        words[at + 1] === "test"
+      ) {
+        runs.push(playwrightFilters(words.slice(at + 2)));
       }
     }
   }
@@ -95,6 +120,7 @@ function vitestRuns(
 }
 
 function scriptRuns(
+  runner: Runner,
   name: string,
   args: string[],
   scripts: Record<string, string>,
@@ -109,7 +135,21 @@ function scriptRuns(
   if (seen.includes(name))
     throw new Error(`the npm script ${name} runs itself`);
   const extra = args[0] === "--" ? args.slice(1) : args;
-  return vitestRuns([script, ...extra].join(" "), scripts, [...seen, name]);
+  return testRuns(runner, [script, ...extra].join(" "), scripts, [
+    ...seen,
+    name,
+  ]);
+}
+
+function playwrightFilters(args: string[]): string[] {
+  for (const word of args) {
+    if (word.startsWith("-")) {
+      throw new Error(
+        `the inventory does not read playwright's ${JSON.stringify(word)}`,
+      );
+    }
+  }
+  return args;
 }
 
 function vitestFilters(args: string[]): string[] {
@@ -137,26 +177,36 @@ function runsFile(filters: string[], path: string): boolean {
   );
 }
 
-// The test files among files that no CI vitest run collects: each *.test or *.spec JS or TS file
-// outside fixtures/ (sample repositories, whose test files are data) that vitest's include,
-// test/**/*.test.ts, leaves out, or that no run's filters name.
-function missedTests(files: string[], runs: string[][]): string[] {
+// The test files among files that no CI test run collects: each *.test or *.spec JS or TS file
+// outside fixtures/ (sample repositories, whose test files are data) that neither a vitest run
+// collects (vitest's include, test/**/*.test.ts, and a run's filters naming it) nor a Playwright
+// run does (under e2eDir, its testDir, whose default testMatch takes every *.test and *.spec
+// file, and a run's filters naming it).
+function missedTests(
+  files: string[],
+  runs: string[][],
+  e2eRuns: string[][] = [],
+  e2eDir = "test/e2e",
+): string[] {
   const collected = (path: string): boolean =>
     path.startsWith("test/") && path.endsWith(".test.ts");
+  const underE2e = (path: string): boolean => path.startsWith(`${e2eDir}/`);
   return files.filter(
     (p) =>
       TEST_FILE.test(p) &&
       !p.startsWith("fixtures/") &&
-      (!collected(p) || !runs.some((filters) => runsFile(filters, p))),
+      !(collected(p) && runs.some((filters) => runsFile(filters, p))) &&
+      !(underE2e(p) && e2eRuns.some((filters) => runsFile(filters, p))),
   );
 }
 
-// Each run: command line of the workflows, with the vitest runs it starts.
+// Each run: command line of the workflows, with the vitest and the Playwright runs it starts.
 function ciLines(): Array<{
   file: string;
   line: number;
   command: string;
   runs: string[][];
+  e2eRuns: string[][];
 }> {
   const scripts: Record<string, string> =
     JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).scripts ?? {};
@@ -167,6 +217,7 @@ function ciLines(): Array<{
         file,
         ...l,
         runs: vitestRuns(l.command, scripts),
+        e2eRuns: playwrightRuns(l.command, scripts),
       })),
     );
 }
@@ -253,6 +304,31 @@ it("reads the vitest runs a CI command line starts, directly or through package.
   );
 });
 
+it("reads the Playwright test runs a CI command line starts, and none of its other commands", () => {
+  const scripts = {
+    test: "vitest run test/unit",
+    "test:e2e": "playwright test",
+    "test:one": "playwright test test/e2e/a.spec.ts",
+  };
+  expect(
+    playwrightRuns(
+      "npx playwright install --with-deps chromium firefox && npm run test:e2e",
+      scripts,
+    ),
+  ).toEqual([[]]);
+  expect(
+    playwrightRuns(
+      "npm run test:one && node_modules/.bin/playwright test",
+      scripts,
+    ),
+  ).toEqual([["test/e2e/a.spec.ts"], []]);
+  expect(playwrightRuns("npm test && npx vitest run", scripts)).toEqual([]);
+  expect(vitestRuns("npm run test:e2e", scripts)).toEqual([]);
+  expect(() =>
+    playwrightRuns("npx playwright test --grep smoke", scripts),
+  ).toThrow('the inventory does not read playwright\'s "--grep"');
+});
+
 it("takes a file as run where a filter names it or a directory above it, or the run has none", () => {
   expect(runsFile([], "test/unit/a.test.ts")).toBe(true);
   expect(runsFile(["test/unit"], "test/unit/x/a.test.ts")).toBe(true);
@@ -264,7 +340,7 @@ it("takes a file as run where a filter names it or a directory above it, or the 
   expect(runsFile(["test/oracle"], "test/unit/a.test.ts")).toBe(false);
 });
 
-it("names each test file outside fixtures/ that vitest's include leaves out or no run's filters name", () => {
+it("names each test file outside fixtures/ that no run collects: vitest's include and filters, or Playwright's testDir and filters", () => {
   const files = [
     "test/unit/a.test.ts",
     "test/b.test.ts",
@@ -276,6 +352,8 @@ it("names each test file outside fixtures/ that vitest's include leaves out or n
     "fixtures/web/h.test.ts",
     "test/helpers/i.ts",
     "README.md",
+    "test/e2e/j.spec.ts",
+    "test/e2e/k/l.spec.ts",
   ];
   expect(missedTests(files, [["test/unit"], ["test/b.test.ts"]])).toEqual([
     "test/oracle/c.test.ts",
@@ -283,6 +361,8 @@ it("names each test file outside fixtures/ that vitest's include leaves out or n
     "test/unit/e.test.js",
     "test/unit/f.test.mts",
     "src/g.test.ts",
+    "test/e2e/j.spec.ts",
+    "test/e2e/k/l.spec.ts",
   ]);
   // a run of every file still leaves out what vitest's include does not collect
   expect(missedTests(files, [[]])).toEqual([
@@ -290,24 +370,59 @@ it("names each test file outside fixtures/ that vitest's include leaves out or n
     "test/unit/e.test.js",
     "test/unit/f.test.mts",
     "src/g.test.ts",
+    "test/e2e/j.spec.ts",
+    "test/e2e/k/l.spec.ts",
+  ]);
+  // a Playwright run collects only under its testDir, and only what its filters name
+  expect(missedTests(files, [[]], [[]], "test/e2e")).toEqual([
+    "test/unit/d.spec.ts",
+    "test/unit/e.test.js",
+    "test/unit/f.test.mts",
+    "src/g.test.ts",
+  ]);
+  expect(missedTests(files, [[]], [["test/e2e/k"]], "test/e2e")).toEqual([
+    "test/unit/d.spec.ts",
+    "test/unit/e.test.js",
+    "test/unit/f.test.mts",
+    "src/g.test.ts",
+    "test/e2e/j.spec.ts",
+  ]);
+  expect(missedTests(files, [[]], [[]], "test/e2e/k")).toEqual([
+    "test/unit/d.spec.ts",
+    "test/unit/e.test.js",
+    "test/unit/f.test.mts",
+    "src/g.test.ts",
+    "test/e2e/j.spec.ts",
   ]);
 });
 
-it("runs every test file in some CI vitest run", () => {
+it("runs every test file in some CI vitest or Playwright run", () => {
   // vitest collects test/**/*.test.ts and nothing else; a change to its config is read here first
   const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
   expect(config).toMatch(/\binclude: \["test\/\*\*\/\*\.test\.ts"\],/);
   expect(config).not.toMatch(
     /\b(exclude|dir|root|projects|includeSource|typecheck)\s*:/,
   );
-  const runs = ciLines().flatMap((l) => l.runs);
+  // Playwright collects every *.spec and *.test file under its one testDir, by its default
+  // testMatch; a config that sets another is read here first
+  const playwright = readFileSync(join(ROOT, "playwright.config.ts"), "utf8");
+  const testDirs = [...playwright.matchAll(/\btestDir\s*:\s*"([^"]*)"/g)].map(
+    (m) => m[1],
+  );
+  expect(testDirs).toEqual(["test/e2e"]);
+  expect(playwright).not.toMatch(/\b(testMatch|testIgnore)\s*:/);
+  const lines = ciLines();
+  const runs = lines.flatMap((l) => l.runs);
   expect(runs.length).toBeGreaterThan(0);
+  const e2eRuns = lines.flatMap((l) => l.e2eRuns);
+  expect(e2eRuns.length).toBeGreaterThan(0);
   const files = treeFiles();
   expect(files).toContain("test/repo/tree.test.ts");
-  const missed = missedTests(files, runs);
+  expect(files).toContain("test/e2e/smoke.spec.ts");
+  const missed = missedTests(files, runs, e2eRuns, testDirs[0]);
   expect(
     missed,
-    `test files no CI vitest run collects:\n${missed.join("\n")}`,
+    `test files no CI vitest or Playwright run collects:\n${missed.join("\n")}`,
   ).toEqual([]);
 });
 

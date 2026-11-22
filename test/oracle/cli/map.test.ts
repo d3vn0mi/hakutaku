@@ -76,7 +76,11 @@ async function run(
   };
 }
 
-const NEXT_MCP = "next  hakutaku mcp observatory    the tools, for an agent";
+// The commands named next: view, then mcp, in one column.
+const NEXT = [
+  "next  hakutaku view observatory    the map, in your browser",
+  "      hakutaku mcp observatory     the tools, for an agent",
+];
 
 // The summary's built line, found by its name: a python line follows it where grimp did not run.
 const builtLine = (out: string[]): string | undefined =>
@@ -109,7 +113,7 @@ it(
       /^hakutaku \d+\.\d+\.\d+ \u00b7 observatory at [0-9a-f]{12} \(HEAD\), standard detail$/,
     );
     expect(first.out[0]).toContain(` at ${head.slice(0, 12)} (HEAD)`);
-    // six more lines, then the mcp line; no python line, since grimp read the imports
+    // six more lines, then the view and mcp lines; no python line, since grimp read the imports
     expect(first.out.slice(1).map((line) => line.slice(0, 13))).toEqual([
       "  files      ",
       "  imports    ",
@@ -118,11 +122,12 @@ it(
       "  core       ",
       "  built      ",
       "next  hakutak",
+      "      hakutak",
     ]);
     expect(first.out[6]).toMatch(
       /^ {2}built {6}\d+ s \u00b7 peak \? \u00b7 store \d+\.\d MB \u00b7 sandbox: none$/,
     );
-    expect(first.out.at(-1)).toBe(NEXT_MCP);
+    expect(first.out.slice(-2)).toEqual(NEXT);
     // the profile was generated, written for review byte for byte, and said on stderr
     const profile = profilePathFor("observatory");
     expect(readFileSync(profile)).toEqual(
@@ -167,7 +172,7 @@ it(
       /^ {2}built {6}skipped: the store at [0-9a-f]{12} is current$/,
     );
     expect(builtLine(second.out)).toContain(head.slice(0, 12));
-    expect(second.out.at(-1)).toBe(NEXT_MCP);
+    expect(second.out.slice(-2)).toEqual(NEXT);
     expect(second.out.slice(0, 6)).toEqual(first.out.slice(0, 6));
     expect(second.err).not.toContain("wrote ");
   },
