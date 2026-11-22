@@ -231,9 +231,10 @@ async function readMatches(
 }
 
 // Cuts UTF-8 bytes that come in chunks into lines at each line feed and nowhere else, each line
-// without the CR of a CRLF; end() gives the last line when no line feed ends it. node:readline
-// would also cut at U+2028 and U+2029, which ast-grep's JSON keeps raw inside a string, such as
-// a file's path. A character whose bytes come in two chunks is decoded once both are in.
+// without the CR of a CRLF; end() gives the last line when no line feed ends it. node:readline,
+// in recent Node releases, would also cut at U+2028 and U+2029, which ast-grep's JSON keeps raw
+// inside a string, such as a file's path. A character whose bytes come in two chunks is decoded
+// once both are in.
 export function lineFeedSplitter(): {
   push(chunk: Buffer): string[];
   end(): string[];

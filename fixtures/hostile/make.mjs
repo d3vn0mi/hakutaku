@@ -37,8 +37,9 @@
 //                        paths it was given; neither the token nor a path must reach an attempt, an answer or a
 //                        list row
 //   separator-names      no canary: TypeScript and Python files whose names hold U+2028 or U+2029, which an engine's
-//                        JSON keeps raw inside a string and node:readline takes for a line break. The map must cut
-//                        every engine's output at line feeds only, and index the files
+//                        JSON keeps raw inside a string and JavaScript takes for a line break, as node:readline does
+//                        in recent Node releases. The map must cut every engine's output at line feeds only, and
+//                        index the files
 //
 // Nothing hostile is in hakutaku's own tree. This script writes every hostile file, .git/config entry and hook into
 // <outDir> when it runs. The `..` tree entry, the symlink and the 50 MB file exist only there. The planted scripts

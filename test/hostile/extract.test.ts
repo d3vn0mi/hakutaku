@@ -17,8 +17,7 @@ import {
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createInterface } from "node:readline";
-import { PassThrough, Readable } from "node:stream";
+import { PassThrough } from "node:stream";
 import { afterAll, expect, it, vi } from "vitest";
 import type { CliIO } from "../../src/cli/commands/index.js";
 import { main } from "../../src/cli/main.js";
@@ -682,17 +681,6 @@ it(
 const LINE_SEPARATOR = "\u2028";
 const PARAGRAPH_SEPARATOR = "\u2029";
 
-// The lines node:readline reads a text as.
-async function readlineLines(text: string): Promise<string[]> {
-  const lines: string[] = [];
-  const reader = createInterface({
-    input: Readable.from([text]),
-    crlfDelay: Number.POSITIVE_INFINITY,
-  });
-  for await (const line of reader) lines.push(line);
-  return lines;
-}
-
 it(
   "separator-names: maps files whose names hold U+2028 or U+2029, and indexes them",
   async (ctx) => {
@@ -704,7 +692,8 @@ it(
     const linePy = `pkg/line${LINE_SEPARATOR}sep.py`;
     const paraPy = `pkg/para${PARAGRAPH_SEPARATOR}sep.py`;
     // stock ast-grep, run with a pattern in a copy of the checkout, writes each match's path with
-    // the character raw, and node:readline reads its two matches as four lines
+    // the character raw, and JavaScript ends a line at either: a multiline regular expression reads
+    // its two matches as four lines, as node:readline does in recent Node releases
     const copy = scratchCopy(fx, id);
     const control = stock(
       bin("ast-grep"),
@@ -727,7 +716,7 @@ it(
     ]);
     expect(control.stdout).toContain(LINE_SEPARATOR);
     expect(control.stdout).toContain(PARAGRAPH_SEPARATOR);
-    expect(await readlineLines(control.stdout)).toHaveLength(4);
+    expect(control.stdout.match(/^.+$/gm)).toHaveLength(4);
     expect(takeCanary(fx)).toEqual({});
 
     const root = tmp();
