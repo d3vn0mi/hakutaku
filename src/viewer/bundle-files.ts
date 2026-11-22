@@ -23,7 +23,8 @@ let cached: ViewerBundle | undefined;
 // bundle built later is still picked up.
 export function readBundle(): ViewerBundle | null {
   if (cached === undefined) {
-    const found = load();
+    const dir = bundleDir();
+    const found = dir === null ? null : loadBundle(dir);
     if (found === null) return null;
     cached = found;
   }
@@ -49,12 +50,10 @@ function bundleDir(): string | null {
 const count = (text: string, part: string): number =>
   text.split(part).length - 1;
 
-// The bundle in its directory, or null when it is missing or does not match its manifest: an
-// unknown page, a template without its placeholders, an asset with a name that is not a plain
+// The bundle in dir, or null when it is missing or does not match its manifest: an unknown page,
+// a template without its two placeholders in order, an asset with a name that is not a plain
 // file name, or an asset whose size or hash differs.
-function load(): ViewerBundle | null {
-  const dir = bundleDir();
-  if (dir === null) return null;
+export function loadBundle(dir: string): ViewerBundle | null {
   try {
     const manifest = JSON.parse(
       readFileSync(join(dir, "manifest.json"), "utf8"),
