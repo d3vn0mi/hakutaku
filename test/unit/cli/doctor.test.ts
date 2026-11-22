@@ -125,6 +125,52 @@ it("prints each check on one line, with what is below it indented", () => {
   ]);
 });
 
+// What a check can quote: a python3 found on PATH, the engines directory, an engine's own output
+// in a verify problem, an SQLite error and a probe's evidence.
+it("prints each check and what is below it on lines safe for a terminal", () => {
+  const lines = checkLines([
+    {
+      status: "fail",
+      name: "sqlite",
+      detail: `FTS5 trigram does not work: ${HOSTILE}`,
+      below: [],
+    },
+    {
+      status: "ok",
+      name: "python",
+      detail: `Python 3.12.1 at /opt/${HOSTILE}/bin/python3, within >=3.10`,
+      below: [],
+    },
+    {
+      status: "warn",
+      name: "engines",
+      detail: `ast-grep reported ${HOSTILE}; run hakutaku engines install`,
+      below: [],
+    },
+    {
+      status: "ok",
+      name: "engines",
+      detail: `installed in /srv/${HOSTILE}/engines`,
+      below: [],
+    },
+    {
+      status: "warn",
+      name: "sandbox",
+      detail: "no sandbox: bubblewrap is not installed",
+      below: [`systemd-run: exit code 1: ${HOSTILE}`],
+    },
+  ]);
+  expect(lines).toEqual([
+    `fail  sqlite: FTS5 trigram does not work: ${HOSTILE_SHOWN}`,
+    `ok  python: Python 3.12.1 at /opt/${HOSTILE_SHOWN}/bin/python3, within >=3.10`,
+    `warn  engines: ast-grep reported ${HOSTILE_SHOWN}; run hakutaku engines install`,
+    `ok  engines: installed in /srv/${HOSTILE_SHOWN}/engines`,
+    "warn  sandbox: no sandbox: bubblewrap is not installed",
+    `  systemd-run: exit code 1: ${HOSTILE_SHOWN}`,
+  ]);
+  expect(rawLines(lines.join("\n"))).toEqual([]);
+});
+
 it("takes no argument", async () => {
   const c = { out: "", err: "" };
   const io: CliIO = {

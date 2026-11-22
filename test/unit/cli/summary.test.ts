@@ -6,6 +6,7 @@ import {
   summaryCounts,
 } from "../../../src/cli/summary.js";
 import type { BuildFacts } from "../../../src/store/index.js";
+import { HOSTILE, HOSTILE_SHOWN, rawLines } from "../../helpers/terminal.js";
 import { openTiny, tinyContent } from "../../helpers/tiny.js";
 
 const GIB = 1024 ** 3;
@@ -62,6 +63,16 @@ it("formats the summary lines", () =>
     "  core       14 of 97 production files (14%) carry at least half of what the code depends on",
     "  built      19 s \u00b7 peak 0.6 GB \u00b7 store 4.1 MB \u00b7 sandbox: bubblewrap",
   ])); // no "next" lines: neither view nor mcp is registered in this input
+
+// A ref as map was asked for it: git takes a ref name that holds a C1 control, a line separator
+// or a bidirectional control.
+it("shows the ref on a line safe for a terminal", () => {
+  const lines = formatSummary({ ...fixedInput, ref: HOSTILE });
+  expect(lines[0]).toBe(
+    formatSummary(fixedInput)[0]?.replace("(main)", `(${HOSTILE_SHOWN})`),
+  );
+  expect(rawLines(lines.join("\n"))).toEqual([]);
+});
 
 it("says when a build was skipped and when Python fell back", () => {
   const why =

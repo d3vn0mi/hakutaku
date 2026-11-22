@@ -155,7 +155,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     for (const warning of generated.warnings) {
       io.stderr(`${printable(warning)}\n`);
     }
-    io.stdout(`wrote ${target}\n`);
+    io.stdout(`wrote ${printable(target)}\n`);
     return 0;
   } finally {
     removeTree(tmp);

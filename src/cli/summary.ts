@@ -81,8 +81,10 @@ export function formatSummary(s: SummaryInput): string[] {
       ? ""
       : ` (${languages.map(([lang, n]) => `${displayLang(lang)} ${whole(n)}`).join(", ")})`;
   const { bound, scoped, unresolved } = c.callSites;
+  // the ref as map was asked for it, made safe for a terminal: git takes a ref name that holds a
+  // C1 control, a line separator or a bidirectional control
   const lines = [
-    `hakutaku ${s.version} \u00b7 ${s.id} at ${commit12} (${s.ref}), ${s.detail} detail`,
+    `hakutaku ${s.version} \u00b7 ${s.id} at ${commit12} (${printable(s.ref)}), ${s.detail} detail`,
     part(
       "files",
       `${whole(c.tracked)} tracked \u00b7 ${whole(code)} code${named} \u00b7 ${whole(c.production)} production, ${whole(c.test)} test`,

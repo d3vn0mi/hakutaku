@@ -11,7 +11,8 @@
 //             refuses with), with each probe's evidence below;
 //   platform  Linux or macOS.
 // Every line names the home directory as ~ and has its secrets redacted, so that it can be
-// pasted into a report. Exit codes: 0 when no check fails, 1 when one does, 2 a usage error.
+// pasted into a report, and is safe for a terminal. Exit codes: 0 when no check fails, 1 when
+// one does, 2 a usage error.
 import { spawnSync } from "node:child_process";
 import { arch, release } from "node:os";
 import { parseArgs } from "node:util";
@@ -188,12 +189,13 @@ function platformCheck(platform: NodeJS.Platform): Check {
       );
 }
 
-// Each check as its line, then what is below it, indented; the home directory named ~ and
-// secrets redacted.
+// Each check as its line, then what is below it, indented; the home directory named ~, secrets
+// redacted, and then each line made safe for a terminal, since a check can quote a path from PATH
+// or the environment, an engine's output or an error.
 export function checkLines(checks: readonly Check[]): string[] {
   return checks.flatMap((c) => [
-    cleanReason(`${c.status}  ${c.name}: ${c.detail}`),
-    ...c.below.map((line) => `  ${cleanReason(line)}`),
+    printable(cleanReason(`${c.status}  ${c.name}: ${c.detail}`)),
+    ...c.below.map((line) => `  ${printable(cleanReason(line))}`),
   ]);
 }
 
