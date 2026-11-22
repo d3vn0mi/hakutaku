@@ -4,8 +4,10 @@
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -14,6 +16,10 @@ import { join } from "node:path";
 import type { Readable } from "node:stream";
 import { afterAll, expect, it } from "vitest";
 import { tinyStore } from "../viewer/tiny-store.js";
+
+// A usage error answers at once; a command that serves instead is stopped after this long, and
+// then fails its test rather than hanging it.
+const SPAWN_TIMEOUT_MS = 30_000;
 
 let root: string | undefined;
 afterAll(() => {
@@ -117,6 +123,56 @@ it("SIGTERM ends it too, with exit 0", async () => {
   }
 });
 
+// A stand-in for the platform's opener, first on PATH under both names: it writes the arguments it
+// was given, one per line, to the file the variable OPENED names. Nothing else on this PATH opens
+// a browser.
+function fakeOpener(): { env: NodeJS.ProcessEnv; opened: string } {
+  const base = env();
+  const dir = mkdtempSync(join(root ?? tmpdir(), "opener-"));
+  const script = '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$OPENED"\n';
+  for (const name of ["xdg-open", "open"]) {
+    writeFileSync(join(dir, name), script, { mode: 0o755 });
+  }
+  const opened = join(dir, "opened.txt");
+  return {
+    env: { ...base, PATH: `${dir}:${base.PATH ?? ""}`, OPENED: opened },
+    opened,
+  };
+}
+
+async function waitFor(check: () => boolean, ms: number): Promise<boolean> {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    if (check()) return true;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  return check();
+}
+
+it("--open hands the link to the platform's opener as one argument; without it, nothing opens", async () => {
+  for (const open of [true, false]) {
+    const fake = fakeOpener();
+    const child = spawn(
+      process.execPath,
+      ["dist/cli/main.js", "view", "tiny", ...(open ? ["--open"] : [])],
+      { env: fake.env },
+    );
+    try {
+      const url = await lines(child.stdout).first;
+      const seen = await waitFor(
+        () => existsSync(fake.opened),
+        open ? 5000 : 500,
+      );
+      expect([open, seen]).toEqual([open, open]);
+      if (open) expect(readFileSync(fake.opened, "utf8")).toBe(`${url}\n`);
+      child.kill("SIGINT");
+      expect(await exitCode(child)).toBe(0);
+    } finally {
+      child.kill("SIGKILL");
+    }
+  }
+});
+
 it.each([
   [[]],
   [["NOPE"]],
@@ -128,6 +184,7 @@ it.each([
   expect(
     spawnSync(process.execPath, ["dist/cli/main.js", "view", ...args], {
       env: env(),
+      timeout: SPAWN_TIMEOUT_MS,
     }).status,
   ).toBe(2);
 });
@@ -159,7 +216,7 @@ it("says what is wrong with each usage error, and prints nothing on stdout", () 
         "view",
         ...args,
       ],
-      { env: env(), encoding: "utf8" },
+      { env: env(), encoding: "utf8", timeout: SPAWN_TIMEOUT_MS },
     );
   for (const [args, stderr] of cases) {
     const r = view(args);
@@ -178,6 +235,7 @@ it("a repo with no store exits 1 and names hakutaku map", () => {
     ["dist/cli/main.js", "view", "nostore"],
     {
       env: env(),
+      timeout: SPAWN_TIMEOUT_MS,
     },
   );
   expect([r.status, r.stderr.toString().includes("hakutaku map")]).toEqual([

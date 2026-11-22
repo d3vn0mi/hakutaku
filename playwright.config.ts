@@ -6,7 +6,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "test/e2e",
   globalSetup: "./test/e2e/global-setup.ts",
-  workers: process.env.CI ? 2 : undefined,
+  // Two browsers at a time, in CI and on a developer's machine alike: Playwright's default, half
+  // the cores, grows with each spec file and crowds a machine that runs anything else.
+  workers: 2,
   retries: 0,
   use: { trace: "retain-on-failure" },
   projects: [

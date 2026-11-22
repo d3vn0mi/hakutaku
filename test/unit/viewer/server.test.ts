@@ -79,6 +79,64 @@ it("the Host header must name the loopback port", async () => {
   expect(await rawStatus(port, `localhost:${port}`, "/")).toBe(200);
   expect(await rawStatus(port, `LOCALHOST:${port}`, "/")).toBe(200);
   expect(await rawStatus(port, "127.0.0.1", "/")).toBe(421);
+  // localhost at another port, and a name of another site that resolves to 127.0.0.1
+  expect(await rawStatus(port, `localhost:${Number(port) + 1}`, "/")).toBe(421);
+  expect(await rawStatus(port, `localhost.evil.example:${port}`, "/")).toBe(
+    421,
+  );
+  expect(await rawStatus(port, `localhost:${port}.evil.example`, "/")).toBe(
+    421,
+  );
+});
+
+// What a raw connection is answered with: the status line, or "closed" when the connection ends
+// or fails without one, or "silent" when nothing comes within a second.
+function rawAnswer(
+  address: string,
+  text: string,
+): Promise<"closed" | "silent" | string> {
+  return new Promise((resolve) => {
+    const socket = connect(Number(port), address, () => socket.write(text));
+    let got = "";
+    const finish = (answer: string) => {
+      clearTimeout(timer);
+      socket.destroy();
+      resolve(answer);
+    };
+    const timer = setTimeout(() => finish("silent"), 1000);
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk: string) => {
+      got += chunk;
+      const end = got.indexOf("\r\n");
+      if (end >= 0) finish(got.slice(0, end));
+    });
+    socket.on("error", () => finish("closed"));
+    socket.on("end", () => finish("closed"));
+  });
+}
+
+it("listens on 127.0.0.1 only, not on any other address of the machine", async () => {
+  const request = `GET / HTTP/1.1\r\nhost: 127.0.0.1:${port}\r\nconnection: close\r\n\r\n`;
+  expect(await rawAnswer("127.0.0.1", request)).toBe("HTTP/1.1 200 OK");
+  // on Linux every 127.x.y.z address reaches the machine, so only a server listening on more than
+  // 127.0.0.1 would answer there
+  expect(
+    await rawAnswer("127.0.0.2", request.replace("127.0.0.1", "127.0.0.2")),
+  ).not.toMatch(/^HTTP\//);
+});
+
+it("refuses a body declared over the limit before any of it is sent", async () => {
+  const head = [
+    "POST /api/tool/code_explain HTTP/1.1",
+    `host: 127.0.0.1:${port}`,
+    `x-hakutaku-session: ${session}`,
+    `content-length: ${MAX_BODY_BYTES + 1}`,
+    "",
+    "",
+  ].join("\r\n");
+  expect(await rawAnswer("127.0.0.1", head)).toBe(
+    "HTTP/1.1 413 Payload Too Large",
+  );
 });
 
 it("serves the page and assets without the session, the page with its CSP", async () => {
@@ -368,4 +426,25 @@ it("close() stops listening", async () => {
   });
   await t.close();
   await expect(fetch(t.url)).rejects.toThrow();
+});
+
+it("close() also ends a connection whose request is still arriving", async () => {
+  const t = await startViewerServer({
+    host: tinyHost(tinyStore()),
+    repo: "tiny",
+    open: false,
+  });
+  const socket = connect(Number(new URL(t.url).port), "127.0.0.1");
+  await new Promise<void>((resolve) => socket.once("connect", resolve));
+  const ended = new Promise<void>((resolve) => socket.once("close", resolve));
+  socket.on("error", () => {});
+  // a request line and no end of headers: the server waits for the rest
+  socket.write("GET / HTTP/1.1\r\n");
+  const closed = await Promise.race([
+    t.close().then(() => "closed"),
+    new Promise((resolve) => setTimeout(() => resolve("still open"), 2000)),
+  ]);
+  socket.destroy();
+  await ended;
+  expect(closed).toBe("closed");
 });
