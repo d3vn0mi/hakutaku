@@ -52,11 +52,17 @@ it("sends exactly these security headers, from a frozen record", () => {
 });
 
 it("GET outline, source and history take the file's ID", () => {
-  expect(get("outline", { file: "tiny:src/core/graph.ts" }).status).toBe(200);
-  expect(
-    JSON.parse(String(get("source", { file: "tiny:src/cli/main.ts" }).body))
-      .sites,
-  ).toHaveLength(1);
+  const outline = get("outline", { file: "tiny:src/core/graph.ts" });
+  expect(outline.status).toBe(200);
+  expect(JSON.parse(String(outline.body))).toMatchObject({
+    builtCommit: "4f2a9c1e07b3",
+    file: "tiny:src/core/graph.ts",
+  });
+  const source = JSON.parse(
+    String(get("source", { file: "tiny:src/cli/main.ts" }).body),
+  );
+  expect(source.file).toBe("tiny:src/cli/main.ts");
+  expect(source.sites).toHaveLength(1);
   expect(JSON.parse(String(get("history").body)).weeks).toHaveLength(26);
 });
 
@@ -232,6 +238,17 @@ it("a swapped store answers the new build", () => {
   expect(JSON.parse(String(get("map", {}, host).body)).builtCommit).toBe(
     "b0b0b0b0b0b0",
   );
+  // Every later call reads the new build, whatever its route.
+  const later = [
+    get("outline", { file: "tiny:src/core/graph.ts" }, host),
+    get("source", { file: "tiny:src/cli/main.ts" }, host),
+    get("history", {}, host),
+    post("tool/code_explain", '{"target":"tiny:src/core/graph.ts"}', host),
+  ];
+  for (const r of later) {
+    expect(r.status).toBe(200);
+    expect(JSON.parse(String(r.body)).builtCommit).toBe("b0b0b0b0b0b0");
+  }
 });
 
 it("an exception becomes internal, without details", () => {
