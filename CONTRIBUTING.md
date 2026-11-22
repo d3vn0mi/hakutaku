@@ -6,7 +6,7 @@ change, and how a change gets merged.
 > [!NOTE]
 > **hakutaku is pre-release, with 0.1 in progress.** Nothing is installable yet: 0.1 is not on npm.
 > The engine, the store, the 13 tools and the MCP server are built and tested in this repository,
-> and the viewer is next. The development set-up below works from a clone today. The most useful
+> and the viewer is being built. The development set-up below works from a clone today. The most useful
 > contributions are still design feedback, use cases and questions, in
 > [Discussions](https://github.com/d3vn0mi/hakutaku/discussions).
 
@@ -45,9 +45,16 @@ git clone https://github.com/d3vn0mi/hakutaku.git
 cd hakutaku
 npm ci            # the lockfile is committed; always install with npm ci
 npm test          # the unit tests
-npm run ci:local  # the build, typecheck and Biome, then the unit, oracle, golden, hostile and MCP
-                  # tests, the secret scan and the tree check
+npx playwright install chromium firefox   # the browsers for the viewer's end-to-end tests
+npm run ci:local  # the build, typecheck and Biome, then the unit, oracle, golden, hostile, MCP
+                  # and end-to-end tests, the secret scan and the tree check
 ```
+
+The viewer's two font packages are development dependencies only, and they pull in IBM's
+install-time telemetry, which reports when it detects CI or a container. Set
+`IBM_TELEMETRY_DISABLED=true` before `npm ci` in either, as hakutaku's own CI does. On Linux, if the
+browsers do not start, `npx playwright install-deps` installs the system libraries they need (it
+uses sudo).
 
 The analysis engines are not npm dependencies. They are pinned, with integrity hashes, in
 `engines.lock.json`, and installed by `hakutaku engines install`. The oracle and hostile tests build
@@ -82,7 +89,7 @@ plus a macOS smoke test:
 ```text
 src/
   cli/ engines/ export/ extract/ store/ model/ manifests/ profile/ redact/ registry/ query/
-  tools/ mcp/          and viewer/, which is planned
+  tools/ mcp/ viewer/
 python/                the grimp driver
 ast-grep/              hakutaku's own ast-grep rules, one file per language
 scripts/               the maintainer's script that writes engines.lock.json
@@ -90,8 +97,8 @@ fixtures/
   observatory/         the synthetic sample: the script that builds it, and its oracle
   hostile/             repositories that try to run code, leak secrets or inject markup
   scale/               a generator for a large synthetic repository
-test/                  unit, oracle, golden, hostile and MCP tests, and the repository checks;
-                       the viewer's end-to-end tests are planned
+test/                  unit, oracle, golden, hostile, MCP and end-to-end tests, and the
+                       repository checks
 docs/                  the tools reference; design, viewer and security notes are planned
 ```
 

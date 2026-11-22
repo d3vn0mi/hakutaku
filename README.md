@@ -23,7 +23,7 @@
 > [!IMPORTANT]
 > **Pre-release: 0.1 in progress.** Nothing is installable yet: 0.1 is not on npm. The engine, the
 > store, the 13 tools and the MCP server are built and tested in this repository, and the viewer is
-> next. Every command and config below is **planned for 0.1**, and may change before it ships. Watch
+> being built. Every command and config below is **planned for 0.1**, and may change before it ships. Watch
 > the repository, or join [Discussions](https://github.com/d3vn0mi/hakutaku/discussions), to follow
 > the first release.
 
@@ -218,8 +218,29 @@ The road to 0.1:
   - [x] **The reference**, [`docs/tools.md`](docs/tools.md): what each tool takes and answers, and
         how it refuses. A test checks its argument tables, error codes, label wording, examples and
         IDs against the code and the sample.
-- [ ] **Viewer.** Lenses, depth levels, search and filters, the source view, accessibility and the
-      performance budget.
+- [ ] **Viewer** (in progress). Lenses, depth levels, search and filters, the source view,
+      accessibility and the performance budget. 4 of 17 steps done:
+  - [x] **Viewer data.** The map, file outlines, source and history, read from a store as compact
+        payloads that come out byte for byte the same on every read.
+  - [x] **The viewer API.** One read-only API over the store and the tools. A file the denylist
+        keeps out is refused, and so is an ID from another repository.
+  - [x] **The page.** One bundled page with its own fonts and no outside address, no inline script
+        or style, under a strict Content Security Policy, served under any base path.
+  - [x] **`hakutaku view`.** Serves the viewer on `127.0.0.1` behind a session token, and an
+        end-to-end harness drives it in Chromium and Firefox.
+  - [ ] **The galaxy**, its curves and the panels around it.
+  - [ ] **Selection** by link token, and the details header.
+  - [ ] **Lenses**, entry points and grouping.
+  - [ ] **Depth levels** and the coverage line.
+  - [ ] **Find.**
+  - [ ] **Filters** and the list view.
+  - [ ] **The Overview and Inside tabs.**
+  - [ ] **The Source tab.**
+  - [ ] **The Agent tab.**
+  - [ ] **The static export.**
+  - [ ] **Accessibility.**
+  - [ ] **Offline and contained.**
+  - [ ] **First run and performance**, and the viewer guide.
 - [ ] **Release.** CI, the hostile-repository suite, and an npm release with provenance. A static map of
       the sample as a live demo.
 
