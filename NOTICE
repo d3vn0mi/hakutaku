@@ -27,6 +27,34 @@ Licence: OFL-1.1
 Copyright: Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
 Use: the viewer's text font, light, regular, medium and semibold, as the unmodified Latin-1 woff2 files, bundled with the viewer and inlined into an exported page
 
+### sigma
+Package: npm:sigma
+Version: 3.0.3
+Licence: MIT
+Copyright: Copyright (C) 2013-2025, Alexis Jacomy, Guillaume Plique, Benoît Simard https://www.sigmajs.org
+Use: draws the viewer's map with WebGL, bundled into the viewer's script, which an exported page inlines
+
+### graphology
+Package: npm:graphology
+Version: 0.26.0
+Licence: MIT
+Copyright: Copyright (c) 2016-2021 Guillaume Plique (Yomguithereal)
+Use: the graph model the map is drawn from, bundled into the viewer's script
+
+### graphology-utils
+Package: npm:graphology-utils
+Version: 2.5.2
+Licence: MIT
+Copyright: Copyright (c) 2017-2021 Guillaume Plique (Yomguithereal)
+Use: graph helpers that sigma uses, bundled into the viewer's script
+
+### events
+Package: npm:events
+Version: 3.3.0
+Licence: MIT
+Copyright: Copyright Joyent, Inc. and other Node contributors.
+Use: the event emitter that sigma and graphology use in the browser, bundled into the viewer's script
+
 ## Installed with the package
 
 ### @modelcontextprotocol/sdk

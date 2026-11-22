@@ -213,6 +213,30 @@ h3 {
 .keys kbd {
   margin: 0 4px 0 0;
 }
+.toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.toggles label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+.toggles input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.toggles .n {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 
 /* The map: sigma's canvas over the curves' canvas, with the legend, the stat band, the zoom and
    the notices laid over both. */
@@ -255,6 +279,31 @@ h3 {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 20px;
+}
+.statband button {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.statband b {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 19px;
+  font-weight: 400;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.statband span {
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 3px;
+}
+.statband button:hover span {
+  color: var(--ink-2);
 }
 .coverage {
   position: absolute;
@@ -405,11 +454,63 @@ h3 {
   margin: 0;
   padding: 0;
   list-style: none;
+  counter-reset: rank;
+}
+.rank li {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  counter-increment: rank;
+}
+.rank li::before {
+  content: counter(rank);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+.rank .name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.rank .v {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 #timeline {
   display: block;
   width: 100%;
   height: 100px;
+}
+/* The bars of the change activity, the latest in the accent, with a date every four weeks. */
+#timeline .base {
+  stroke: var(--line);
+}
+#timeline .bar {
+  fill: #6e665a;
+}
+#timeline .bar.now {
+  fill: var(--accent);
+}
+#timeline .tick,
+#timeline .peak {
+  font-family: var(--font-mono);
+}
+#timeline .tick {
+  font-size: 10px;
+  fill: var(--muted);
+}
+#timeline .peak {
+  font-size: 10.5px;
+  fill: var(--ink-2);
 }
 
 /* What only a screen reader reads, and what stops the page. */

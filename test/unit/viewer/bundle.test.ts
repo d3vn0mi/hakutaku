@@ -61,7 +61,12 @@ it("names every bundled package with an allowed licence", () => {
   const names = manifest.bundled.map((p: { name: string }) => p.name);
   expect(names).toEqual([...names].sort());
   expect(names).toEqual(
-    expect.arrayContaining(["@ibm/plex-mono", "@ibm/plex-sans-condensed"]),
+    expect.arrayContaining([
+      "@ibm/plex-mono",
+      "@ibm/plex-sans-condensed",
+      "graphology",
+      "sigma",
+    ]),
   );
   for (const p of manifest.bundled) {
     expect(p.license).toMatch(
@@ -72,6 +77,40 @@ it("names every bundled package with an allowed licence", () => {
       readFileSync(`${ROOT}node_modules/${p.name}/package.json`, "utf8"),
     );
     expect(p.version, p.name).toBe(installed.version);
+  }
+});
+
+it("NOTICE names every bundled package with its version and licence", () => {
+  const notice = readFileSync(`${ROOT}NOTICE`, "utf8");
+  const part = notice
+    .split(/^## /m)
+    .find((p) => p.startsWith("Bundled in the package\n"));
+  if (part === undefined) throw new Error("NOTICE has no bundled section");
+  const entries = part
+    .split(/^### /m)
+    .slice(1)
+    .map((entry) => {
+      const lines = entry.split("\n");
+      const field = (name: string) =>
+        lines.find((l) => l.startsWith(`${name}: `))?.slice(name.length + 2);
+      return {
+        heading: lines[0],
+        pkg: field("Package"),
+        version: field("Version"),
+        licence: field("Licence"),
+      };
+    });
+  for (const p of manifest.bundled) {
+    const entry = entries.find(
+      (e) =>
+        e.pkg === `npm:${p.name}` ||
+        (e.pkg === undefined && e.heading === p.name),
+    );
+    expect(entry, p.name).toBeDefined();
+    expect([entry?.version, entry?.licence], p.name).toEqual([
+      p.version,
+      p.license,
+    ]);
   }
 });
 
