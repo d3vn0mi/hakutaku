@@ -12,9 +12,22 @@ import {
   parseId,
   toToken,
 } from "../../../src/model/index.js";
+import { INLINE_OUTLINES_UP_TO } from "../../../src/query/view/index.js";
 import type { Host } from "../../../src/tools/index.js";
 import { viewerApi } from "../../../src/viewer/api.js";
-import { ROWS_SHOWN } from "../../../src/viewer/app/constants.js";
+import {
+  CORE_DEPTH_ABOVE,
+  CURVE_BUDGET,
+  FIND_MAX,
+  HIGHLIGHT_ON_PAGE_CHARS,
+  HOTSPOT_MARK,
+  LABEL_TOP,
+  LIST_PAGE,
+  ROWS_SHOWN,
+  SOURCE_CHUNK_CHARS,
+  SOURCE_CHUNK_LINES,
+  WORKER_HIGHLIGHT_ABOVE,
+} from "../../../src/viewer/app/constants.js";
 import { LEGEND } from "../../../src/viewer/app/map/colors.js";
 import {
   BUILD_HEADER,
@@ -410,6 +423,64 @@ it("lists every key the page binds, with what it does", () => {
     covered.push(...values);
   }
   expect(covered.sort()).toEqual([...bound.keys()].sort());
+});
+
+// A number as the guide writes it: en-US grouping, a fraction as it is.
+const num = (n: number): string => n.toLocaleString("en-US");
+
+// Each sentence of the guide that gives one of the code's limits or thresholds, built from the
+// constant that holds it, so that neither can change without the other. The two limits of
+// 16,384 characters are tied each to its own sentence.
+const LIMITS: ReadonlyArray<[section: string, words: string]> = [
+  [
+    "Running it",
+    `Its answers stop above ${num(INLINE_OUTLINES_UP_TO)} production files`,
+  ],
+  ["Reading the map", `Labels name the lens's top ${num(LABEL_TOP)} files`],
+  ["Reading the map", `every hotspot above ${num(HOTSPOT_MARK)}`],
+  [
+    "Reading the map",
+    `Core is the default above ${num(CORE_DEPTH_ABOVE)} production files.`,
+  ],
+  [
+    "Reading the map",
+    `Above ${num(INLINE_OUTLINES_UP_TO)} production files, the files that change together wait behind a button that fetches them`,
+  ],
+  [
+    "Reading the map",
+    `A file over ${num(WORKER_HIGHLIGHT_ABOVE)} lines or ${num(HIGHLIGHT_ON_PAGE_CHARS)} characters is highlighted in a worker`,
+  ],
+  [
+    "Find, filters, the list view and the keys",
+    `Find lists the best ${num(FIND_MAX)}.`,
+  ],
+  [
+    "Find, filters, the list view and the keys",
+    `the tests by path, ${num(LIST_PAGE)} at a time.`,
+  ],
+  [
+    "Performance",
+    `above ${num(INLINE_OUTLINES_UP_TO)} production files those two are fetched one file at a time`,
+  ],
+  ["Performance", `at most ${num(CURVE_BUDGET)} curves are drawn in a frame`],
+  [
+    "Performance",
+    `a file over ${num(WORKER_HIGHLIGHT_ABOVE)} lines or ${num(HIGHLIGHT_ON_PAGE_CHARS)} characters is highlighted in a worker, never on the page`,
+  ],
+  [
+    "Performance",
+    `added at most ${num(SOURCE_CHUNK_LINES)} lines and ${num(SOURCE_CHUNK_CHARS)} characters at a time`,
+  ],
+  [
+    "Performance",
+    `above ${num(INLINE_OUTLINES_UP_TO)} production files the page holds none`,
+  ],
+];
+
+it("gives each limit and threshold as the code holds it", () => {
+  for (const [section, words] of LIMITS) {
+    expect(flat(sectionOf(section)), words).toContain(words);
+  }
 });
 
 it("says how many rows each list of the details shows, with the words that end a longer one", () => {
