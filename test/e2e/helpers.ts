@@ -219,6 +219,65 @@ export function listView(page: Page): Locator {
   return page.getByRole("region", { name: "Files, ranked" });
 }
 
+// Records, in every document the page opens from now on, the moment html[data-ready] turns
+// "nomap": the moment a browser without WebGL has the list view in the map's place.
+export async function watchFirstView(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const seen: { nomap: number | null } = { nomap: null };
+    Object.defineProperty(window, "__hakutakuFirstView", { value: seen });
+    new MutationObserver(() => {
+      if (
+        seen.nomap === null &&
+        document.documentElement.dataset.ready === "nomap"
+      ) {
+        seen.nomap = performance.now();
+      }
+    }).observe(document, {
+      attributes: true,
+      attributeFilter: ["data-ready"],
+      subtree: true,
+    });
+  });
+}
+
+// When the page first showed the map, in milliseconds from the start of its navigation: the
+// performance mark hakutaku:first-map, which the map sets on its first frame, or, in a browser
+// without WebGL, the moment watchFirstView saw the list view take the map's place. Fails when
+// the page recorded neither.
+export async function firstViewMs(page: Page, webgl: boolean): Promise<number> {
+  const at = await page.evaluate(
+    (drawn) =>
+      drawn
+        ? (performance.getEntriesByName("hakutaku:first-map")[0]?.startTime ??
+          null)
+        : ((
+            window as unknown as {
+              __hakutakuFirstView?: { nomap: number | null };
+            }
+          ).__hakutakuFirstView?.nomap ?? null),
+    webgl,
+  );
+  if (at === null) {
+    throw new Error(
+      webgl
+        ? "the page drew the map but recorded no hakutaku:first-map"
+        : "the page showed no list view in the map's place (was watchFirstView called first?)",
+    );
+  }
+  return at;
+}
+
+// The duration of the last performance entry of that name, in milliseconds; fails when the page
+// recorded none.
+export async function lastMeasure(page: Page, name: string): Promise<number> {
+  const ms = await page.evaluate(
+    (n) => performance.getEntriesByName(n).at(-1)?.duration ?? null,
+    name,
+  );
+  if (ms === null) throw new Error(`the page recorded no ${name}`);
+  return ms;
+}
+
 // Collects the directive of each Content-Security-Policy violation of every document the page
 // opens from now on; the function returned reads the current document's.
 export async function watchCsp(page: Page): Promise<() => Promise<string[]>> {
