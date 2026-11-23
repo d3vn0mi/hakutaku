@@ -240,7 +240,10 @@ it("refuses a chunked body that grows past the limit, which declares no length",
           port,
           path: "/api/tool/code_explain",
           method: "POST",
-          headers: { "x-hakutaku-session": session },
+          headers: {
+            "x-hakutaku-session": session,
+            "content-type": "application/json",
+          },
         },
         (res) => {
           res.resume();
@@ -267,9 +270,10 @@ it("gives the API the path after /api/, the first value of each query parameter,
     "tiny:src/core/graph.ts",
   ]);
   const args = { target: "tiny:src/core/graph.ts" };
+  const json = { ...headers, "content-type": "application/json" };
   const tool = await fetch(`http://127.0.0.1:${port}/api/tool/code_explain`, {
     method: "POST",
-    headers,
+    headers: json,
     body: JSON.stringify(args),
   });
   const direct = runTool(tinyHost(tinyStore()), undefined, "code_explain", {
@@ -284,7 +288,7 @@ it("gives the API the path after /api/, the first value of each query parameter,
   // a body of exactly the limit reaches the API, which says what is wrong with it
   const full = await fetch(`http://127.0.0.1:${port}/api/tool/code_explain`, {
     method: "POST",
-    headers,
+    headers: json,
     body: " ".repeat(MAX_BODY_BYTES),
   });
   expect([full.status, JSON.parse(await full.text()).error.field]).toEqual([
@@ -300,6 +304,47 @@ it("gives the API the path after /api/, the first value of each query parameter,
   expect([unknown.status, JSON.parse(await unknown.text()).error.code]).toEqual(
     [404, "not_found"],
   );
+});
+
+it("hands the API the request's content type: a tool call runs as JSON, and a plain-text or form body is refused with 415", async () => {
+  const call = (
+    headers: Record<string, string>,
+    body: string | URLSearchParams,
+  ) =>
+    fetch(`http://127.0.0.1:${port}/api/tool/code_explain`, {
+      method: "POST",
+      headers: { "x-hakutaku-session": session, ...headers },
+      body,
+    });
+  const args = JSON.stringify({ target: "tiny:src/core/graph.ts" });
+  const ran = await call({ "content-type": "application/json" }, args);
+  const answer = await ran.text();
+  expect([ran.status, JSON.parse(answer).view]).toEqual([
+    200,
+    "#src~core~graph.ts",
+  ]);
+  const charset = await call(
+    { "content-type": "application/json; charset=utf-8" },
+    args,
+  );
+  expect([charset.status, await charset.text()]).toEqual([200, answer]);
+  // fetch says text/plain for a string, and a form's type for its fields: what a page of another
+  // site can send with no preflight
+  const refused = [
+    await call({}, args),
+    await call({ "content-type": "text/plain" }, args),
+    await call({}, new URLSearchParams({ target: "tiny:src/core/graph.ts" })),
+  ];
+  for (const r of refused) {
+    expect([r.status, JSON.parse(await r.text()).error]).toEqual([
+      415,
+      {
+        code: "invalid_argument",
+        message: "a tool call takes application/json only",
+        field: "content-type",
+      },
+    ]);
+  }
 });
 
 it("every answer carries the security headers, text answers are plain text, and none carries a CORS header", async () => {

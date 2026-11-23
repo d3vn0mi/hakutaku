@@ -131,6 +131,7 @@ function handle(
             path: path.slice(API.length),
             query: firstValues(mark < 0 ? "" : target.slice(mark + 1)),
             ...(body.length > 0 ? { body: body.toString("utf8") } : {}),
+            contentType: req.headers["content-type"],
           }),
         );
       } catch (err) {

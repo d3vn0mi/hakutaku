@@ -218,6 +218,7 @@ const API = (
     path: string;
     query?: Record<string, string>;
     body?: string;
+    contentType?: string;
   },
   repo = "tiny",
 ): ViewerResponse => viewerApi(host, null, repo, { query: {}, ...req });
@@ -247,11 +248,19 @@ const SCENARIOS: Record<string, () => ViewerResponse> = {
     API(tinyHost(tinyStore()), { method: "GET", path: "map" }, "elsewhere"),
   "405 invalid_argument": () =>
     API(tinyHost(tinyStore()), { method: "POST", path: "map" }),
+  "415 invalid_argument": () =>
+    API(tinyHost(tinyStore()), {
+      method: "POST",
+      path: "tool/code_explain",
+      body: JSON.stringify({ target: "tiny:src/core/graph.ts" }),
+      contentType: "text/plain",
+    }),
   "422 the tool's own": () =>
     API(tinyHost(tinyStore()), {
       method: "POST",
       path: "tool/code_explain",
       body: JSON.stringify({ target: "tiny:no/such/file.ts" }),
+      contentType: "application/json",
     }),
   "500 internal": () => {
     // the exception's details go to the host's log, which is quiet here
@@ -287,7 +296,7 @@ it("lists every status the API and the static files answer, each as they give it
   expect([...new Set(listed.map((r) => r.status))].sort()).toEqual(
     inCode.statuses,
   );
-  expect(inCode.statuses).toEqual([200, 400, 404, 405, 422, 500, 503]);
+  expect(inCode.statuses).toEqual([200, 400, 404, 405, 415, 422, 500, 503]);
   expect(
     [...new Set(listed.map((r) => r.errorCode))]
       .filter((c) => c !== "" && c !== "the tool's own")
@@ -315,6 +324,20 @@ it("lists every status the API and the static files answer, each as they give it
   const missing = viewerStatic("assets/no-such-asset.js", { base: "/" });
   expect([missing.status, JSON.parse(String(missing.body)).error.code]).toEqual(
     [404, "not_found"],
+  );
+});
+
+it("names every field of the request a host hands viewerApi, and the content type a tool call needs", () => {
+  const declared = source("src/viewer/types.ts").match(
+    /export interface ViewerRequest \{([^}]*)\}/,
+  )?.[1];
+  if (declared === undefined) throw new Error("types.ts has no ViewerRequest");
+  const fields = [...declared.matchAll(/^\s*(\w+)\??:/gm)].map((m) => m[1]);
+  expect(fields).toEqual(["method", "path", "query", "body", "contentType"]);
+  const mounting = flat(sectionOf("Mounting the viewer in another server"));
+  expect(mounting).toContain(`\`req\` is \`{ ${fields.join(", ")} }\``);
+  expect(mounting).toContain(
+    "**pass each request's `content-type` header as `contentType`.** A tool call whose content type is not `application/json`, with at most a `charset` of `utf-8`, is refused with 415",
   );
 });
 

@@ -272,14 +272,16 @@ import { viewerApi, viewerStatic } from "hakutaku";
   `_`, `~` and `-`) that ends in `/`; anything else throws `TypeError`.
 - `viewerApi(host, ctx, repo, req)` answers one API call for the mounted repo. `host` is the same
   `Host` the tools take, `ctx` the caller as the host knows it, which is passed back to the host and
-  never read, and `repo` the repo the page shows. `req` is `{ method, path, query, body }`: `path` is
-  relative to `apiBase` (`map`, `outline`, `source`, `history`, or `tool/<name>`), `query` holds the
-  first value of each query parameter, and `body` is the request's body as text, when it has one. It
-  answers `{ status, headers, body }` and never throws: an exception becomes the internal error, and
-  its details go only to `console.error`.
+  never read, and `repo` the repo the page shows. `req` is
+  `{ method, path, query, body, contentType }`: `path` is relative to `apiBase` (`map`, `outline`,
+  `source`, `history`, or `tool/<name>`), `query` holds the first value of each query parameter,
+  `body` is the request's body as text, when it has one, and `contentType` its `content-type`
+  header, when it has one. It answers `{ status, headers, body }` and never throws: an exception
+  becomes the internal error, and its details go only to `console.error`.
 
 The API: `GET map`, `GET outline?file=<file ID>`, `GET source?file=<file ID>`, `GET history`, and
-`POST tool/<name>` with the tool's arguments as a JSON object, for the read-only tools.
+`POST tool/<name>` with the tool's arguments as a JSON object, sent as `application/json`, for the
+read-only tools.
 
 A host must:
 
@@ -289,6 +291,10 @@ A host must:
 - **authenticate each API call before calling `viewerApi`,** which checks no session, cookie or Host
   header itself. The page sends the origin's cookies with every call, and an `x-hakutaku-session`
   header holding its own address's `s` parameter when it has one;
+- **pass each request's `content-type` header as `contentType`.** A tool call whose content type is
+  not `application/json`, with at most a `charset` of `utf-8`, is refused with 415. A page of
+  another site can post a form or plain text with the origin's cookies and no preflight, but JSON
+  only after a preflight, which fails when the host sends no access-control header;
 - **cap the size of a request's body;** `hakutaku view` refuses one over 65,536 bytes.
 
 `tool/code_refresh` is refused, with 404: a host that authenticates with a cookie would otherwise let
@@ -325,6 +331,7 @@ page can tell an answer of another build from its own.
 | 404 | `no_source` | Sources not stored for the repo, snippets off, or no stored source for the file |
 | 404 | `unknown_repo` | A repo the host does not serve |
 | 405 | `invalid_argument` | Another method than `GET` for data, or than `POST` for a tool |
+| 415 | `invalid_argument` | A tool call whose content type is not `application/json` |
 | 422 | the tool's own | The tool's own error, as the tool wrote it |
 | 500 | `internal` | An exception, or no built viewer bundle |
 | 503 | `not_built` | A repo with no usable store |

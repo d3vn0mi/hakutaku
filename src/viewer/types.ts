@@ -5,6 +5,8 @@ export interface ViewerRequest {
   path: string; // relative to the API base: "map", "outline", "source", "history" or "tool/<name>"
   query: Record<string, string>;
   body?: string;
+  // the request's content-type header, as sent: a tool call must be application/json
+  contentType?: string;
 }
 
 export interface ViewerResponse {

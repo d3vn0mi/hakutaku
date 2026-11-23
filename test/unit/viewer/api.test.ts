@@ -14,8 +14,15 @@ const get = (
   query: Record<string, string> = {},
   host = tinyHost(tinyStore()),
 ) => viewerApi(host, undefined, "tiny", { method: "GET", path, query });
+// A tool call as the page makes it: its body JSON, and said to be.
 const post = (path: string, body: string, host = tinyHost(tinyStore())) =>
-  viewerApi(host, undefined, "tiny", { method: "POST", path, query: {}, body });
+  viewerApi(host, undefined, "tiny", {
+    method: "POST",
+    path,
+    query: {},
+    body,
+    contentType: "application/json",
+  });
 const err = (r: ViewerResponse) => JSON.parse(String(r.body)).error;
 const INTERNAL = JSON.stringify(
   { error: { code: "internal", message: "internal error" } },
@@ -209,6 +216,7 @@ it("refuses refresh, unknown tools, another repo, bad bodies and wrong methods",
     method: "POST",
     path: "tool/code_explain",
     query: {},
+    contentType: "application/json",
   });
   expect([none.status, err(none).field]).toEqual([400, "body"]);
   expect(get("tool/code_explain").status).toBe(405);
@@ -225,6 +233,111 @@ it("refuses refresh, unknown tools, another repo, bad bodies and wrong methods",
   });
   expect(get("nope").status).toBe(404);
   expect(err(get("nope", {}, host)).code).toBe("not_found");
+});
+
+it("runs a tool only for a body said to be JSON, with at most a charset of utf-8, and refuses anything else with 415 and a fixed error, before the store is opened", () => {
+  const host = tinyHost(tinyStore());
+  let opened = 0;
+  const counting = {
+    ...host,
+    open: (...a: Parameters<typeof host.open>) => {
+      opened++;
+      return host.open(...a);
+    },
+  };
+  const body = '{"target":"tiny:src/core/graph.ts"}';
+  const call = (contentType: string | undefined) =>
+    viewerApi(counting, undefined, "tiny", {
+      method: "POST",
+      path: "tool/code_explain",
+      query: {},
+      body,
+      ...(contentType === undefined ? {} : { contentType }),
+    });
+  const ran = post("tool/code_explain", body, host);
+  expect(ran.status).toBe(200);
+  // JSON, as the page sends it and as other clients write it: type and subtype in any case, a
+  // charset of utf-8 in any case, quoted or not, and the spaces the header's grammar allows
+  for (const type of [
+    "application/json",
+    "Application/JSON",
+    "application/json; charset=utf-8",
+    "application/json;charset=UTF-8",
+    'application/json; charset="utf-8"',
+    "application/json ; charset=utf-8",
+    "\tapplication/json\t",
+  ]) {
+    opened = 0;
+    const r = call(type);
+    expect([type, r.status, r.body, opened > 0]).toEqual([
+      type,
+      200,
+      ran.body,
+      true,
+    ]);
+  }
+  // what a page of another site can send with no preflight (a form, plain text), whatever it
+  // names after the type; another type; another charset or another parameter; and none at all
+  const refused = JSON.stringify(
+    {
+      error: {
+        code: "invalid_argument",
+        message: "a tool call takes application/json only",
+        field: "content-type",
+      },
+    },
+    null,
+    2,
+  );
+  for (const type of [
+    undefined,
+    "",
+    "text/plain",
+    "text/plain;charset=UTF-8",
+    "text/plain; charset=application/json",
+    "text/plain; application/json",
+    "application/x-www-form-urlencoded",
+    "multipart/form-data; boundary=application/json",
+    "application/json-seq",
+    "application/jsonx",
+    "application/json+x",
+    "application/vnd.api+json",
+    "text/json",
+    "json",
+    "application/json; charset=latin1",
+    "application/json; charset=utf8",
+    "application/json; charset = utf-8",
+    "application/json; boundary=x",
+    "application/json; charset=utf-8; x=y",
+    "application/json;",
+    "application/json, text/plain",
+    "application/json\napplication/json",
+  ]) {
+    opened = 0;
+    const r = call(type);
+    // the same answer whatever was sent: nothing of it is echoed
+    expect([type, r.status, r.body, opened]).toEqual([type, 415, refused, 0]);
+    // made before the store is opened, so it names no build
+    expect(r.headers).toEqual({
+      ...SECURITY_HEADERS,
+      "content-type": "application/json; charset=utf-8",
+    });
+  }
+  // the method is checked first, and the data routes take no content type at all
+  const got = viewerApi(counting, undefined, "tiny", {
+    method: "GET",
+    path: "tool/code_explain",
+    query: {},
+    contentType: "text/plain",
+  });
+  expect([got.status, err(got).field]).toEqual([405, "method"]);
+  const map = viewerApi(counting, undefined, "tiny", {
+    method: "GET",
+    path: "map",
+    query: {},
+    contentType: "text/plain",
+  });
+  expect(map.status).toBe(200);
 });
 
 it("a swapped store answers the new build", () => {

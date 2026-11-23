@@ -1,6 +1,9 @@
 // viewerApi: the viewer's JSON API over a Host, for one mounted repo. It answers the map, a file's
 // outline, a file's source and the history, and runs the read-only tools for the page's Agent tab.
-// It checks no session and no Host header: the host authenticates the caller before it calls.
+// It checks no session and no Host header: the host authenticates the caller before it calls. A
+// tool call must say its body is application/json, which a page of another site cannot send
+// without a preflight, so that a host that authenticates by cookie cannot be made to run a tool
+// by a form or a plain-text request from elsewhere.
 // It is synchronous, as runTool and node:sqlite are, and never throws: an exception becomes the
 // internal error, and its details go only to the host's log. Every answer it makes once the repo's
 // store is open names the store's build in BUILD_HEADER, so the page can tell a rebuild at the
@@ -33,6 +36,12 @@ type Route = "map" | "outline" | "source" | "history" | "tool";
 const TOOL_PATH = "tool/";
 const TOOLS: ReadonlySet<string> = new Set(TOOL_NAMES);
 
+// A tool call's content type: application/json, in any case, with at most a charset of utf-8 after
+// it, and the spaces the header's grammar allows. Anchored at both ends, so that a type a page of
+// another site may send freely (text/plain, a form's) never passes, whatever follows it.
+const JSON_TYPE =
+  /^[ \t]*application\/json[ \t]*(?:;[ \t]*charset=(?:utf-8|"utf-8")[ \t]*)?$/i;
+
 export function viewerApi(
   host: Host,
   ctx: CallContext,
@@ -56,7 +65,8 @@ function log(err: unknown): void {
   }
 }
 
-// The checks, in order: the route and its method, the repo's store, then the route's own.
+// The checks, in order: the route and its method, a tool call's content type, the repo's store,
+// then the route's own.
 function answer(
   host: Host,
   ctx: CallContext,
@@ -77,6 +87,14 @@ function answer(
       405,
       toolError("invalid_argument", `${what} takes ${method} only`, {
         field: "method",
+      }),
+    );
+  }
+  if (route === "tool" && !JSON_TYPE.test(req.contentType ?? "")) {
+    return failure(
+      415,
+      toolError("invalid_argument", "a tool call takes application/json only", {
+        field: "content-type",
       }),
     );
   }
