@@ -881,6 +881,64 @@ test("Inside lists every definition of a file, however many", async ({
   ).toHaveCount(own.filter((d) => outline.tested[d] === 0).length);
 });
 
+test("a definition name that holds markup stays text in Inside, its row, its heading and its Overview", async ({
+  page,
+}) => {
+  const MARKUP = '<img src=x onerror="alert(1)">';
+  const named = new RegExp(
+    `^${MARKUP.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}${SEP}`,
+  );
+  const m = await fetchMap(E2E.sample);
+  const kepler = fileOf(m, KEPLER);
+  // kepler.ts's first definition in file order, renamed in the map the page gets
+  const first = m.defs.file
+    .map((f, d) => ({ f, d }))
+    .filter(({ f }) => f === kepler)
+    .sort((x, y) => m.defs.line[x.d] - m.defs.line[y.d] || x.d - y.d)[0].d;
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    const map = (await response.json()) as MapData;
+    const name = [...map.defs.name];
+    name[first] = MARKUP;
+    await route.fulfill({
+      response,
+      json: { ...map, defs: { ...map.defs, name } },
+    });
+  });
+  // no element and no handler made from the name in the details
+  const noMarkup = async () =>
+    expect(
+      await page.evaluate(() => ({
+        elements: document.querySelectorAll("#detail img, #detail svg").length,
+        handlers: [...document.querySelectorAll("#detail *")].filter((e) =>
+          [...e.attributes].some((x) => x.name.startsWith("on")),
+        ).length,
+      })),
+    ).toEqual({ elements: 0, handlers: 0 });
+  const dialogs: string[] = [];
+  page.on("dialog", async (dialog) => {
+    dialogs.push(dialog.message());
+    await dialog.dismiss();
+  });
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await tab(page, "Inside").click();
+  const dot = page.locator("#pane .dots button").first();
+  await expect(dot).toHaveAttribute("title", named);
+  await expect(dot).toHaveAccessibleName(named);
+  await expect(page.locator("#pane .defs button").first()).toContainText(
+    `  ${MARKUP}${SEP}`,
+  );
+  await noMarkup();
+  await page.locator("#pane .defs button").first().click();
+  await expect(page.locator("#detail h2")).toHaveText(MARKUP);
+  await tab(page, "Overview").click();
+  await expect(
+    page.locator("#pane dl").first().locator("dt").first(),
+  ).toHaveText("Kind");
+  await noMarkup();
+  expect(dialogs).toEqual([]);
+});
+
 test("names that hold markup stay text in every tab and list", async ({
   page,
 }) => {
