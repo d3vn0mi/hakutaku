@@ -3,7 +3,7 @@
 // together with it. A map that carries outlines answers from them; above the inline limit, a
 // file's outline is fetched once, its IDs become indices, and nothing of another build or
 // another file is taken in.
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { parseId } from "../../../../src/model/ids.js";
 import {
   fileIdOf,
@@ -20,9 +20,16 @@ import { tinyStore } from "../tiny-store.js";
 import { tinyModel } from "./helpers.js";
 import { syntheticMap } from "./synthetic-map.js";
 
+// Every store a test opens, closed once the file's tests have run.
+const opened: Store[] = [];
+afterAll(() => {
+  for (const s of opened.splice(0)) s.close();
+});
+
 const open = (p: string): Store => {
   const s = openStore(p);
   if ("code" in s) throw new Error(s.reason);
+  opened.push(s);
   return s;
 };
 

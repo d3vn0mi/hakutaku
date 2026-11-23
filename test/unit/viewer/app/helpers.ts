@@ -5,11 +5,16 @@ import { openStore } from "../../../../src/store/index.js";
 import { buildModel, type Model } from "../../../../src/viewer/app/model.js";
 import { tinyStore } from "../tiny-store.js";
 
-// The page's model of the tiny store's map.
+// The page's model of the tiny store's map. The map is plain data, so the store is closed once
+// it is read.
 export function tinyModel(): Model {
   const store = openStore(tinyStore());
   if ("code" in store) throw new Error(store.reason);
-  return buildModel(mapData(store, { stale: false, snippets: true }));
+  try {
+    return buildModel(mapData(store, { stale: false, snippets: true }));
+  } finally {
+    store.close();
+  }
 }
 
 // The fastest of n runs of fn, in milliseconds: the run least disturbed by whatever else the

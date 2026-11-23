@@ -13,10 +13,15 @@ import { emptyContent, miniStore } from "../../../helpers/mini-store.js";
 import { bestOf, tinyModel } from "./helpers.js";
 import { syntheticMap } from "./synthetic-map.js";
 
-const open = (p: string) => {
+// The map of the store at p; the store is closed once it is read.
+const mapOf = (p: string) => {
   const s = openStore(p);
   if ("code" in s) throw new Error(s.reason);
-  return s;
+  try {
+    return mapData(s, { stale: false, snippets: true });
+  } finally {
+    s.close();
+  }
 };
 
 it("builds importers and imports by rank", () => {
@@ -38,12 +43,7 @@ it("slices each file's definitions", () => {
 });
 
 it("maxima are 0 on an empty map", () => {
-  const m = buildModel(
-    mapData(open(miniStore(emptyContent("empty"))), {
-      stale: false,
-      snippets: true,
-    }),
-  );
+  const m = buildModel(mapOf(miniStore(emptyContent("empty"))));
   expect([m.maxPagerank, m.maxHotspot, m.maxChurn]).toEqual([0, 0, 0]);
 });
 
