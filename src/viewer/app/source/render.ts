@@ -86,7 +86,7 @@ function markList(
     h(
       "section",
       { class: "list marks" },
-      h("h4", { text: "Marked lines" }),
+      h("h3", { text: "Marked lines" }),
       h(
         "ol",
         { class: "rows" },

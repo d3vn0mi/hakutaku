@@ -421,7 +421,7 @@ test("while Tests is on, the list ends with the test files by path, and a click 
   await expect(list.getByRole("button")).toHaveText(
     all.map((f) => labelOf(m, f)),
   );
-  await expect(list.locator("h3")).toHaveText(
+  await expect(list.getByRole("heading")).toHaveText(
     `Files, ranked ${all.length} files`,
   );
   const last = must(tests.at(-1), "test file");

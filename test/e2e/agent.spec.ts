@@ -125,7 +125,7 @@ test("the Agent tab shows exactly what the tool answers, for every kind of node"
     await expect(tab(page, "Agent")).toHaveAttribute("aria-selected", "true");
     // the page sends the call it shows, exactly
     expect((await sent).postData()).toBe(JSON.stringify(c.args));
-    await expect(agent(page).locator("h4")).toHaveText(
+    await expect(agent(page).getByRole("heading")).toHaveText(
       `What an agent gets for this ${c.what}`,
     );
     await expect(agent(page).locator(".call")).toHaveText(written(c));

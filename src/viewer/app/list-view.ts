@@ -35,7 +35,7 @@ export function mountListView(
     on: { click: () => showMore() },
   });
   root.replaceChildren(
-    h("h3", {}, document.createTextNode("Files, ranked "), total),
+    h("h2", {}, document.createTextNode("Files, ranked "), total),
     list,
     none,
     more,

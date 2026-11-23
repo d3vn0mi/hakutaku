@@ -105,7 +105,11 @@ kbd {
   padding: 0 4px;
   margin-left: 6px;
 }
-h3 {
+/* The headings of the side panel, the list view and the bottom lists; the details' own title and
+   its panes' headings have rules of their own. */
+.left h2,
+.list-view h2,
+.bottom h2 {
   margin: 0 0 8px;
   font-size: 11.5px;
   font-weight: 500;
@@ -174,9 +178,12 @@ h3 {
   color: var(--accent);
   text-decoration: none;
 }
+/* The page's one level-one heading: the repo and its commit. */
 .brand {
+  margin: 0;
   font-family: var(--font-mono);
   font-size: 15px;
+  font-weight: 400;
   letter-spacing: 0.08em;
   color: var(--ink);
   white-space: nowrap;
@@ -634,7 +641,7 @@ h3 {
   padding: 14px 16px;
   background: var(--ground);
 }
-.list-view h3 small {
+.list-view h2 small {
   font-size: 11.5px;
   letter-spacing: 0;
   text-transform: none;
@@ -856,13 +863,13 @@ h3 {
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
-.list h4 {
+.list h3 {
   margin: 14px 0 4px;
   font-size: 12px;
   font-weight: 400;
   color: var(--muted);
 }
-.list h4 small {
+.list h3 small {
   font-size: inherit;
 }
 .rows {
@@ -1133,7 +1140,7 @@ h3 {
 /* The Agent tab: the call an agent makes, in a box of its own that wraps rather than scrolls, the
    line that says what the answer holds, then the tool's answer as it came, in a box that
    scrolls. */
-.agent h4 {
+.agent h3 {
   margin: 4px 0 8px;
   font-size: 12px;
   font-weight: 400;
@@ -1191,7 +1198,7 @@ h3 {
 .bottom > section:last-child {
   border-right: 0;
 }
-.bottom h3 small {
+.bottom h2 small {
   margin-left: 6px;
   font-size: 11.5px;
   letter-spacing: 0;

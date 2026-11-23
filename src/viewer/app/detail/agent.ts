@@ -59,7 +59,7 @@ export function agentPane(
   const pane = h(
     "section",
     { class: "agent" },
-    h("h4", { text: `What an agent gets for this ${NOUNS[sel.kind]}` }),
+    h("h3", { text: `What an agent gets for this ${NOUNS[sel.kind]}` }),
     h("code", { class: "call", text: callText(call) }),
     h("p", { text: LINE }),
     wait,

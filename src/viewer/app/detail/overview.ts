@@ -110,8 +110,8 @@ export function rowList(
 ): HTMLElement {
   const title =
     typeof heading === "string"
-      ? h("h4", { text: heading })
-      : h("h4", {}, ...heading);
+      ? h("h3", { text: heading })
+      : h("h3", {}, ...heading);
   return h("section", { class: "list" }, title, ...listBody(ctx, rows, empty));
 }
 
@@ -237,7 +237,7 @@ function partnersSection(
       },
     },
   });
-  return h("section", { class: "list" }, h("h4", {}, ...heading()), show);
+  return h("section", { class: "list" }, h("h3", {}, ...heading()), show);
 }
 
 export function fileOverview(ctx: PaneContext, file: number): Node[] {
@@ -330,7 +330,7 @@ export function definitionOverview(
     h(
       "section",
       { class: "list" },
-      h("h4", { text: "Its file" }),
+      h("h3", { text: "Its file" }),
       fileFactList(model, file, fileFacts(model, file, null)),
     ),
   ];

@@ -35,7 +35,7 @@ export function componentOverview(ctx: PaneContext, component: number): Node[] {
     h(
       "section",
       { class: "list" },
-      h("h4", {
+      h("h3", {
         text: "Its files, one dot each, brightest for the most depended-on",
       }),
       code.length === 0 ? note(NO_CODE) : h("div", { class: "dots" }, ...dots),

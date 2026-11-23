@@ -1,5 +1,6 @@
 // Accessibility on the sample, end to end. An axe scan of the panels, in each state they take,
-// finds nothing serious or critical, the size of what a pointer must hit included. The keyboard
+// finds nothing serious or critical, the size of what a pointer must hit included, and the page's
+// headings read in order under its one level-one heading. The keyboard
 // alone reaches every level, from Find to a definition's source, and wherever Tab goes the focus
 // shows as a whole orange outline, drawn on top. Reduced motion is honoured, the list view and
 // the live region serve a screen reader, and colour is never the only signal. Keys pressed on a
@@ -68,6 +69,23 @@ async function serious(page: Page, include: string[]): Promise<string[]> {
           .map((n) => `${n.target.join(" ")} (${n.failureSummary ?? ""})`)
           .join(", ")}`,
     );
+}
+
+// What axe finds about the headings of the whole page: that it has one level-one heading, and
+// that no heading is more than one level below the heading before it, so that its outline reads
+// in order. Both rules must have run.
+async function headingFindings(page: Page): Promise<string[]> {
+  const result = await new AxeBuilder({ page })
+    .withRules(["page-has-heading-one", "heading-order"])
+    .analyze();
+  const ran = [...result.passes, ...result.violations].map((rule) => rule.id);
+  expect([...new Set(ran)].sort(), "axe ran both heading rules").toEqual([
+    "heading-order",
+    "page-has-heading-one",
+  ]);
+  return result.violations.map(
+    (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
+  );
 }
 
 // Opens a node by changing the address's fragment, as a link followed on the page does, and waits
@@ -273,22 +291,27 @@ test("no serious axe violation on the panels, in every state", async ({
     await serious(page, [".top", ".left", "#map", ".bottom"]),
     "on load",
   ).toEqual([]);
+  expect(await headingFindings(page), "on load").toEqual([]);
   // a file, on each of its tabs, once the tab has its content
   await goTo(page, AT_KEPLER, `observatory:${KEPLER}`);
   for (const [tab, shown] of TABS) {
     await page.getByRole("tab", { name: tab }).click();
     await expect(shown(page)).toBeVisible();
     expect(await serious(page, ["#detail"]), tab).toEqual([]);
+    expect(await headingFindings(page), tab).toEqual([]);
   }
   // a definition's source, its line flashed and its marks listed; a component; a library
   await goTo(page, AT_SOLVE_KEPLER, `observatory:${KEPLER}#solveKepler`);
   await expect(page.locator(".code .flash")).toBeVisible();
   await expect(page.locator("#pane .marks button").first()).toBeVisible();
   expect(await serious(page, ["#detail"]), "a definition's source").toEqual([]);
+  expect(await headingFindings(page), "a definition's source").toEqual([]);
   await goTo(page, toToken(componentRef), formatId(componentRef));
   expect(await serious(page, ["#detail"]), "a component").toEqual([]);
+  expect(await headingFindings(page), "a component").toEqual([]);
   await goTo(page, toToken(libraryRef), formatId(libraryRef));
   expect(await serious(page, ["#detail"]), "a library").toEqual([]);
+  expect(await headingFindings(page), "a library").toEqual([]);
   // Find, with its matches, and with none
   await page.keyboard.press("f");
   await page.keyboard.type("orbit");
@@ -302,6 +325,7 @@ test("no serious axe violation on the panels, in every state", async ({
   await page.keyboard.press("l");
   await expect(listView(page).getByRole("button").first()).toBeFocused();
   expect(await serious(page, ["#map"]), "the list view").toEqual([]);
+  expect(await headingFindings(page), "the list view").toEqual([]);
   // a filter with its slider, at Core depth, where a closed list leaves the Tests toggle off
   if (webgl) {
     // the list over the map closes
@@ -798,6 +822,7 @@ test.describe("without WebGL", () => {
       expect(await serious(page, [".top", ".left", "#map", ".bottom"])).toEqual(
         [],
       );
+      expect(await headingFindings(page)).toEqual([]);
       await page.keyboard.press("l");
       await expect(listView(page).getByRole("button").first()).toBeFocused();
       const walk = await walkRings(page);

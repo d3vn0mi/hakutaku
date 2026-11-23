@@ -10,7 +10,7 @@
 <div class="app" id="app">
   <header class="top">
     <nav class="crumbs" id="crumbs" aria-label="Where you are in the map"></nav>
-    <div class="brand">hakutaku</div>
+    <h1 class="brand">hakutaku</h1>
     <div class="actions">
       <fieldset class="lens" id="lens" aria-label="What the map shows"></fieldset>
       <button type="button" class="btn" id="find-btn">Find<kbd>F</kbd></button>
@@ -24,23 +24,23 @@
       <div class="results" id="results" role="listbox" aria-label="Matches" hidden></div>
     </div>
     <div>
-      <h3 id="depth-title">Depth</h3>
+      <h2 id="depth-title">Depth</h2>
       <fieldset class="seg stacked" id="depth" aria-labelledby="depth-title"></fieldset>
     </div>
     <div>
-      <h3 id="group-title">Group by</h3>
+      <h2 id="group-title">Group by</h2>
       <fieldset class="seg" id="group" aria-labelledby="group-title"></fieldset>
     </div>
     <div>
-      <h3>Show</h3>
+      <h2>Show</h2>
       <div class="toggles" id="show"></div>
     </div>
     <div>
-      <h3>Filters</h3>
+      <h2>Filters</h2>
       <div class="filters" id="filters"></div>
     </div>
     <div class="keys">
-      <h3>Keys</h3>
+      <h2>Keys</h2>
       <p><kbd>F</kbd> find &middot; <kbd>Esc</kbd> back one level &middot; <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> lenses &middot; <kbd>D</kbd> depth &middot; <kbd>L</kbd> list</p>
     </div>
   </aside>
@@ -69,15 +69,15 @@
 
   <footer class="bottom">
     <section>
-      <h3>Core<small>what the rest depends on</small></h3>
+      <h2>Core<small>what the rest depends on</small></h2>
       <ol class="rank" id="core-list"></ol>
     </section>
     <section>
-      <h3>Change activity<small>commits per week, last 26 weeks</small></h3>
+      <h2>Change activity<small>commits per week, last 26 weeks</small></h2>
       <svg id="timeline" role="img" aria-label="Commits per week, last 26 weeks"></svg>
     </section>
     <section>
-      <h3>Hotspots<small>depended on and changing often</small></h3>
+      <h2>Hotspots<small>depended on and changing often</small></h2>
       <ol class="rank" id="hot-list"></ol>
     </section>
   </footer>

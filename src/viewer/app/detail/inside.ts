@@ -73,7 +73,7 @@ function draw(ctx: PaneContext, file: number, outline: Outline): Node[] {
     h(
       "section",
       { class: "list" },
-      h("h4", { text: "Definitions" }),
+      h("h3", { text: "Definitions" }),
       h("ol", { class: "rows defs" }, ...rows),
     ),
   ];
