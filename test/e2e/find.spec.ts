@@ -164,6 +164,9 @@ test("a click on a match picks it, and a click elsewhere closes the list", async
   await matches(page).first().click();
   expect(await selectedId(page)).toBe(`observatory:${KEPLER}#solveKepler`);
   await expect(list(page)).toBeHidden();
+  // as any selection: the address names it, and the focus moves to its heading
+  expect(new URL(page.url()).hash).toBe(`#${AT_SOLVE_KEPLER}`);
+  await expect(page.locator("#detail h2")).toBeFocused();
   await box(page).fill("orbit");
   await expect(list(page)).toBeVisible();
   await page.locator(".keys").click();
@@ -190,6 +193,28 @@ test("the Find button and F focus the box with its text selected, so typing repl
   expect(await selected()).toEqual([0, 6]);
   await page.keyboard.type("orbit");
   await expect(q).toHaveValue("orbit");
+});
+
+test("F and / typed into a field stay in that field", async ({ page }) => {
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  const q = box(page);
+  // typed into the box, each is part of the query: neither selects the box's text again
+  await q.click();
+  await page.keyboard.type("orbits/kepler.f");
+  await expect(q).toHaveValue("orbits/kepler.f");
+  await expect(q).toBeFocused();
+  await page.keyboard.press("Shift+F");
+  await expect(q).toHaveValue("orbits/kepler.fF");
+  // pressed on a checkbox, a field too, F leaves the focus where it is (a / there is not tried:
+  // Firefox gives it to its own quick find, since the page leaves a key in a field alone)
+  const tests = page.getByRole("checkbox", { name: /^Tests/ });
+  await tests.focus();
+  for (const key of ["f", "Shift+F"]) {
+    await page.keyboard.press(key);
+    await expect(tests, key).toBeFocused();
+  }
+  await expect(q).toHaveValue("orbits/kepler.fF");
+  expect(await selectedId(page)).toBe(`observatory:${KEPLER}`);
 });
 
 test("each search is measured as hakutaku:find, and a query that matches nothing says so", async ({
