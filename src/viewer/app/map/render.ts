@@ -2,9 +2,13 @@
 // import curves are drawn on the canvas beneath it after each of sigma's frames. The curves are
 // picked when the view state changes; a frame only redraws them.
 // - Node keys: f<file index>, h<hub index>, x<library index>.
+// - The lens colours and sizes the files, and labels its top files besides the selection.
 // - A selection the map draws keeps its node and its neighbours bright and dims every other
 //   node: the files and libraries an import joins to a file or a definition's file, the files
 //   that import a library, or the files of a hub's group. Only the selection's curves are drawn.
+// - Under History, a selected file's neighbours also include the files that change together
+//   with it, each joined to it by a dashed curve. A map that does not carry co-change has them
+//   from the outline cache, fetched once per file; the map refreshes when they arrive.
 // - After each refresh, #map carries data-nodes (the visible nodes), data-dimmed (the visible
 //   nodes drawn dimmed), data-hubs, data-curves (the import curves drawn) and data-cochange (the
 //   co-change curves drawn).
@@ -19,7 +23,6 @@ import type { Settings } from "sigma/settings";
 import type { NodeDisplayData } from "sigma/types";
 import { F, FILE_KINDS, FLAG_CORE } from "../../../query/view/constants.js";
 import {
-  LABEL_TOP,
   PULL_ACROSS,
   PULL_AGGREGATE,
   PULL_COCHANGE,
@@ -29,8 +32,9 @@ import {
 import { prefersReducedMotion } from "../dom.js";
 import { groupKey, type Model } from "../model.js";
 import { motionMs } from "../motion.js";
+import type { OutlineCache } from "../outline-cache.js";
 import type { Sel, StateStore, ViewState } from "../state.js";
-import { fileColor, fileSize, INK } from "./colors.js";
+import { fileColor, fileSize, INK, labelledFiles } from "./colors.js";
 import {
   aggregateCurves,
   type CurveKind,
@@ -134,12 +138,14 @@ const drawHover: Settings<NodeAttrs>["defaultDrawNodeHover"] = (
 const baseName = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
 // Mounts the map in root, which holds #sigma and canvas#edges. Null when this browser cannot
-// draw it: it has no WebGL, or sigma could not start.
+// draw it: it has no WebGL, or sigma could not start. Without outlines, History joins no file
+// to the files that change with it.
 export function mountMap(
   root: HTMLElement,
   model: Model,
   state: StateStore,
   on: { node(sel: Sel): void; stage(): void },
+  outlines?: OutlineCache,
 ): MapView | null {
   const container = root.querySelector<HTMLElement>("#sigma");
   const canvas = root.querySelector<HTMLCanvasElement>("#edges");
@@ -156,7 +162,7 @@ export function mountMap(
   let groupIds = new Map<string, number>(); // a group's number by its key
   let groupOf = new Int32Array(n); // each file's group, by number; -1 off the map
   let always = new Set<string>(); // hubs and libraries always labelled
-  let labelled = new Set<string>(); // files labelled for the lens
+  let labelled: ReadonlySet<string> = new Set<string>(); // files labelled for the lens
   let selected: string | null = null; // the selection's node
   let lit: Set<string> | null = null; // the nodes a drawn selection keeps bright
   let picks: CurvePick[] = [];
@@ -349,9 +355,55 @@ export function mountMap(
       : { kind: "group", key: hubKey };
   };
 
+  // A file's selection, or a definition's: its file. Null for anything else.
+  const fileOf = (sel: Sel): number | null =>
+    sel !== null && (sel.kind === "file" || sel.kind === "definition")
+      ? sel.file
+      : null;
+
+  // The files that change together with a file, as far as they are known: from the map, or from
+  // an outline fetched once. The first time a file's are not known, they are asked for, and the
+  // map refreshes when they arrive if that file is still selected under History. A request that
+  // failed, as one answered by another build does, is not made again.
+  const asked = new Set<number>();
+  const partnersOf = (file: number): number[] => {
+    if (outlines === undefined) return [];
+    const outline = outlines.peek(file);
+    if (outline !== null) return outline.cochange.map(([partner]) => partner);
+    if (!asked.has(file)) {
+      asked.add(file);
+      outlines.get(file).then(
+        () => {
+          const now = state.get();
+          if (now.lens === "history" && fileOf(now.sel) === file) refresh();
+        },
+        (e) =>
+          console.error(
+            "hakutaku: the files that change with a file could not be loaded",
+            e,
+          ),
+      );
+    }
+    return [];
+  };
+
+  // The files each lens labels, worked out once per lens and entry points.
+  const labels = new Map<string, Set<string>>();
+  const labelsFor = (view: ViewState): Set<string> => {
+    const key = `${view.lens} ${view.entriesOn}`;
+    let set = labels.get(key);
+    if (set === undefined) {
+      const top = labelledFiles(model, view.lens, view.entriesOn);
+      set = new Set(top.map((f) => `f${f}`));
+      labels.set(key, set);
+    }
+    return set;
+  };
+
   // The nodes a selection keeps bright: its node, and the files and libraries an import joins to
-  // a file (or a definition's file), the files that import a library, or the files of a hub's
-  // group. Null, so that nothing is dimmed, when nothing is selected or its node is not drawn.
+  // a file (or a definition's file), with, under History, the files that change together with
+  // it; the files that import a library; or the files of a hub's group. Null, so that nothing is
+  // dimmed, when nothing is selected or its node is not drawn.
   const litBy = (sel: Sel, key: string | null): Set<string> | null => {
     if (sel === null || key === null) return null;
     if (!shows(graph.getNodeAttribute(key, "kind"))) return null;
@@ -363,6 +415,7 @@ export function mountMap(
       add("f", model.importers[sel.file]);
       add("f", model.imports[sel.file]);
       add("x", model.libsOf[sel.file]);
+      if (s.lens === "history") add("f", partnersOf(sel.file));
     } else if (sel.kind === "library") {
       add("f", model.importersOfLib[sel.external]);
     } else {
@@ -391,14 +444,18 @@ export function mountMap(
       );
     }
     if (sel?.kind === "component" || sel?.kind === "group") return [];
+    // under History, a dashed curve from the selected file to each file that changes with it
+    const file = fileOf(sel);
+    const cochange =
+      file !== null && s.lens === "history"
+        ? partnersOf(file).map((p): [number, number] => [file, p])
+        : [];
     return pickCurves(model, {
       visible: fileShows,
       inCore: (f) => (files[f][F.flags] & FLAG_CORE) !== 0,
-      selected:
-        sel !== null && (sel.kind === "file" || sel.kind === "definition")
-          ? sel.file
-          : null,
+      selected: file,
       riskLens: s.lens === "risk",
+      cochange,
     }).filter((c) => c.to < n || s.show.libraries);
   };
 
@@ -538,9 +595,7 @@ export function mountMap(
     s = state.get();
     selected = nodeOf(s.sel);
     lit = litBy(s.sel, selected);
-    labelled = new Set(
-      model.production.slice(0, LABEL_TOP).map((f) => `f${f}`),
-    );
+    labelled = labelsFor(s);
     picks = pick();
     shape();
     count();

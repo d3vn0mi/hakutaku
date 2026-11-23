@@ -12,11 +12,14 @@ import { prefersReducedMotion, showToast } from "./dom.js";
 import { bindKeys } from "./keys.js";
 import { mountMap } from "./map/render.js";
 import { buildModel } from "./model.js";
+import { createOutlineCache } from "./outline-cache.js";
 import { drawTimeline, fillRankLists } from "./panels/bottom.js";
+import { mountGrouping } from "./panels/grouping.js";
 import { mountLegend } from "./panels/legend.js";
+import { mountLens, setLens } from "./panels/lens.js";
 import { mountShow } from "./panels/show.js";
 import { mountStatband } from "./panels/statband.js";
-import { loadPrefs } from "./prefs.js";
+import { loadPrefs, savePrefs } from "./prefs.js";
 import { createSelection, type Selector } from "./selection.js";
 import { createState, NO_FILTERS, type ViewState } from "./state.js";
 
@@ -89,22 +92,40 @@ function compose(map: MapData, fetched: DataSource): void {
     ...START,
     ...loadPrefs(() => localStorage, map.repo),
   });
+  // and remembered again each time one of them changes
+  state.subscribe((now, before) => {
+    if (
+      now.lens !== before.lens ||
+      now.depth !== before.depth ||
+      now.group !== before.group
+    ) {
+      const { lens, depth, group } = now;
+      savePrefs(() => localStorage, map.repo, { lens, depth, group });
+    }
+  });
   // every later answer is checked against the build this map came from
   const source = guardBuild(fetched, map.builtCommit, (commit) =>
     showToast(`The map was rebuilt at ${commit}. Reload to see it.`, {
       action: { label: "Reload", run: () => location.reload() },
     }),
   );
+  const outlines = createOutlineCache(model, source);
   prefersReducedMotion(); // records html[data-motion] from the start
-  mountLegend(byId("legend"));
-  mountStatband(byId("statband"), model, state);
+  mountLegend(byId("legend"), state);
+  mountLens(byId("lens"), state);
   mountShow(byId("show"), model, state);
   // the map's clicks select through the selection, which needs the map: it is made right after
   let selector: Selector | null = null;
-  const view = mountMap(byId("map"), model, state, {
-    node: (sel) => selector?.select(sel),
-    stage: () => selector?.select(null),
-  });
+  const view = mountMap(
+    byId("map"),
+    model,
+    state,
+    {
+      node: (sel) => selector?.select(sel),
+      stage: () => selector?.select(null),
+    },
+    outlines,
+  );
   const selection = createSelection({
     repo: map.repo,
     model,
@@ -113,10 +134,19 @@ function compose(map: MapData, fetched: DataSource): void {
     source,
   });
   selector = selection;
+  mountStatband(byId("statband"), model, state, (sel) => selection.select(sel));
+  // another grouping lays the map out again, and clears the selection, whose groups it changes
+  mountGrouping(byId("group"), state, (group) => {
+    state.set({ group });
+    selection.select(null, { fly: false });
+  });
   fillRankLists(byId("core-list"), byId("hot-list"), model, (file) =>
     selection.select({ kind: "file", file }),
   );
-  bindKeys({ back: () => selection.back() });
+  bindKeys({
+    back: () => selection.back(),
+    lens: (lens) => setLens(state, lens),
+  });
   byId("back-btn").addEventListener("click", () => selection.back());
   addEventListener("hashchange", () =>
     selection.openToken(location.hash.slice(1)),

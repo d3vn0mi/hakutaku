@@ -80,3 +80,31 @@ it("never sets text in --faint", () => {
     readFileSync(`${ROOT}src/viewer/app/styles/app.css`, "utf8"),
   ).not.toMatch(/(^|[;{\s])color:\s*var\(--faint\)/m);
 });
+
+it("text in another colour, or on another background, reaches 4.5:1 on the background its rule sets", () => {
+  const app = readFileSync(`${ROOT}src/viewer/app/styles/app.css`, "utf8");
+  let measured = 0;
+  for (const [, selector, body] of app.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const text = /(?:^|[;\s])color:\s*var\(--([a-z0-9-]+)\)/.exec(body)?.[1];
+    if (text === undefined) continue;
+    const ground =
+      /(?:^|[;\s])background(?:-color)?:\s*var\(--([a-z0-9-]+)\)/.exec(
+        body,
+      )?.[1];
+    // a text colour on a surface, or on whatever surface it sits on, is measured above
+    if (
+      TEXT.includes(text) &&
+      (ground === undefined || SURFACES.includes(ground))
+    )
+      continue;
+    const where = `${selector.trim()}: --${text} on --${ground ?? "nothing"}`;
+    expect(tok[text], where).toMatch(/^#[0-9A-F]{6}$/);
+    expect(tok[ground ?? ""], where).toMatch(/^#[0-9A-F]{6}$/);
+    expect(
+      contrast(tok[text], tok[ground ?? ""]),
+      where,
+    ).toBeGreaterThanOrEqual(4.5);
+    measured++;
+  }
+  expect(measured).toBeGreaterThan(0); // the pressed lens: ground on ink
+});

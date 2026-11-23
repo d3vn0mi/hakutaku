@@ -195,6 +195,28 @@ h3 {
 .lens:empty {
   display: none;
 }
+/* The lens the map shows is pressed: ground on ink. Ownership is disabled until there is a
+   decision on what an owner is. */
+.lens button {
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lens button[aria-pressed="false"]:hover:enabled {
+  color: var(--ink);
+}
+.lens button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--ground);
+}
+.lens button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
 
 /* The left panel: Find, then the controls, then the keys. */
 .left {
@@ -230,6 +252,44 @@ h3 {
   background: var(--panel);
   border: 1px solid var(--line-2);
   border-radius: 5px;
+}
+/* A segmented control: one button per choice, its name over a hint, the choice in use pressed.
+   Its columns are --n, set per control. */
+.seg {
+  display: grid;
+  grid-template-columns: repeat(var(--n, 2), minmax(0, 1fr));
+  gap: 6px;
+}
+#group {
+  --n: 3;
+}
+.seg button {
+  min-width: 0;
+  background: var(--ground-2);
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  padding: 6px 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.seg button:hover {
+  border-color: var(--muted);
+}
+.seg span {
+  display: block;
+  font-size: 13px;
+}
+.seg small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--muted);
+}
+.seg button[aria-pressed="true"] {
+  border-color: var(--ink-2);
+  background: var(--panel-2);
 }
 .keys {
   font-size: 12px;
@@ -336,6 +396,10 @@ h3 {
 }
 .statband button:hover span {
   color: var(--ink-2);
+}
+/* The entry points stat while the map marks them. */
+.statband button[aria-pressed="true"] span {
+  color: var(--accent);
 }
 .coverage {
   position: absolute;
