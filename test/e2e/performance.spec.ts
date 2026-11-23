@@ -21,6 +21,7 @@ import {
   mapDrawn,
   openViewer,
   watchFirstView,
+  watchLongTasks,
 } from "./helpers.js";
 
 const BENCH = process.env.HAKUTAKU_BENCH === "1";
@@ -114,21 +115,10 @@ test("Find on the sample stays within its budget", async ({ page }) => {
 test("no interaction blocks the page", async ({ page, browserName }) => {
   // Each long task, by its start and length, in a browser that reports them, and the moment the
   // Source tab's code says it is complete.
+  const watched = await watchLongTasks(page);
   await page.addInitScript(() => {
-    const seen = {
-      long: [] as Array<[start: number, duration: number]>,
-      complete: null as number | null,
-    };
-    Object.defineProperty(window, "__hakutakuBlocks", { value: seen });
-    try {
-      new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) {
-          seen.long.push([e.startTime, e.duration]);
-        }
-      }).observe({ type: "longtask", buffered: true });
-    } catch {
-      // a browser without long-task entries records none
-    }
+    const seen = { complete: null as number | null };
+    Object.defineProperty(window, "__hakutakuComplete", { value: seen });
     new MutationObserver(() => {
       if (
         seen.complete === null &&
@@ -172,24 +162,13 @@ test("no interaction blocks the page", async ({ page, browserName }) => {
         ),
       ),
   );
-  const blocks = await page.evaluate((start) => {
+  const took = await page.evaluate((start) => {
     const seen = (
-      window as unknown as {
-        __hakutakuBlocks: {
-          long: Array<[number, number]>;
-          complete: number | null;
-        };
-      }
-    ).__hakutakuBlocks;
-    return {
-      recorded: PerformanceObserver.supportedEntryTypes.includes("longtask"),
-      longest: Math.max(
-        0,
-        ...seen.long.filter(([at]) => at >= start).map(([, ms]) => ms),
-      ),
-      took: seen.complete === null ? null : seen.complete - start,
-    };
+      window as unknown as { __hakutakuComplete: { complete: number | null } }
+    ).__hakutakuComplete;
+    return seen.complete === null ? null : seen.complete - start;
   }, from);
+  const blocks = { ...(await watched(from)), took };
   if (browserName === "chromium") {
     expect(blocks.recorded).toBe(true);
     expect(blocks.longest).toBeLessThan(LONGEST_TASK_MS);

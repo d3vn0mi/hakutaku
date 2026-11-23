@@ -267,6 +267,46 @@ export async function firstViewMs(page: Page, webgl: boolean): Promise<number> {
   return at;
 }
 
+// Records, in every document the page opens from now on, each long task by its start and its
+// length, in a browser that reports long tasks (Chromium; Firefox reports none). Chromium reports
+// a long frame only when some script runs in it, so a frame that only styles, lays out and paints
+// would pass unseen however long it took: a callback asked for on every animation frame makes
+// every frame one that runs script. The function returned reads, in the current document,
+// whether the browser reports long tasks, and the longest task that started at or after from
+// (the page's performance.now()), 0 when there was none.
+export async function watchLongTasks(
+  page: Page,
+): Promise<(from: number) => Promise<{ recorded: boolean; longest: number }>> {
+  await page.addInitScript(() => {
+    const long: Array<[start: number, duration: number]> = [];
+    Object.defineProperty(window, "__hakutakuLongTasks", { value: long });
+    try {
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) long.push([e.startTime, e.duration]);
+      }).observe({ type: "longtask", buffered: true });
+    } catch {
+      // a browser without long-task entries records none
+    }
+    const beat = () => {
+      requestAnimationFrame(beat);
+    };
+    requestAnimationFrame(beat);
+  });
+  return (from) =>
+    page.evaluate((start) => {
+      const long = (
+        window as unknown as { __hakutakuLongTasks: Array<[number, number]> }
+      ).__hakutakuLongTasks;
+      return {
+        recorded: PerformanceObserver.supportedEntryTypes.includes("longtask"),
+        longest: Math.max(
+          0,
+          ...long.filter(([at]) => at >= start).map(([, ms]) => ms),
+        ),
+      };
+    }, from);
+}
+
 // The duration of the last performance entry of that name, in milliseconds; fails when the page
 // recorded none.
 export async function lastMeasure(page: Page, name: string): Promise<number> {

@@ -19,6 +19,7 @@ import {
   selectedId,
   toToken,
   watchCsp,
+  watchLongTasks,
 } from "./helpers.js";
 
 const SEP = " \u00b7 ";
@@ -359,17 +360,7 @@ test("a 6,000-line file renders fully without blocking the page", async ({
   page,
   browserName,
 }) => {
-  await page.addInitScript(() => {
-    const long: Array<[start: number, duration: number]> = [];
-    Object.defineProperty(window, "__long", { value: long });
-    try {
-      new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) long.push([e.startTime, e.duration]);
-      }).observe({ type: "longtask", buffered: true });
-    } catch {
-      // a browser without long-task entries records none
-    }
-  });
+  const blocks = await watchLongTasks(page);
   const chunks = await watchChunks(page);
   const started = workers(page);
   await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
@@ -393,19 +384,9 @@ test("a 6,000-line file renders fully without blocking the page", async ({
       ),
   );
   if (browserName === "chromium") {
-    const blocks = await page.evaluate((from) => {
-      const long = (window as unknown as { __long: Array<[number, number]> })
-        .__long;
-      return {
-        recorded: PerformanceObserver.supportedEntryTypes.includes("longtask"),
-        longest: Math.max(
-          0,
-          ...long.filter(([start]) => start >= from).map(([, ms]) => ms),
-        ),
-      };
-    }, clicked);
-    expect(blocks.recorded).toBe(true);
-    expect(blocks.longest).toBeLessThan(200);
+    const seen = await blocks(clicked);
+    expect(seen.recorded).toBe(true);
+    expect(seen.longest).toBeLessThan(200);
   }
   // the lines far out of view are not laid out, which keeps a large file from blocking the
   // page: the first line is drawn, the last is skipped until it is scrolled to
@@ -534,17 +515,7 @@ test("a file just under 2,500 lines of long lines renders without blocking the p
   page,
   browserName,
 }) => {
-  await page.addInitScript(() => {
-    const long: Array<[start: number, duration: number]> = [];
-    Object.defineProperty(window, "__long", { value: long });
-    try {
-      new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) long.push([e.startTime, e.duration]);
-      }).observe({ type: "longtask", buffered: true });
-    } catch {
-      // a browser without long-task entries records none
-    }
-  });
+  const watched = await watchLongTasks(page);
   // 2,400 lines of about 400 characters each, under the store's 1 MiB and its minified mark
   const lines = Array.from(
     { length: 2400 },
@@ -574,17 +545,7 @@ test("a file just under 2,500 lines of long lines renders without blocking the p
         ),
       ),
   );
-  const blocks = await page.evaluate((from) => {
-    const long = (window as unknown as { __long: Array<[number, number]> })
-      .__long;
-    return {
-      recorded: PerformanceObserver.supportedEntryTypes.includes("longtask"),
-      longest: Math.max(
-        0,
-        ...long.filter(([start]) => start >= from).map(([, ms]) => ms),
-      ),
-    };
-  }, clicked);
+  const blocks = await watched(clicked);
   if (browserName === "chromium") {
     expect(blocks.recorded).toBe(true);
     expect(blocks.longest).toBeLessThan(200);
