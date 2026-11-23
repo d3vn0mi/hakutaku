@@ -35,6 +35,13 @@ const COMPONENTS_LEGEND =
 
 type Level = "Components" | "Core" | "Files";
 
+// What the live region says when the depth changes on its own.
+const SAID: Readonly<Record<Level, string>> = {
+  Components: "Depth: Components, the big picture.",
+  Core: "Depth: Core, what matters most.",
+  Files: "Depth: Files, every module.",
+};
+
 // The value, or a failure naming what is missing.
 function must<T>(value: T | undefined | null, what: string): T {
   if (value === undefined || value === null) {
@@ -166,6 +173,8 @@ test("the sample opens at Files depth, and D cycles the levels", async ({
   for (const level of ["Components", "Core", "Files"] as const) {
     await page.keyboard.press("d");
     await atDepth(page, level);
+    // the key moves no focus, so the live region says where it went
+    await expect(page.locator("#announce")).toHaveText(SAID[level]);
     if (!drawn) continue;
     await expect(map).toHaveAttribute("data-nodes", String(nodes[level]));
     await expect(map).toHaveAttribute("data-curves", String(curves[level]));
@@ -269,12 +278,17 @@ test("selecting a file hidden at Core depth switches to Files", async ({
   must(m.files[hidden], "production file outside the core view");
   await openViewer(page, E2E.sample);
   await page.getByRole("button", { name: /^Core/ }).click();
+  await expect(page.locator("#announce")).toHaveText(SAID.Core);
   await openToken(page, fileToken(m, hidden));
   await expect(page.getByRole("button", { name: /^Files/ })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
   expect(await selectedId(page)).toBe(`observatory:${m.files[hidden][F.path]}`);
+  // the selection that switched the depth is what the live region says
+  await expect(page.locator("#announce")).toHaveText(
+    /^Selected file .+, rank \d+ of \d+\.$/,
+  );
 });
 
 test("a selection switches depth only when the depth hides its file", async ({

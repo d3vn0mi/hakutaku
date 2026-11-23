@@ -127,7 +127,7 @@ function compose(map: MapData, fetched: DataSource): void {
   prefersReducedMotion(); // records html[data-motion] from the start
   mountLegend(byId("legend"), state);
   mountLens(byId("lens"), state);
-  mountDepth(byId("depth"), state);
+  mountDepth(byId("depth"), state, byId("announce"));
   mountShow(byId("show"), model, state);
   // the map's clicks select through the selection, which needs the map: it is made right after
   let selector: Selector | null = null;

@@ -1,5 +1,7 @@
 // Depth, in the left panel: Components, the hubs alone; Core, the files that matter most; Files,
-// every file. The depth in use is pressed, and D steps through them in this order.
+// every file. The depth in use is pressed, and D steps through them in this order. D moves no
+// focus, so a change of depth is said in the live region, unless a selection made it: the
+// selection says what it selected there instead.
 import { DEPTHS } from "../depth.js";
 import { h } from "../dom.js";
 import type { Depth, StateStore } from "../state.js";
@@ -11,7 +13,11 @@ const NAMES: Readonly<Record<Depth, readonly [string, string]>> = {
   files: ["Files", "every module"],
 };
 
-export function mountDepth(root: HTMLElement, state: StateStore): void {
+export function mountDepth(
+  root: HTMLElement,
+  state: StateStore,
+  live: HTMLElement,
+): void {
   const buttons = DEPTHS.map((depth) => {
     const [name, hint] = NAMES[depth];
     const button = h(
@@ -33,6 +39,11 @@ export function mountDepth(root: HTMLElement, state: StateStore): void {
   };
   press(state.get().depth);
   state.subscribe((now, before) => {
-    if (now.depth !== before.depth) press(now.depth);
+    if (now.depth === before.depth) return;
+    press(now.depth);
+    if (now.sel === before.sel) {
+      const [name, hint] = NAMES[now.depth];
+      live.textContent = `Depth: ${name}, ${hint}.`;
+    }
   });
 }
