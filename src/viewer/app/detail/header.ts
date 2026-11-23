@@ -25,7 +25,7 @@ const HUB_KIND: Readonly<Record<Grouping, string>> = {
 
 // The kind line and the title: a file and its group, a definition's kind and its file, a hub,
 // or a library and its ecosystem; then the path, the qualified name, or the name.
-function describe(
+function kindAndTitle(
   model: Model,
   sel: Exclude<Sel, null>,
   g: Grouping,
@@ -59,7 +59,7 @@ export function renderHeader(
   g: Grouping,
   copy: (text: string) => void,
 ): HTMLElement[] {
-  const [kind, title] = describe(model, sel, g);
+  const [kind, title] = kindAndTitle(model, sel, g);
   const header: HTMLElement[] = [
     h("p", { class: "kind", text: kind }),
     h("h2", { text: title, attrs: { tabindex: "-1" } }),
