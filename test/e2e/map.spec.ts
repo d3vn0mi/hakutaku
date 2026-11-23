@@ -1,6 +1,7 @@
 // The galaxy on the sample, end to end: at Files depth the map draws every production file, hub
 // and library with the sample's import curves, the panels around it read from the same map, and
-// the zoom controls are named buttons.
+// the zoom controls are named buttons. A browser that cannot draw the map shows the list view in
+// its place, with the same files, and no zoom.
 import { expect, test } from "@playwright/test";
 import type { HistoryData } from "../../src/query/view/index.js";
 import {
@@ -9,6 +10,7 @@ import {
   F,
   fetchMap,
   hasWebGL,
+  listView,
   mapDrawn,
   openViewer,
 } from "./helpers.js";
@@ -37,10 +39,15 @@ test("draws the sample's production files, hubs and libraries at Files depth", a
   if (browserName === "chromium") expect(webgl).toBe(true);
   expect(await mapDrawn(page)).toBe(webgl);
   if (!webgl) {
+    // the list view, in the map's place, holds the same production files
     await expectNoWebGL(page);
+    await expect(listView(page).getByRole("button")).toHaveCount(
+      m.counts.productionFiles,
+    );
     return;
   }
   await expect(page.locator("#map-notice")).toBeHidden();
+  await expect(listView(page)).toBeHidden();
   const hubs = m.components.filter((c) => c[1] > 0).length; // a hub per component that holds production files
   const map = page.locator("#map");
   await expect(map).toHaveAttribute(
@@ -140,7 +147,12 @@ test("the show toggles carry their counts, and the tests stat turns Tests on", a
   if (browserName === "chromium") expect(webgl).toBe(true);
   expect(await mapDrawn(page)).toBe(webgl);
   if (!webgl) {
+    // in the map's place, the list view lists the tests while Tests is on
     await expectNoWebGL(page);
+    const files = listView(page).getByRole("button");
+    await expect(files).toHaveCount(m.counts.productionFiles + m.counts.tests);
+    await tests.uncheck();
+    await expect(files).toHaveCount(m.counts.productionFiles);
     return;
   }
   const hubs = m.components.filter((c) => c[1] > 0).length;
@@ -157,8 +169,19 @@ test("the show toggles carry their counts, and the tests stat turns Tests on", a
   );
 });
 
-test("the zoom controls are named buttons", async ({ page }) => {
+test("the zoom controls are named buttons, shown only with the map", async ({
+  page,
+  browserName,
+}) => {
   await openViewer(page, E2E.sample);
-  for (const name of ["Zoom in", "Zoom out", "Fit the map"])
-    await expect(page.getByRole("button", { name })).toBeVisible();
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) await expectNoWebGL(page);
+  // without a map to move, the list view stands in its place and the zoom has nothing to do
+  for (const name of ["Zoom in", "Zoom out", "Fit the map"]) {
+    const button = page.getByRole("button", { name });
+    if (webgl) await expect(button).toBeVisible();
+    else await expect(button).toBeHidden();
+  }
 });

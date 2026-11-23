@@ -12,6 +12,7 @@ import {
   F,
   fetchMap,
   hasWebGL,
+  listView,
   mapDrawn,
   openViewer,
   selectedId,
@@ -366,12 +367,28 @@ test("an outline from another build draws nothing and says the map was rebuilt",
       json: { ...outline, builtCommit: "0123456789ab" },
     });
   });
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/outline")
+      asked.push(request.url());
+  });
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
   const webgl = await hasWebGL(page);
   if (browserName === "chromium") expect(webgl).toBe(true);
   expect(await mapDrawn(page)).toBe(webgl);
   if (!webgl) {
+    // the list view stands in the map's place, and draws no co-change: History asks for no
+    // outline, so nothing from the other build arrives and nothing says the map was rebuilt
     await expectNoWebGL(page);
+    await page.keyboard.press("3");
+    await pressed(page, "History");
+    await expect(page.locator("#legend")).toHaveText(LEGEND.history);
+    expect(await selectedId(page)).toBe(`observatory:${KEPLER}`);
+    await expect(listView(page).getByRole("button")).toHaveCount(
+      (await fetchMap(E2E.sample)).counts.productionFiles,
+    );
+    expect(asked).toEqual([]);
+    await expect(page.locator("#toast")).not.toContainText("rebuilt");
     return;
   }
   await page.keyboard.press("3");
@@ -379,6 +396,7 @@ test("an outline from another build draws nothing and says the map was rebuilt",
     "The map was rebuilt at 0123456789ab. Reload to see it.",
   );
   await expect(page.locator("#map")).toHaveAttribute("data-cochange", "0");
+  expect(asked).toHaveLength(1);
 });
 
 test("grouping by language makes one hub per language", async ({

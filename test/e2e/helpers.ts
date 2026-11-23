@@ -4,7 +4,7 @@
 // codec the app bundles; only the type MapData comes from src/.
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import { formatId, type NodeRef, toToken } from "../../dist/index.js";
 import { ECOSYSTEMS, F } from "../../dist/query/view/constants.js";
 import type { MapData } from "../../src/query/view/index.js";
@@ -181,13 +181,32 @@ export function hasWebGL(page: Page): Promise<boolean> {
   );
 }
 
-// The page of a browser that cannot draw the map: it says so in place of the map, and holds no
-// canvas of the map's.
+// The page of a browser that cannot draw the map: it says so, holds no canvas of the map's, and
+// shows the list view in the map's place, open, with the files ranked: before any filter is set,
+// the first is the file of rank 1, and nothing in the list has taken the focus.
 export async function expectNoWebGL(page: Page): Promise<void> {
   await expect(page.locator("html")).toHaveAttribute("data-ready", "nomap");
   await expect(page.locator("#map-notice")).toBeVisible();
   await expect(page.locator("#map-notice")).toHaveText(NO_WEBGL);
   await expect(page.locator("#sigma canvas")).toHaveCount(0);
+  const list = listView(page);
+  await expect(list).toBeVisible();
+  await expect(list.getByRole("button").first()).toHaveAccessibleName(
+    /^.+, rank 1, \d+ importers?$/,
+  );
+  expect(
+    await page.evaluate(
+      () =>
+        document
+          .getElementById("list-view")
+          ?.contains(document.activeElement) ?? null,
+    ),
+  ).toBe(false);
+}
+
+// The list view: the files, ranked, as buttons.
+export function listView(page: Page): Locator {
+  return page.getByRole("region", { name: "Files, ranked" });
 }
 
 // Collects the directive of each Content-Security-Policy violation of every document the page

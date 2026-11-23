@@ -171,5 +171,11 @@ export function groupKey(model: Model, file: number, g: Grouping): string {
     return slash < 0 ? "(root)" : path.slice(0, slash);
   }
   const lang = f[F.lang] < 0 ? undefined : model.map.langs[f[F.lang]];
-  return lang === undefined ? "(none)" : (LANGUAGE_NAMES.get(lang) ?? lang);
+  return lang === undefined ? "(none)" : languageName(lang);
+}
+
+// A language as the page names it: TypeScript, JavaScript, Python and Shell, any other by its own
+// name.
+export function languageName(lang: string): string {
+  return LANGUAGE_NAMES.get(lang) ?? lang;
 }

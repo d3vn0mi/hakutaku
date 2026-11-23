@@ -12,6 +12,8 @@
 //   that import a library, or the files of a hub's group, with, at Components depth, the hubs an
 //   import joins to it. Only the selection's curves are drawn; at Components depth, the curves
 //   between the hubs it keeps bright.
+// - The filters dim the files they leave out, as well, and move or hide nothing: no node, no
+//   hub, no library and no curve. The selection's own node never dims.
 // - Under History, a selected file's neighbours also include the files that change together
 //   with it, each joined to it by a dashed curve. A map that does not carry co-change has them
 //   from the outline cache, fetched once per file; the map refreshes when they arrive.
@@ -37,10 +39,11 @@ import {
 } from "../constants.js";
 import { coreView, fileShownAt } from "../depth.js";
 import { prefersReducedMotion } from "../dom.js";
+import { passes } from "../filters.js";
 import { groupKey, type Model } from "../model.js";
 import { motionMs } from "../motion.js";
 import type { OutlineCache } from "../outline-cache.js";
-import type { Sel, StateStore, ViewState } from "../state.js";
+import type { Filters, Sel, StateStore, ViewState } from "../state.js";
 import { fileColor, fileSize, INK, labelledFiles } from "./colors.js";
 import {
   aggregateCurves,
@@ -178,6 +181,8 @@ export function mountMap(
   let aggregates: Array<{ shape: Float64Array; weight: number; hot: boolean }> =
     [];
   let joins: CurvePick[] | null = null; // the imports between hubs, added up, for the layout
+  let filtered: Filters | null = null; // the filters leftOut was worked out for
+  let leftOut: ReadonlySet<string> = new Set<string>(); // the files the filters leave out, by key
   const core = coreView(model);
 
   // Whether a file is drawn: its depth draws it, and its toggle, Code files or Tests, is on.
@@ -270,6 +275,11 @@ export function mountMap(
   };
   build();
 
+  // Whether a drawn node is drawn dimmed: a selection keeps it no brighter than the rest, or it is
+  // a file the filters leave out. The selection's own node never dims.
+  const dims = (key: string): boolean =>
+    key !== selected && ((lit !== null && !lit.has(key)) || leftOut.has(key));
+
   const reducer = (key: string, a: NodeAttrs): Partial<NodeDisplayData> => {
     if (!shows(a.kind, a.index)) return { ...a, hidden: true };
     const out: Partial<NodeDisplayData> & NodeAttrs = {
@@ -302,7 +312,7 @@ export function mountMap(
         label: a.name,
         forceLabel: true,
       });
-    } else if (lit !== null && !lit.has(key)) {
+    } else if (dims(key)) {
       Object.assign(out, {
         zIndex: 0,
         color: INK.dim,
@@ -608,31 +618,39 @@ export function mountMap(
     }
   };
 
+  // The nodes drawn, and of those the ones drawn dimmed, as the reducer draws them.
   const count = () => {
     const hubs = layout.hubs.length;
     const cochange = picks.filter((c) => c.kind === "cochange").length;
     let visible = 0;
-    graph.forEachNode((_, node) => {
-      if (shows(node.kind, node.index)) visible++;
+    let dimmed = 0;
+    graph.forEachNode((key, node) => {
+      if (!shows(node.kind, node.index)) return;
+      visible++;
+      if (dims(key)) dimmed++;
     });
-    let bright = visible;
-    if (lit !== null) {
-      bright = 0;
-      for (const key of lit) {
-        if (!graph.hasNode(key)) continue;
-        const node = graph.getNodeAttributes(key);
-        if (shows(node.kind, node.index)) bright++;
-      }
-    }
     root.dataset.nodes = String(visible);
-    root.dataset.dimmed = String(visible - bright);
+    root.dataset.dimmed = String(dimmed);
     root.dataset.hubs = String(hubs);
     root.dataset.curves = String(picks.length - cochange);
     root.dataset.cochange = String(cochange);
   };
 
+  // The files the filters leave out, by node key, so that no hub or library is ever among them;
+  // worked out again only when the filters change.
+  const filter = (f: Filters) => {
+    if (f === filtered) return;
+    filtered = f;
+    const out = new Set<string>();
+    for (const file of [...model.production, ...model.tests]) {
+      if (!passes(model, file, f)) out.add(`f${file}`);
+    }
+    leftOut = out;
+  };
+
   const refresh = () => {
     s = state.get();
+    filter(s.filters);
     selected = nodeOf(s.sel);
     lit = litBy(s.sel, selected);
     labelled = labelsFor(s);

@@ -373,7 +373,9 @@ test("a selection dims all but its node and its neighbours, and draws only its c
   if (browserName === "chromium") expect(webgl).toBe(true);
   expect(await mapDrawn(page)).toBe(webgl);
   if (!webgl) {
+    // nothing to dim: the list view stands in the map's place, and the token still selects
     await expectNoWebGL(page);
+    expect(await selectedId(page)).toBe(`observatory:${KEPLER}`);
     return;
   }
   const { kepler, component } = keplerIn(m);

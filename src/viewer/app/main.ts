@@ -2,7 +2,8 @@
 // title and the brand, then build the model and lay out the panels and the map around one view
 // state, and open the node the address's link token names. html[data-ready] says how far it got:
 // "loading", then "data" once the map has arrived, then "map" once the map is drawn, or "nomap"
-// when this browser cannot draw it; or "error" with #fatal saying why.
+// when this browser cannot draw it, and the list view stands in its place; or "error" with
+// #fatal saying why.
 import "./styles/app.css";
 import type { MapData } from "../../query/view/types.js";
 import { guardBuild } from "./build-guard.js";
@@ -13,11 +14,13 @@ import { prefersReducedMotion, showToast } from "./dom.js";
 import { buildFindIndex, type FindIndex, pickOf } from "./find/index.js";
 import { mountFind } from "./find/view.js";
 import { bindKeys } from "./keys.js";
+import { mountListView } from "./list-view.js";
 import { mountMap } from "./map/render.js";
 import { buildModel } from "./model.js";
 import { createOutlineCache } from "./outline-cache.js";
 import { drawTimeline, fillRankLists } from "./panels/bottom.js";
 import { mountDepth } from "./panels/depth-control.js";
+import { mountFilters } from "./panels/filter-controls.js";
 import { mountGrouping } from "./panels/grouping.js";
 import { mountLegend } from "./panels/legend.js";
 import { mountLens, setLens } from "./panels/lens.js";
@@ -132,6 +135,7 @@ function compose(map: MapData, fetched: DataSource): void {
   mountLens(byId("lens"), state);
   mountDepth(byId("depth"), state, byId("announce"), prefs.pickDepth);
   mountShow(byId("show"), model, state);
+  mountFilters(byId("filters"), model, state);
   // the map's clicks select through the selection, which needs the map: it is made right after
   let selector: Selector | null = null;
   const view = mountMap(
@@ -152,6 +156,15 @@ function compose(map: MapData, fetched: DataSource): void {
     source,
   });
   selector = selection;
+  // the files, ranked, under the filters: over the map when L opens it, or in the map's place,
+  // for good, when this browser cannot draw the map
+  const list = mountListView(
+    byId("list-view"),
+    model,
+    state,
+    (file) => selection.select({ kind: "file", file }),
+    view === null,
+  );
   mountStatband(
     byId("statband"),
     model,
@@ -189,9 +202,13 @@ function compose(map: MapData, fetched: DataSource): void {
   byId("find-btn").addEventListener("click", () => find.focus());
   bindKeys({
     find: () => find.focus(),
-    back: () => selection.back(),
+    // a list open over the map is the level Esc closes first
+    back: () => {
+      if (!list.escape()) selection.back();
+    },
     lens: (lens) => setLens(state, lens),
     depth: () => prefs.pickDepth(nextDepth(state.get().depth)),
+    list: () => list.key(),
   });
   byId("back-btn").addEventListener("click", () => selection.back());
   addEventListener("hashchange", () =>
@@ -207,6 +224,8 @@ function compose(map: MapData, fetched: DataSource): void {
       console.error("hakutaku: the change activity could not be loaded", e),
   );
   if (view === null) {
+    // the notice, the legend, the list view and the stat band stand in the map's place
+    byId("map").classList.add("nomap");
     const notice = byId<HTMLElement>("map-notice");
     notice.textContent = NO_WEBGL;
     notice.hidden = false;

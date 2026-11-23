@@ -1,9 +1,9 @@
 // The page's keys, by KeyboardEvent.key: F or / finds, Esc climbs one level, 1, 2 and 3 choose
-// the Structure, Risk and History lenses, and D steps to the next depth. A key typed into a field
-// (an input, a select, a textarea or editable text), or pressed with Ctrl, Alt or Meta, belongs to
-// the field or to the browser. Shift does not count: it only picks the character a key types.
-// A key handled here does nothing else, so the F or / that moves the focus into the Find box is
-// not typed into it.
+// the Structure, Risk and History lenses, D steps to the next depth, and L opens the list view.
+// A key typed into a field (an input, a select, a textarea or editable text), or pressed with
+// Ctrl, Alt or Meta, belongs to the field or to the browser. Shift does not count: it only picks
+// the character a key types. A key handled here does nothing else, so the F or / that moves the
+// focus into the Find box is not typed into it.
 import type { Lens } from "./state.js";
 
 export interface KeyActions {
@@ -11,6 +11,7 @@ export interface KeyActions {
   back(): void;
   lens(lens: Lens): void;
   depth(): void;
+  list(): void;
 }
 
 export function bindKeys(actions: KeyActions): void {
@@ -24,6 +25,8 @@ export function bindKeys(actions: KeyActions): void {
     ["3", () => actions.lens("history")],
     ["d", () => actions.depth()],
     ["D", () => actions.depth()],
+    ["l", () => actions.list()],
+    ["L", () => actions.list()],
   ]);
   document.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.isComposing) return;

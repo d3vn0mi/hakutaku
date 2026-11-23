@@ -373,6 +373,64 @@ h3 {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+/* The filters: a select under its name, a checkbox before its name, and the hotspot threshold,
+   which its box turns on, its value beside the box and its slider under both. */
+.filters {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.filters .field {
+  display: grid;
+  gap: 4px;
+}
+.filters .field label {
+  font-size: 12px;
+  color: var(--muted);
+}
+.filters select {
+  width: 100%;
+  min-width: 0;
+  background: var(--ground-2);
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+}
+.filters input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.threshold {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px 8px;
+}
+.threshold input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.threshold input[type="range"]:disabled {
+  cursor: not-allowed;
+}
+.threshold output {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 
 /* The map: sigma's canvas over the curves' canvas, with the legend, the stat band, the zoom and
    the notices laid over both. */
@@ -539,6 +597,8 @@ h3 {
   cursor: pointer;
   color: var(--ink);
 }
+/* The list view, over the map or in its place: its title and count, the files ranked, each a
+   button, and after them the button that shows more. */
 .list-view {
   position: absolute;
   z-index: 4;
@@ -546,6 +606,55 @@ h3 {
   overflow-y: auto;
   padding: 14px 16px;
   background: var(--ground);
+}
+.list-view h3 small {
+  font-size: 11.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+}
+.list-view ol {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.list-view .file {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  padding: 4px 8px;
+  text-align: left;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.list-view .file:hover {
+  background: var(--panel);
+  color: var(--ink);
+}
+.list-view .none {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.list-view .more {
+  margin-top: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.list-view .more:hover {
+  color: var(--ink);
+  border-color: var(--muted);
 }
 .map-notice {
   position: absolute;
@@ -560,6 +669,35 @@ h3 {
   padding: 7px 12px;
   font-size: 13px;
   color: var(--ink-2);
+}
+/* Without WebGL there is no map to lay anything over: the notice, the legend, the list view in
+   the map's place and the stat band stand one under the other, and the map's canvases, zoom and
+   marks are gone. */
+.map.nomap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+}
+.map.nomap .map-notice,
+.map.nomap .caption,
+.map.nomap .list-view,
+.map.nomap .statband {
+  position: static;
+}
+.map.nomap .list-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+}
+.map.nomap .statband {
+  justify-content: flex-start;
+}
+.map.nomap #edges,
+.map.nomap #sigma,
+.map.nomap .zoom,
+.map.nomap .crosshair {
+  display: none;
 }
 
 /* The details. */

@@ -48,10 +48,12 @@
   <main class="map" id="map" aria-label="Code map">
     <canvas id="edges" aria-hidden="true"></canvas>
     <div id="sigma"></div>
+    <p class="map-notice" id="map-notice" hidden></p>
     <div class="caption">
       <p class="legend" id="legend"></p>
       <p class="coverage" id="coverage" hidden></p>
     </div>
+    <section class="list-view" id="list-view" aria-label="Files, ranked" hidden></section>
     <div class="statband" id="statband"></div>
     <fieldset class="zoom" aria-label="Zoom">
       <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
@@ -61,8 +63,6 @@
     <span class="crosshair crosshair-top" aria-hidden="true"></span>
     <span class="crosshair crosshair-bottom" aria-hidden="true"></span>
     <div class="toast" id="toast" role="status" hidden></div>
-    <section class="list-view" id="list-view" aria-label="Files, ranked" hidden></section>
-    <p class="map-notice" id="map-notice" hidden></p>
   </main>
 
   <aside class="right" id="detail" aria-label="Details" hidden></aside>

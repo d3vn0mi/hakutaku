@@ -28,8 +28,9 @@ const PREFS = "hakutaku:view:observatory";
 
 const box = (page: Page) =>
   page.getByRole("combobox", { name: "Find in the code map" });
-const matches = (page: Page) => page.getByRole("option");
 const list = (page: Page) => page.getByRole("listbox");
+// the matches in Find's list, not the choices of the filters' selects
+const matches = (page: Page) => list(page).getByRole("option");
 
 test("F, a prefix, the arrows and Enter select a file, using the keyboard only", async ({
   page,
