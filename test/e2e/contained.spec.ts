@@ -120,6 +120,26 @@ function policiesOf(page: Page, path: string): Promise<string | undefined>[] {
   return got;
 }
 
+// The path and the Content-Security-Policy header of each answer under /assets/, as the browser
+// got it.
+function assetPoliciesOf(page: Page): Promise<[string, string | undefined]>[] {
+  const got: Promise<[string, string | undefined]>[] = [];
+  page.on("response", (response) => {
+    const path = new URL(response.url()).pathname;
+    if (path.startsWith("/assets/")) {
+      got.push(
+        response
+          .allHeaders()
+          .then((h): [string, string | undefined] => [
+            path,
+            h["content-security-policy"],
+          ]),
+      );
+    }
+  });
+  return got;
+}
+
 // The address of each worker the page starts.
 function workersOf(page: Page): string[] {
   const started: string[] = [];
@@ -267,11 +287,20 @@ test("with every request outside its server blocked, the viewer renders fully", 
   const log = requestLog(page, origin);
   const asked = requestsOf(page);
   const policies = policiesOf(page, "/");
+  const assetPolicies = assetPoliciesOf(page);
   await openViewer(page, E2E.sample);
   await expectMapOrList(page, browserName);
   await expectRenderedFully(page);
   // under the policy its server sent, which nothing on the page broke
   expect(await Promise.all(policies)).toEqual([VIEWER_CSP]);
+  // and every asset it loaded, its script, styles and fonts, came under a policy that allows
+  // nothing, so none of them can be started as a worker that asks for anything
+  const assets = await Promise.all(assetPolicies);
+  expect(assets.map(([path]) => path)).toEqual(
+    expect.arrayContaining(["/assets/app.js", "/assets/app.css"]),
+  );
+  expect(assets.some(([path]) => path.endsWith(".woff2"))).toBe(true);
+  expect(assets.filter(([, csp]) => csp !== "default-src 'none'")).toEqual([]);
   expect(await violations()).toEqual([]);
   expect([log.outside, blocked]).toEqual([[], []]);
   // what it asked for, it asked of its own server: the page, its script, styles and fonts, the
