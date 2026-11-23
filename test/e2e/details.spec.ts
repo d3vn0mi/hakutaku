@@ -402,6 +402,20 @@ test("a component lists its core files, and a library its importers", async ({
   await expect(page.locator("#pane .more")).toHaveText(
     `and ${m.externals[busiest][2] - 10} more`,
   );
+  // its importers by rank, a file without a rank last, then by path
+  const importing = new Set<number>();
+  for (let i = 0; i < m.libImports.length; i += 2) {
+    if (m.libImports[i + 1] === busiest) importing.add(m.libImports[i]);
+  }
+  const rankOf = (f: number) => m.files[f][F.rank] || Number.POSITIVE_INFINITY;
+  const byRank = [...importing].sort(
+    (x, y) =>
+      rankOf(x) - rankOf(y) ||
+      (m.files[x][F.path] < m.files[y][F.path] ? -1 : 1),
+  );
+  await expect(page.locator("#pane .rows button")).toHaveText(
+    byRank.slice(0, 10).map((f) => m.files[f][F.path]),
+  );
   await page.locator("#pane .rows button").first().click();
   expect(await selectedId(page)).toMatch(/^observatory:/);
   await expect(tab(page, "Overview")).toHaveAttribute("aria-selected", "true");
@@ -565,6 +579,17 @@ test("an outline from another build draws nothing and says the map was rebuilt",
   await expect(page.locator("#pane .dots button")).toHaveCount(0);
   await expect(page.locator("#pane .defs button")).toHaveCount(0);
   expect(asked).toEqual([`observatory:${KEPLER}`]);
+  // the Overview's button asks again, since nothing was kept, and lists nothing from that build
+  await tab(page, "Overview").click();
+  await page
+    .getByRole("button", { name: "Show the files that change with it" })
+    .click();
+  const partners = page.locator("#pane section").filter({ hasText: COCHANGE });
+  await expect(partners.locator(".note")).toHaveText(
+    "The outline could not be loaded.",
+  );
+  await expect(partners.locator(".rows")).toHaveCount(0);
+  expect(asked).toEqual([`observatory:${KEPLER}`, `observatory:${KEPLER}`]);
 });
 
 test("a definition's Overview gives its own facts, then its file's", async ({
@@ -733,6 +758,34 @@ test("files and definitions have four tabs, components and libraries two, and a 
   await expect(page.getByRole("tablist")).toHaveCount(0);
   await expect(page.locator("#pane")).toHaveCount(0);
   await expect(page.locator("#detail .sub")).toHaveCount(0);
+});
+
+test("the tabs and the Wide switch work from the keyboard", async ({
+  page,
+}) => {
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await tab(page, "Overview").focus();
+  await page.keyboard.press("Tab");
+  await expect(tab(page, "Inside")).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(tab(page, "Inside")).toHaveAttribute("aria-selected", "true");
+  await expect(tab(page, "Overview")).toHaveAttribute("aria-selected", "false");
+  await expect(page.locator("#pane .dots button").first()).toBeVisible();
+  await expect(tab(page, "Inside")).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Space");
+  await expect(tab(page, "Overview")).toHaveAttribute("aria-selected", "true");
+  await expect(fact(page, "Lines")).toBeVisible();
+  for (const name of ["Inside", "Source", "Agent"]) {
+    await page.keyboard.press("Tab");
+    await expect(tab(page, name)).toBeFocused();
+  }
+  await page.keyboard.press("Tab");
+  await expect(
+    page.getByRole("button", { name: "Wide", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#app")).toHaveClass(/\bwide\b/);
 });
 
 test("Wide and Narrow widen the details, and opening Source widens them", async ({
