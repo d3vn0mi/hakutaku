@@ -2,8 +2,9 @@
 // Serves the map of one registered repo in a browser: the viewer's page and its API on 127.0.0.1
 // at a free port, until the process is interrupted (SIGINT or SIGTERM). The one stdout line is
 // the link, which carries the session the API asks for; --open also opens it in the platform's
-// browser. The repo's store is opened on every request, so a rebuild is served as soon as it is
-// swapped in.
+// browser, through a page only this user can read that sends the browser on to it, so that the
+// session never shows in a process's arguments. The repo's store is opened on every request, so a
+// rebuild is served as soon as it is swapped in.
 // With --export it serves nothing: it writes the map as one self-contained page, which requests
 // nothing, holding the repo's redacted sources with --with-source when the repo shows them, and
 // prints the page's absolute path as its one stdout line.

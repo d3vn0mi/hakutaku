@@ -51,7 +51,9 @@ the store on every request, so a rebuild is served as soon as it is in place.
 usage: hakutaku view <id> [--open] [--export <file.html> [--with-source]]
 ```
 
-- `--open` also opens the link in the platform's browser: `xdg-open` on Linux, `open` on macOS.
+- `--open` also opens the link in the platform's browser, through `xdg-open` on Linux and `open` on
+  macOS. The opener is handed a page that sends the browser on to the link, never the link itself
+  (see Security).
 - `--export <file.html>` serves nothing. It writes the map as one self-contained page, then prints
   the page's absolute path. The page holds the map with every file's outline, the change activity,
   and, for each node, the answer its Agent tab shows.
@@ -374,6 +376,15 @@ as `x-hakutaku-session`; the server compares it in constant time, and answers 40
 `Host` header must be `127.0.0.1:<port>` or `localhost:<port>`, or the answer is 421: a page of
 another site, reached through a name that resolves to `127.0.0.1`, cannot talk to the server. There
 is no CORS header and no preflight, and the server is read-only: it runs the read-only tools only.
+
+**`--open`.** Every user of the machine can read a process's arguments, and the link carries the
+session, so `--open` never hands the link to the opener, nor to a browser the opener starts, which
+keeps its arguments for as long as it runs. It writes a page that sends the browser on to the link,
+in a fresh directory under the temporary directory (`TMPDIR`): the directory of mode 0700 and the
+page of mode 0600, so that only you can read it. The opener is handed the page's path, and the page
+is removed 60 seconds later, or when `view` stops, whichever comes first. A browser kept out of the
+temporary directory, as some sandboxed browsers are, cannot read the page: open the printed link
+instead.
 
 **Framing.** The served page forbids framing (`frame-ancestors 'none'`). An exported page cannot: a
 policy in a `<meta>` tag cannot carry `frame-ancestors`, so any site can frame a published export. It

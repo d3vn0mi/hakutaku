@@ -12,10 +12,11 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { afterAll, expect, it } from "vitest";
@@ -189,19 +190,31 @@ it("SIGTERM ends it too, with exit 0", async () => {
 });
 
 // A stand-in for the platform's opener, first on PATH under both names: it writes the arguments it
-// was given, one per line, to the file the variable OPENED names. Nothing else on this PATH opens
-// a browser.
-function fakeOpener(): { env: NodeJS.ProcessEnv; opened: string } {
+// was given, one per line, to the file the variable OPENED names, all at once. Nothing else on
+// this PATH opens a browser. The view runs with a temporary directory of its own, tmp.
+function fakeOpener(): {
+  env: NodeJS.ProcessEnv;
+  opened: string;
+  tmp: string;
+} {
   const base = env();
   const dir = mkdtempSync(join(root ?? tmpdir(), "opener-"));
-  const script = '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$OPENED"\n';
+  const script =
+    '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$OPENED.part" && mv "$OPENED.part" "$OPENED"\n';
   for (const name of ["xdg-open", "open"]) {
     writeFileSync(join(dir, name), script, { mode: 0o755 });
   }
   const opened = join(dir, "opened.txt");
+  const tmp = mkdtempSync(join(root ?? tmpdir(), "tmp-"));
   return {
-    env: { ...base, PATH: `${dir}:${base.PATH ?? ""}`, OPENED: opened },
+    env: {
+      ...base,
+      PATH: `${dir}:${base.PATH ?? ""}`,
+      OPENED: opened,
+      TMPDIR: tmp,
+    },
     opened,
+    tmp,
   };
 }
 
@@ -214,7 +227,7 @@ async function waitFor(check: () => boolean, ms: number): Promise<boolean> {
   return check();
 }
 
-it("--open hands the link to the platform's opener as one argument; without it, nothing opens", async () => {
+it("--open hands the platform's opener a page only this user can read, which sends the browser on to the link, and removes it on exit; without it, nothing opens", async () => {
   for (const open of [true, false]) {
     const fake = fakeOpener();
     const child = spawn(
@@ -229,9 +242,32 @@ it("--open hands the link to the platform's opener as one argument; without it, 
         open ? 5000 : 500,
       );
       expect([open, seen]).toEqual([open, open]);
-      if (open) expect(readFileSync(fake.opened, "utf8")).toBe(`${url}\n`);
+      if (open) {
+        // one argument, which other users of the machine can read: a page in a directory of its
+        // own under the temporary directory, with nothing of the link in it
+        const args = readFileSync(fake.opened, "utf8").split("\n").slice(0, -1);
+        expect(args).toHaveLength(1);
+        const [page = ""] = args;
+        expect(dirname(dirname(page))).toBe(fake.tmp);
+        const session = new URL(url).searchParams.get("s") ?? "";
+        expect(session).toHaveLength(43);
+        expect([page.includes(session), page.includes("?s=")]).toEqual([
+          false,
+          false,
+        ]);
+        // which only this user can read, and which sends the browser on to the link
+        expect([
+          statSync(dirname(page)).mode & 0o777,
+          statSync(page).mode & 0o777,
+        ]).toEqual([0o700, 0o600]);
+        expect(readFileSync(page, "utf8")).toContain(
+          `<meta http-equiv="refresh" content="0; url=${url}">`,
+        );
+      }
       child.kill("SIGINT");
       expect(await exitCode(child)).toBe(0);
+      // the page went with the server, and nothing else was left in the temporary directory
+      expect(readdirSync(fake.tmp)).toEqual([]);
     } finally {
       child.kill("SIGKILL");
     }

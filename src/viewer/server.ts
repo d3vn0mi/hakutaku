@@ -3,18 +3,22 @@
 // to a caller that sends the session the link carries. Every request must name this address and
 // port in its Host header, so that a page of another site, reached through a DNS name that
 // resolves to 127.0.0.1, cannot talk to it. It sends no CORS header, answers no preflight, and
-// nothing it serves writes. openBrowser: the platform's opener, for --open.
+// nothing it serves writes. openBrowser: the platform's opener, for --open, handed a page that
+// sends the browser on to the link, so that the session never shows in a process's arguments.
 //
 // Not exported by the library: a host that mounts the viewer serves viewerApi and viewerStatic
 // with its own server and its own authentication.
 import { spawn as spawnProcess } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
 import type { AddressInfo, Socket } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { RepoId } from "../model/index.js";
 import { printable } from "../redact/printable.js";
 import type { Host } from "../tools/index.js";
@@ -66,15 +70,16 @@ export function startViewerServer(opts: {
       });
       served.port = (server.address() as AddressInfo).port;
       const url = `http://127.0.0.1:${served.port}/?s=${session}`;
+      const opened = opts.open ? openBrowser(url) : null;
       let closing: Promise<void> | undefined;
       const close = (): Promise<void> => {
         closing ??= new Promise<void>((done, failed) => {
+          opened?.remove();
           server.close((err) => (err === undefined ? done() : failed(err)));
           server.closeAllConnections();
         });
         return closing;
       };
-      if (opts.open) openBrowser(url);
       resolve({ url, close });
     });
   });
@@ -235,16 +240,33 @@ function refuseMalformed(_err: Error, socket: Socket): void {
   }
 }
 
+// How long the page --open hands the opener stays on disk: time for a browser to start and read
+// it. It goes sooner when the server closes, and as the process exits.
+export const OPEN_PAGE_KEEP_MS = 60_000;
+
+// A page openBrowser wrote; remove() deletes it and its directory, and is a no-op after.
+export interface OpenPage {
+  remove(): void;
+}
+
+const NOTHING_OPENED: OpenPage = Object.freeze({ remove() {} });
+
 // Opens url in the platform's browser: xdg-open on Linux, open on macOS, as a detached process
-// with no shell and no stdio, which this process does not wait for. A failure only warns.
+// with no shell and no stdio, which this process does not wait for. A process's arguments can be
+// read by every user of the machine, and url carries the session, so the opener is never given
+// url: it is given a page, which only this user can read, that sends the browser on to url. The
+// page is removed once the browser has had time to read it (OPEN_PAGE_KEEP_MS), on remove(), or
+// as the process exits, whichever comes first. A failure only warns, and leaves no page behind.
 export function openBrowser(
   url: string,
   deps: {
     platform?: NodeJS.Platform;
     spawn?: typeof import("node:child_process").spawn;
     warn?: (line: string) => void;
+    // where the page's own directory is made: the temporary directory unless given
+    dir?: string;
   } = {},
-): void {
+): OpenPage {
   const platform = deps.platform ?? process.platform;
   const warn =
     deps.warn ??
@@ -257,24 +279,84 @@ export function openBrowser(
     warn(
       `hakutaku view: no browser opener on ${platform}; open the link yourself`,
     );
-    return;
+    return NOTHING_OPENED;
   }
   const failed = (err: unknown): void => {
     warn(
       `hakutaku view: could not open a browser (${printable(reasonOf(err))}); open the link yourself`,
     );
   };
+  let page: OpenPage & { path: string };
   try {
-    const child = (deps.spawn ?? spawnProcess)(opener, [url], {
+    page = writeOpenPage(url, deps.dir ?? tmpdir());
+  } catch (err) {
+    failed(err);
+    return NOTHING_OPENED;
+  }
+  try {
+    const child = (deps.spawn ?? spawnProcess)(opener, [page.path], {
       detached: true,
       stdio: "ignore",
     });
-    child.on("error", failed);
+    child.on("error", (err) => {
+      page.remove();
+      failed(err);
+    });
     child.unref();
   } catch (err) {
+    page.remove();
     failed(err);
   }
+  return page;
 }
+
+// The page that sends the browser on to url, in a fresh directory under base: the directory of
+// mode 0700, as mkdtemp makes it, and the page of mode 0600, so that only this user can read it.
+function writeOpenPage(url: string, base: string): OpenPage & { path: string } {
+  const dir = mkdtempSync(join(base, "hakutaku-open-"));
+  const path = join(dir, "view.html");
+  let timer: NodeJS.Timeout | undefined;
+  const remove = (): void => {
+    clearTimeout(timer);
+    process.off("exit", remove);
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // nothing more can be done for it, and the session ends with the server anyway
+    }
+  };
+  try {
+    writeFileSync(path, redirectPage(url), { mode: 0o600, flag: "wx" });
+  } catch (err) {
+    remove();
+    throw err;
+  }
+  timer = setTimeout(remove, OPEN_PAGE_KEEP_MS);
+  timer.unref();
+  process.on("exit", remove);
+  return { path, remove };
+}
+
+// A refresh to url at once, and url as a link for a browser that does not follow a refresh.
+function redirectPage(url: string): string {
+  const href = url.replace(/[&<>"']/g, (c) => ENTITIES[c] ?? c);
+  return [
+    "<!doctype html>",
+    '<meta charset="utf-8">',
+    `<meta http-equiv="refresh" content="0; url=${href}">`,
+    "<title>hakutaku view</title>",
+    `<p><a href="${href}">Open the viewer</a></p>`,
+    "",
+  ].join("\n");
+}
+
+const ENTITIES: Readonly<Record<string, string>> = {
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  '"': "&quot;",
+  "'": "&#39;",
+};
 
 const reasonOf = (err: unknown): string => {
   const code = (err as NodeJS.ErrnoException | undefined)?.code;

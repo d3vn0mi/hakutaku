@@ -1,13 +1,24 @@
 // The viewer's own server, as hakutaku view runs it: on loopback at a free port, the API only for
 // the session the link carries, every request's Host header checked, no CORS, and a cap on
-// request bodies. openBrowser runs the platform's opener without a shell.
+// request bodies. openBrowser runs the platform's opener without a shell, and hands it a page
+// that sends the browser on to the link, never the link itself.
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { request } from "node:http";
 import { connect } from "node:net";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join } from "node:path";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { runTool } from "../../../src/tools/index.js";
 import { SECURITY_HEADERS, VIEWER_CSP } from "../../../src/viewer/csp.js";
 import {
   MAX_BODY_BYTES,
+  OPEN_PAGE_KEEP_MS,
   openBrowser,
   startViewerServer,
 } from "../../../src/viewer/server.js";
@@ -28,6 +39,56 @@ beforeAll(async () => {
   session = u.searchParams.get("s") ?? "";
 });
 afterAll(() => s.close());
+
+let pagesRoot: string | undefined;
+afterAll(() => {
+  if (pagesRoot !== undefined) {
+    rmSync(pagesRoot, { recursive: true, force: true });
+  }
+});
+
+// A fresh, empty directory for the pages openBrowser writes, under one root this file removes.
+function pagesDir(): string {
+  pagesRoot ??= mkdtempSync(join(tmpdir(), "hakutaku-opener-test-"));
+  return mkdtempSync(join(pagesRoot, "base-"));
+}
+
+// What a stand-in for spawn was handed, as it was called: the command, its arguments and options,
+// and, when the first argument names a file, that file's directory's mode, its own mode and its
+// text.
+interface Handed {
+  command: string;
+  args: string[];
+  options: { detached?: unknown; stdio?: unknown; shell?: unknown };
+  dirMode: number | null;
+  pageMode: number | null;
+  page: string | null;
+}
+
+function recorder(): { spawn: never; handed: Handed[] } {
+  const handed: Handed[] = [];
+  const spawn = ((command: string, args: string[], options: object) => {
+    const seen: Handed = {
+      command,
+      args,
+      options,
+      dirMode: null,
+      pageMode: null,
+      page: null,
+    };
+    handed.push(seen);
+    const [path = ""] = args;
+    try {
+      seen.dirMode = statSync(dirname(path)).mode & 0o777;
+      seen.pageMode = statSync(path).mode & 0o777;
+      seen.page = readFileSync(path, "utf8");
+    } catch {
+      // not a file: the test says what it got instead
+    }
+    return { unref() {}, on() {} };
+  }) as never;
+  return { spawn, handed };
+}
 
 const api = (headers: Record<string, string> = {}) =>
   fetch(`http://127.0.0.1:${port}/api/map`, { headers });
@@ -349,29 +410,110 @@ it("answers a request it cannot parse with 400 and the security headers, then cl
   expect(fields).toContain("connection: close");
 });
 
-it("openBrowser runs the platform opener without a shell", () => {
-  const calls: unknown[][] = [];
-  const spawn = ((...a: unknown[]) => {
-    calls.push(a);
-    return { unref() {}, on() {} };
-  }) as never;
-  openBrowser("http://127.0.0.1:1/?s=x", { platform: "linux", spawn });
-  openBrowser("http://127.0.0.1:1/?s=x", { platform: "darwin", spawn });
-  expect(calls.map((c) => [c[0], c[1]])).toEqual([
-    ["xdg-open", ["http://127.0.0.1:1/?s=x"]],
-    ["open", ["http://127.0.0.1:1/?s=x"]],
-  ]);
-  for (const c of calls) {
-    expect(c[2]).toMatchObject({ detached: true, stdio: "ignore" });
-    expect((c[2] as { shell?: unknown }).shell).toBeUndefined();
+it("openBrowser hands the platform opener, without a shell, a page only this user can read that sends the browser on to the link, and never the link itself", () => {
+  // a link as the server makes it, with a session of 43 characters, and one whose characters
+  // markup reads, each with the link as the page must write it in an attribute
+  const link = `http://127.0.0.1:1/?s=${"Ab9_-".repeat(8)}xyz`;
+  const odd = "http://127.0.0.1:1/?s=a&b\"c<d>'e";
+  const rows: Array<[url: string, href: string]> = [
+    [link, link],
+    [odd, "http://127.0.0.1:1/?s=a&amp;b&quot;c&lt;d&gt;&#39;e"],
+  ];
+  const openers = [
+    ["linux", "xdg-open"],
+    ["darwin", "open"],
+  ] as const;
+  for (const [platform, opener] of openers) {
+    for (const [url, href] of rows) {
+      const dir = pagesDir();
+      const { spawn, handed } = recorder();
+      const warned: string[] = [];
+      const opened = openBrowser(url, {
+        platform,
+        spawn,
+        dir,
+        warn: (line) => {
+          warned.push(line);
+        },
+      });
+      try {
+        expect(warned).toEqual([]);
+        expect(handed.map((h) => h.command)).toEqual([opener]);
+        const [h] = handed;
+        // one argument, which other users of the machine can read: a page's path, in a fresh
+        // directory of its own, with nothing of the link in it
+        expect(h.args).toHaveLength(1);
+        const [path = ""] = h.args;
+        expect([isAbsolute(path), dirname(dirname(path)), path]).toEqual([
+          true,
+          dir,
+          expect.stringMatching(/\.html$/),
+        ]);
+        expect(h.args.join(" ")).not.toContain("?s=");
+        expect(h.args.join(" ")).not.toContain(url);
+        expect(h.args.join(" ")).not.toContain("Ab9_-Ab9_-");
+        // the page: readable by this user alone, in a directory only this user can enter, and
+        // sending the browser on to the link, or letting a click do it
+        expect([h.dirMode, h.pageMode]).toEqual([0o700, 0o600]);
+        expect(h.page).toContain(
+          `<meta http-equiv="refresh" content="0; url=${href}">`,
+        );
+        expect(h.page).toContain(`<a href="${href}">`);
+        expect(h.options).toMatchObject({ detached: true, stdio: "ignore" });
+        expect(h.options.shell).toBeUndefined();
+      } finally {
+        opened.remove();
+      }
+      // removed: the page and its directory
+      expect(readdirSync(dir)).toEqual([]);
+    }
   }
 });
 
-it("a browser that cannot be opened only warns", () => {
+it("removes the page once the browser has had time to read it, or as the process exits, and keeps no exit hook after", () => {
+  const hooks = process.listeners("exit");
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const dir = pagesDir();
+    const opened = openBrowser("http://127.0.0.1:1/?s=x", {
+      platform: "linux",
+      spawn: recorder().spawn,
+      dir,
+    });
+    expect(readdirSync(dir)).toHaveLength(1);
+    expect(process.listeners("exit")).toHaveLength(hooks.length + 1);
+    vi.advanceTimersByTime(OPEN_PAGE_KEEP_MS - 1);
+    expect(readdirSync(dir)).toHaveLength(1);
+    vi.advanceTimersByTime(1);
+    expect(readdirSync(dir)).toEqual([]);
+    expect(process.listeners("exit")).toEqual(hooks);
+    // removing it again does nothing
+    expect(() => opened.remove()).not.toThrow();
+  } finally {
+    vi.useRealTimers();
+  }
+  // a process that exits before then removes it on its way out
+  const dir = pagesDir();
+  openBrowser("http://127.0.0.1:1/?s=x", {
+    platform: "linux",
+    spawn: recorder().spawn,
+    dir,
+  });
+  const added = process.listeners("exit").filter((l) => !hooks.includes(l));
+  expect([added.length, readdirSync(dir).length]).toEqual([1, 1]);
+  (added[0] as (code: number) => void)(0);
+  expect(readdirSync(dir)).toEqual([]);
+  expect(process.listeners("exit")).toEqual(hooks);
+});
+
+it("a browser that cannot be opened only warns, and leaves no page behind", () => {
+  const hooks = process.listeners("exit").length;
   const warned: string[] = [];
   const warn = (line: string) => {
     warned.push(line);
   };
+  // the opener cannot be started
+  const thrown = pagesDir();
   const throwing = (() => {
     throw Object.assign(new Error("spawn xdg-open EACCES"), {
       code: "EACCES",
@@ -382,8 +524,12 @@ it("a browser that cannot be opened only warns", () => {
       platform: "linux",
       spawn: throwing,
       warn,
+      dir: thrown,
     }),
   ).not.toThrow();
+  expect(readdirSync(thrown)).toEqual([]);
+  // the opener fails once started
+  const failed = pagesDir();
   let onError: ((e: Error) => void) | undefined;
   let unrefs = 0;
   const failing = (() => ({
@@ -398,11 +544,15 @@ it("a browser that cannot be opened only warns", () => {
     platform: "linux",
     spawn: failing,
     warn,
+    dir: failed,
   });
-  expect(unrefs).toBe(1);
+  expect([unrefs, readdirSync(failed).length]).toEqual([1, 1]);
   onError?.(
     Object.assign(new Error("spawn xdg-open ENOENT"), { code: "ENOENT" }),
   );
+  expect(readdirSync(failed)).toEqual([]);
+  // no opener on this platform: no page is written
+  const none = pagesDir();
   let spawned = 0;
   openBrowser("http://127.0.0.1:1/?s=x", {
     platform: "win32",
@@ -410,12 +560,24 @@ it("a browser that cannot be opened only warns", () => {
       spawned++;
     }) as never,
     warn,
+    dir: none,
   });
-  expect(spawned).toBe(0);
-  expect(warned).toHaveLength(3);
+  expect([spawned, readdirSync(none)]).toEqual([0, []]);
+  // no page can be written: the opener is never asked, least of all with the link
+  const { spawn, handed } = recorder();
+  openBrowser("http://127.0.0.1:1/?s=x", {
+    platform: "linux",
+    spawn,
+    warn,
+    dir: join(pagesDir(), "missing"),
+  });
+  expect(handed).toEqual([]);
+  expect(warned).toHaveLength(4);
   expect(warned[0]).toContain("EACCES");
   expect(warned[1]).toContain("ENOENT");
   expect(warned[2]).toContain("win32");
+  expect(warned[3]).toContain("ENOENT");
+  expect(process.listeners("exit")).toHaveLength(hooks);
 });
 
 it("close() stops listening", async () => {

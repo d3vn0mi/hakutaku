@@ -1,8 +1,9 @@
 // docs/viewer.md against the code it describes: its byline and its ten sections, in order; every
 // link token it shows, through the codec both ways; the headers and the statuses it lists, against
-// the viewer's own, each status as an answer really gives it; its keys, against the page's key
-// table; and its legends and usage line, word for word. Run `npm run build` first: the page's and
-// the export's policies are read from the built bundle.
+// the viewer's own, each status as an answer really gives it; what --open hands the opener, and
+// how long its page stays; its keys, against the page's key table; and its legends and usage line,
+// word for word. Run `npm run build` first: the page's and the export's policies are read from the
+// built bundle.
 import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
 import {
@@ -20,7 +21,10 @@ import {
   VIEWER_CSP,
 } from "../../../src/viewer/csp.js";
 import { inlineViewerHtml } from "../../../src/viewer/inline.js";
-import { MAX_BODY_BYTES } from "../../../src/viewer/server.js";
+import {
+  MAX_BODY_BYTES,
+  OPEN_PAGE_KEEP_MS,
+} from "../../../src/viewer/server.js";
 import { viewerStatic } from "../../../src/viewer/static.js";
 import type { ViewerResponse } from "../../../src/viewer/types.js";
 import { tinyHost } from "../viewer/tiny-host.js";
@@ -170,6 +174,20 @@ it("lists the headers every answer carries, and each policy as the viewer sends 
   expect(named).not.toBe(csp);
   expect(security).toContain(`\`\`\`text\n${named}\n\`\`\``);
   expect(prose).toContain(`${MAX_BODY_BYTES.toLocaleString("en-US")} bytes`);
+});
+
+it("says what --open hands the opener, who can read it, and how long it stays", () => {
+  const security = flat(sectionOf("Security"));
+  expect(security).toContain(
+    "`--open` never hands the link to the opener, nor to a browser the opener starts",
+  );
+  expect(security).toContain(
+    "the directory of mode 0700 and the page of mode 0600",
+  );
+  expect(OPEN_PAGE_KEEP_MS % 1000).toBe(0);
+  expect(security).toContain(
+    `the page is removed ${OPEN_PAGE_KEEP_MS / 1000} seconds later, or when \`view\` stops`,
+  );
 });
 
 // What the API and the static files can answer, read from their code: every status they write,
