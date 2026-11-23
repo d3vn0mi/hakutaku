@@ -13,6 +13,9 @@
 // - It holds at most OUTLINE_CACHE_LIMIT outlines, dropping the least recently used first, but
 //   never one keep() names, as the one the details panel shows; a dropped outline is read or
 //   fetched again when it is next asked for.
+// - A part of the page that must not fetch, as a file's Overview, can wait for an outline that
+//   another part fetches, as History or Inside do: whenFetched() calls it once that outline is
+//   kept, if its owner is still there; a wait whose owner has gone is dropped.
 import { formatId, parseId } from "../../model/ids.js";
 import type { Id } from "../../model/types.js";
 import { F } from "../../query/view/constants.js";
@@ -31,6 +34,20 @@ export interface Outline {
 export interface OutlineCache {
   peek(file: number): Outline | null; // null: not known without a fetch
   get(file: number): Promise<Outline>;
+  // Calls fn, once, with the file's outline when a fetch that anything on the page made brings it
+  // and it is kept, if alive() still holds then; it fetches nothing itself. A wait whose alive()
+  // no longer holds is dropped then, or when another wait begins.
+  whenFetched(
+    file: number,
+    alive: () => boolean,
+    fn: (outline: Outline) => void,
+  ): void;
+}
+
+interface Wait {
+  file: number;
+  alive(): boolean;
+  fn(outline: Outline): void;
 }
 
 export function createOutlineCache(
@@ -47,6 +64,7 @@ export function createOutlineCache(
       ? { outline: map.outline, cochange: map.cochange }
       : null;
   let partners: Map<number, Array<[number, number]>> | null = null;
+  let waits: Wait[] = [];
 
   const onMap = (file: number) =>
     Number.isInteger(file) && file >= 0 && file < map.files.length;
@@ -152,6 +170,7 @@ export function createOutlineCache(
     const fetched = source.outline(id).then((answer) => {
       const read = fromAnswer(file, id, answer);
       hold(file, read);
+      arrived(file, read);
       return read;
     });
     asking.set(file, fetched);
@@ -160,5 +179,33 @@ export function createOutlineCache(
     return fetched;
   };
 
-  return { peek, get };
+  // The waits for a file whose outline a fetch has just brought: each is called, if its owner is
+  // still there, and dropped, as is every wait whose owner has gone. A wait that throws stops
+  // neither the others nor the fetch, whose callers get the outline.
+  const arrived = (file: number, outline: Outline) => {
+    const due = waits.filter((w) => w.file === file);
+    waits = waits.filter((w) => w.file !== file && w.alive());
+    for (const w of due) {
+      if (!w.alive()) continue;
+      try {
+        w.fn(outline);
+      } catch (e) {
+        console.error(
+          "hakutaku: a part of the page could not draw an outline",
+          e,
+        );
+      }
+    }
+  };
+
+  const whenFetched = (
+    file: number,
+    alive: () => boolean,
+    fn: (outline: Outline) => void,
+  ) => {
+    waits = waits.filter((w) => w.alive());
+    waits.push({ file, alive, fn });
+  };
+
+  return { peek, get, whenFetched };
 }

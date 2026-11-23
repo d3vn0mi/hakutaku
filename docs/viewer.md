@@ -138,8 +138,11 @@ tabs:
 
 - **Overview:** a file's facts (lines, imported by, imports, changes in 90 days, definitions), then
   the files that import it, the files it imports, the files that change together with it, its
-  libraries and the entry points that launch it. Every row selects its node. A component lists its
-  files, one dot each, its core files and its entry points; a library, the files that import it.
+  libraries and the entry points that launch it. Every row selects its node. Above 2,000 production
+  files, the files that change together wait behind a button that fetches them, unless History or
+  Inside has fetched them already, or does while the Overview is shown: then they are listed at
+  once. A component lists its files, one dot each, its core files and its entry points; a library,
+  the files that import it.
 - **Inside:** one dot per definition, in file order, and the list of definitions with their glyph,
   name, users (or, with none, "exported, unused" or "internal") and line. A dot is ivory when other
   files use the definition, dimmed when it is exported but unused, and faint when it is internal; it

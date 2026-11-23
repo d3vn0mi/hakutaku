@@ -9,9 +9,12 @@ import {
   E2E,
   ECOSYSTEMS,
   ENTRY_KINDS,
+  expectNoWebGL,
   F,
   fetchMap,
   formatId,
+  hasWebGL,
+  mapDrawn,
   openViewer,
   query,
   selectedId,
@@ -573,6 +576,73 @@ test("above the inline limit, the Overview lists the files that change together 
   );
   // the focus moves from the button that is gone to the first of the files it listed
   await expect(partners.locator("button").first()).toBeFocused();
+  expect(asked).toEqual([`observatory:${KEPLER}`]);
+});
+
+test("above the inline limit, the Overview lists the files that change together once History fetches them", async ({
+  page,
+  browserName,
+}) => {
+  const a: Explained = explain(`observatory:${KEPLER}`);
+  expect(a.changesTogetherWith.length).toBeGreaterThan(0);
+  const asked = await aboveTheInlineLimit(page);
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  const show = page.getByRole("button", {
+    name: "Show the files that change with it",
+  });
+  await expect(show).toBeVisible();
+  await page.keyboard.press("3");
+  await expect(page.getByRole("button", { name: "History" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    // without the map, History fetches nothing: the button stays, and nothing was asked
+    await expectNoWebGL(page);
+    await expect(show).toBeVisible();
+    expect(asked).toEqual([]);
+    return;
+  }
+  // the outline History fetched for the map lists the files in the Overview, with no click
+  await expect(page.locator("#map")).toHaveAttribute(
+    "data-cochange",
+    /^[1-9]\d*$/,
+  );
+  await expect(rowsUnder(page, COCHANGE).locator("button")).toHaveText(
+    a.changesTogetherWith.map((p) => pathOf(p.id)),
+  );
+  await expect(show).toHaveCount(0);
+  expect(asked).toEqual([`observatory:${KEPLER}`]);
+});
+
+test("above the inline limit, an outline Inside fetched lists the files that change together in the Overview shown meanwhile", async ({
+  page,
+}) => {
+  const a: Explained = explain(`observatory:${KEPLER}`);
+  expect(a.changesTogetherWith.length).toBeGreaterThan(0);
+  const asked = await aboveTheInlineLimit(page);
+  const release = await holdOutlines(page);
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await tab(page, "Inside").click();
+  await expect(page.locator("#pane")).toHaveText(LOADING);
+  // the viewer leaves Inside while it loads; the Overview has nothing to list yet, and its button
+  // has the focus
+  await tab(page, "Overview").click();
+  const show = page.getByRole("button", {
+    name: "Show the files that change with it",
+  });
+  await show.focus();
+  release();
+  const partners = rowsUnder(page, COCHANGE).locator("button");
+  await expect(partners).toHaveText(
+    a.changesTogetherWith.map((p) => pathOf(p.id)),
+  );
+  await expect(show).toHaveCount(0);
+  // the focus the button had moves to the first file listed in its place
+  await expect(partners.first()).toBeFocused();
   expect(asked).toEqual([`observatory:${KEPLER}`]);
 });
 

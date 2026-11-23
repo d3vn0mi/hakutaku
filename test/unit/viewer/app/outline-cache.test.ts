@@ -3,7 +3,7 @@
 // together with it. A map that carries outlines answers from them; above the inline limit, a
 // file's outline is fetched once, its IDs become indices, and nothing of another build or
 // another file is taken in.
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { parseId } from "../../../../src/model/ids.js";
 import {
   fileIdOf,
@@ -214,6 +214,135 @@ describe("above the inline limit", () => {
     fail = false;
     expect(await c.get(3)).toEqual(GRAPH);
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe("waiting for an outline another part of the page fetches", () => {
+  it("calls a wait once a fetch brings its file's outline, and fetches nothing itself", async () => {
+    const calls: string[] = [];
+    const c = createOutlineCache(fetchedModel(), countingSource(calls));
+    const seen: unknown[] = [];
+    c.whenFetched(
+      3,
+      () => true,
+      (outline) => seen.push(outline),
+    );
+    expect(calls).toEqual([]);
+    const fetched = await c.get(3);
+    expect(seen).toEqual([GRAPH]);
+    expect(seen[0]).toBe(fetched);
+    // once: a later answer from the cache calls it no more
+    await c.get(3);
+    expect(seen).toHaveLength(1);
+    expect(calls).toEqual(["tiny:src/core/graph.ts"]);
+  });
+
+  it("is not called for another file, nor by a failed fetch, but by a later one that brings it", async () => {
+    let fail = true;
+    const working = countingSource([]);
+    const source: DataSource = {
+      ...working,
+      outline: (id) =>
+        fail
+          ? Promise.reject(new Error("no answer from the server"))
+          : working.outline(id),
+    };
+    const c = createOutlineCache(fetchedModel(), source);
+    const seen: unknown[] = [];
+    c.whenFetched(
+      3,
+      () => true,
+      (outline) => seen.push(outline),
+    );
+    await expect(c.get(3)).rejects.toThrow("no answer from the server");
+    fail = false;
+    await c.get(2);
+    expect(seen).toEqual([]);
+    await c.get(3);
+    expect(seen).toEqual([GRAPH]);
+  });
+
+  it("is not called for an outline of another build, which is not kept", async () => {
+    const c = createOutlineCache(
+      fetchedModel(),
+      countingSource([], (o) => ({ ...o, builtCommit: "b0b0b0b0b0b0" })),
+    );
+    const seen: unknown[] = [];
+    c.whenFetched(
+      3,
+      () => true,
+      (outline) => seen.push(outline),
+    );
+    await expect(c.get(3)).rejects.toThrow(/another build/);
+    expect(seen).toEqual([]);
+  });
+
+  it("drops a wait whose owner has gone, when the outline comes and when another wait begins", async () => {
+    const c = createOutlineCache(fetchedModel(), countingSource([]));
+    const seen: string[] = [];
+    let here = false;
+    c.whenFetched(
+      3,
+      () => here,
+      () => seen.push("gone at arrival"),
+    );
+    let first = true;
+    c.whenFetched(
+      2,
+      () => first,
+      () => seen.push("gone"),
+    );
+    first = false;
+    // a new wait drops the one whose owner has gone, which then never runs, owner back or not
+    c.whenFetched(
+      2,
+      () => true,
+      () => seen.push("here"),
+    );
+    first = true;
+    await c.get(3);
+    here = true;
+    await c.get(2);
+    expect(seen).toEqual(["here"]);
+  });
+
+  it("is never called on an inline map, which fetches nothing", async () => {
+    const calls: string[] = [];
+    const c = createOutlineCache(tinyModel(), countingSource(calls));
+    const seen: unknown[] = [];
+    c.whenFetched(
+      3,
+      () => true,
+      (outline) => seen.push(outline),
+    );
+    await c.get(3);
+    expect([seen, calls]).toEqual([[], []]);
+  });
+
+  it("keeps the fetched outline and answers every caller, whatever a wait throws", async () => {
+    const said = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const c = createOutlineCache(fetchedModel(), countingSource([]));
+      const seen: unknown[] = [];
+      c.whenFetched(
+        3,
+        () => true,
+        () => {
+          throw new Error("a pane that could not draw");
+        },
+      );
+      c.whenFetched(
+        3,
+        () => true,
+        (outline) => seen.push(outline),
+      );
+      expect(await c.get(3)).toEqual(GRAPH);
+      expect(c.peek(3)).toEqual(GRAPH);
+      expect(seen).toEqual([GRAPH]);
+      expect(said).toHaveBeenCalledTimes(1);
+    } finally {
+      said.mockRestore();
+    }
   });
 });
 

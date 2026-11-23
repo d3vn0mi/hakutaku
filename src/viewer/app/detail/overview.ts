@@ -10,8 +10,9 @@
 // - A definition's Overview: its kind, lines, whether it is exported, the files that use it and
 //   whether a test mentions it, then its file's facts. Above the inline limit its lines and tests
 //   wait for the outline, and say so.
-// An outline that arrives after its pane has gone draws nothing, and one that cannot be had, of
-// another build or not at all, draws only a note saying so.
+// An outline that arrives after its pane has gone draws nothing there, but the page keeps it, so
+// the pane draws it at once when it comes back; one that cannot be had, of another build or not
+// at all, draws only a note saying so.
 import {
   DEF_KINDS,
   ECOSYSTEMS,
@@ -186,9 +187,11 @@ function partnerRows(model: Model, facts: FileFacts): Row[] {
 }
 
 // The files that change together with a file: listed when the page holds its outline, else
-// behind a button that fetches the outline and lists them when it arrives. When the button had
-// the focus, and nothing else has taken it since, the focus moves to the first file listed, or
-// to the note in its place.
+// behind a button that fetches the outline and lists them when it arrives. The button fetches,
+// the Overview never does by itself; but when something else fetches that outline while the
+// button is shown, as History does for the map or Inside for its dots, the files are listed in
+// its place at once. When the button had the focus, and nothing else has taken it since, the
+// focus moves to the first file listed, or to the note in its place.
 function partnersSection(
   ctx: PaneContext,
   file: number,
@@ -203,8 +206,15 @@ function partnersSection(
     return rowList(ctx, heading(), partnerRows(ctx.model, facts), NONE);
   }
   const wait = note(LOADING);
-  const settle = (parts: HTMLElement[], focused: boolean) => {
-    wait.replaceWith(...parts);
+  const listed = (outline: Outline) =>
+    listBody(
+      ctx,
+      partnerRows(ctx.model, fileFacts(ctx.model, file, outline)),
+      NONE,
+    );
+  // Puts parts where the button or the loading note stands.
+  const settle = (from: Element, parts: HTMLElement[], focused: boolean) => {
+    from.replaceWith(...parts);
     const now = document.activeElement;
     if (!focused || (now !== null && now !== document.body)) return;
     const first = parts[0];
@@ -222,21 +232,26 @@ function partnersSection(
         show.replaceWith(wait);
         ctx.outlines.get(file).then(
           (outline) => {
-            if (!wait.isConnected) return;
-            const loaded = fileFacts(ctx.model, file, outline);
-            settle(
-              listBody(ctx, partnerRows(ctx.model, loaded), NONE),
-              focused,
-            );
+            if (wait.isConnected) settle(wait, listed(outline), focused);
           },
           (e) => {
             console.error("hakutaku: the outline could not be loaded", e);
-            if (wait.isConnected) settle([note(FAILED)], focused);
+            if (wait.isConnected) settle(wait, [note(FAILED)], focused);
           },
         );
       },
     },
   });
+  // the button is there from when it is made, before the pane is placed in the page, until it
+  // leaves the page: a press, or another pane in its place
+  let placed = false;
+  const there = () => {
+    if (show.isConnected) placed = true;
+    return show.isConnected || !placed;
+  };
+  ctx.outlines.whenFetched(file, there, (outline) =>
+    settle(show, listed(outline), document.activeElement === show),
+  );
   return h("section", { class: "list" }, h("h3", {}, ...heading()), show);
 }
 
