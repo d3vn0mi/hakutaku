@@ -437,8 +437,9 @@ npm run bench:viewer
 - *Pan and zoom* counts the frames drawn during a scripted pan and zoom of 2 s; 57 fps is 60 fps,
   allowing for the timing of `requestAnimationFrame`.
 - *Tab memory* is Chromium's JS heap total, read through the DevTools protocol.
-- *Longest task* reads Chromium's long-task entries. Firefox reports none, so there the whole
-  interaction is timed instead.
+- *Longest task* reads Chromium's long-task entries. Chromium reports a long frame only when some
+  script runs in it, so the check asks for a callback on every frame, and a frame that only lays
+  out and paints counts too. Firefox reports none, so there the whole interaction is timed instead.
 
 The 20,000-file repository is made by `fixtures/scale/generate.mjs` when CI is set, or when
 `HAKUTAKU_E2E_WITH_SCALE=1`, which `npm run bench:viewer` sets along with `HAKUTAKU_BENCH=1`. The
