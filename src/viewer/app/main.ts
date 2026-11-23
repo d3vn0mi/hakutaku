@@ -10,6 +10,8 @@ import { pickSource } from "./data.js";
 import { ApiError, type DataSource } from "./data-types.js";
 import { defaultDepth, nextDepth } from "./depth.js";
 import { prefersReducedMotion, showToast } from "./dom.js";
+import { buildFindIndex, type FindIndex, pickOf } from "./find/index.js";
+import { mountFind } from "./find/view.js";
 import { bindKeys } from "./keys.js";
 import { mountMap } from "./map/render.js";
 import { buildModel } from "./model.js";
@@ -30,6 +32,7 @@ const NOT_BUILT =
   "This repo has no map yet. Run: hakutaku map <path to the repo>";
 const NO_WEBGL =
   "This browser cannot draw the map (no WebGL). The list view shows the same files.";
+const IDLE_WAIT_MS = 200;
 
 // The view the page opens with: Structure lens, grouped by component, tests hidden. Its depth is
 // the map's default, Core above 400 production files, else Files.
@@ -54,6 +57,15 @@ function byId<T extends Element>(id: string): T {
   const el = document.getElementById(id);
   if (el === null) throw new Error(`the page has no #${id}`);
   return el as unknown as T;
+}
+
+// Runs fn once the page is idle, or after a short wait where the browser cannot say when.
+function whenIdle(fn: () => void): void {
+  if (typeof requestIdleCallback === "function") {
+    requestIdleCallback(() => fn(), { timeout: IDLE_WAIT_MS * 10 });
+  } else {
+    setTimeout(fn, IDLE_WAIT_MS);
+  }
 }
 
 function showFatal(e: unknown): void {
@@ -156,7 +168,27 @@ function compose(map: MapData, fetched: DataSource): void {
   fillRankLists(byId("core-list"), byId("hot-list"), model, (file) =>
     selection.select({ kind: "file", file }),
   );
+  // Find, over the files, definitions and libraries: its index is built once, while the page is
+  // idle after the first frame, or when the box is used before that
+  let index: FindIndex | null = null;
+  const findIndex = (): FindIndex => {
+    index ??= buildFindIndex(model);
+    return index;
+  };
+  const find = mountFind(
+    byId<HTMLInputElement>("q"),
+    byId("results"),
+    findIndex,
+    (hit) => {
+      const { sel, tab, widen } = pickOf(model, hit);
+      if (widen) state.set({ wide: true });
+      selection.select(sel, { tab });
+    },
+  );
+  whenIdle(findIndex);
+  byId("find-btn").addEventListener("click", () => find.focus());
   bindKeys({
+    find: () => find.focus(),
     back: () => selection.back(),
     lens: (lens) => setLens(state, lens),
     depth: () => prefs.pickDepth(nextDepth(state.get().depth)),

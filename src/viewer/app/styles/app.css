@@ -253,6 +253,41 @@ h3 {
   border: 1px solid var(--line-2);
   border-radius: 5px;
 }
+/* A match: its name, cut with an ellipsis where it must be, beside its kind. The active match,
+   which the arrows move and Enter picks, is lit and marked in the accent; the line that says
+   nothing matches is no match at all. */
+.results [role="option"] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.results [aria-disabled="true"] {
+  color: var(--muted);
+  cursor: default;
+}
+.results [aria-selected="true"],
+.results [aria-selected]:hover {
+  background: var(--panel-2);
+  color: var(--ink);
+}
+.results [role="option"][aria-selected="true"] {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.results span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.results small {
+  font-size: 11px;
+  color: var(--muted);
+}
 /* A segmented control: one button per choice, its name over a hint, the choice in use pressed.
    Its columns are --n, set per control. */
 .seg {
