@@ -130,16 +130,15 @@ it("NOTICE names every bundled package with its version and licence", () => {
   }
 });
 
-// A package's licence file, as the bundle carries it: the text as written, its lines ended by line
-// feeds alone, with any address written without its scheme, so the bundle names no address a
-// browser could be sent to.
+// A package's licence file, as the bundle carries it: the text word for word, as the licence asks,
+// its lines ended by line feeds alone. The addresses a licence names stay in it; the containment
+// scan allows each of them by name, since a comment is never requested.
 function licenceOf(name: string): string {
   const dir = `${ROOT}node_modules/${name}/`;
   const file = readdirSync(dir).find((f) => /^licen[cs]e(\.\w+)?$/i.test(f));
   if (file === undefined) throw new Error(`${name} has no licence file`);
   return readFileSync(dir + file, "utf8")
     .replaceAll(/\r\n?/g, "\n")
-    .replaceAll(/[a-z][a-z0-9+.-]*:\/\//gi, "")
     .trim();
 }
 

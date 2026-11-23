@@ -132,8 +132,8 @@ if (JSON.stringify(outputs) !== JSON.stringify(expected)) {
 // 2b. Each script opens with the licence of every package bundled into it, and the styles with the
 // licence of each font package, whose fonts they name, as one /*! comment, so the served assets
 // and every page that inlines them carry the notices those licences ask every copy to keep. The
-// text is the package's licence file as written, except that an address is written without its
-// scheme: the bundle names no address a browser could be sent to.
+// text is the package's licence file word for word, addresses included: a comment is never
+// requested, and the containment scan allows each such address by name.
 function licenceText(dir) {
   const file = readdirSync(join(ROOT, dir)).find((f) =>
     /^licen[cs]e(\.\w+)?$/i.test(f),
@@ -143,7 +143,6 @@ function licenceText(dir) {
   // inlined text would no longer match the hash its policy names
   const text = readFileSync(join(ROOT, dir, file), "utf8")
     .replaceAll(/\r\n?/g, "\n")
-    .replaceAll(/[a-z][a-z0-9+.-]*:\/\//gi, "")
     .trim();
   if (/\*\/|<\/script|<\/style|<!--/i.test(text)) {
     throw new Error(

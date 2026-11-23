@@ -48,13 +48,18 @@ const ADDRESS = /[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'`()<>\\]*/g;
 // An address with no scheme, "//" and a dotted host right after a quote, a bracket or "=": a
 // browser reads it in the page's own scheme, on another host.
 const SCHEMELESS = /["'`(=]\/\/[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
-// The only addresses the built viewer holds, each beside why it is harmless: highlight.js prints
-// them in console warnings, from code paths the viewer never takes, and nothing ever asks for them.
+// The only addresses the built viewer holds, each beside why it is harmless. highlight.js prints
+// two in console warnings, from code paths the viewer never takes. Two more sit inside licence
+// notices the bundle carries word for word, in comments. Nothing ever asks for any of them.
 const INERT: Readonly<Record<string, string>> = {
   "https://github.com/highlightjs/highlight.js/issues/2277":
     "printed when highlight.js is called in its old highlight(language, code) form; the viewer calls highlight(code, options)",
   "https://github.com/highlightjs/highlight.js/wiki/security":
     "printed by highlight.js's highlightElement on an element that holds markup; the viewer never calls highlightElement",
+  "https://www.sigmajs.org":
+    "in sigma's copyright line, inside the licence notice that opens app.js",
+  "http://scripts.sil.org/OFL":
+    "in the IBM Plex fonts' SIL Open Font License, inside the licence notice that opens app.css",
 };
 
 const tab = (page: Page, name: string) => page.getByRole("tab", { name });
