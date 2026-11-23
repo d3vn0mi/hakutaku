@@ -217,6 +217,12 @@ async function expectSourceAsText(page: Page, src: SourceData): Promise<void> {
   );
 }
 
+// Whether the Source tab shows its code without highlight.js's colours: the plain path, where the
+// viewer's own escaping, not highlight.js's, keeps the code's markup text.
+async function shownPlain(page: Page): Promise<boolean> {
+  return (await page.locator(".code [class^='hljs-']").count()) === 0;
+}
+
 // Nothing the page holds was made from the markup it shows: no embedded content, no handler, no
 // element of its own, and only the page's own scripts.
 async function expectNoElementFromMarkup(
@@ -375,6 +381,8 @@ test("markup in file names and code renders as text", async ({ page }) => {
   );
   expect(sources.some((s) => s.text.includes("</script><script>"))).toBe(true);
   await openViewer(page, E2E.markup);
+  // the files whose markup the viewer escapes itself: code in a language it does not highlight
+  const plain: string[] = [];
   for (const [i, f] of files.entries()) {
     await page.evaluate((t) => {
       location.hash = t;
@@ -382,7 +390,11 @@ test("markup in file names and code renders as text", async ({ page }) => {
     await expect(page.locator("#detail h2")).toHaveText(f.path);
     expect(await selectedId(page)).toBe(f.id);
     await expectSourceAsText(page, sources[i]);
+    if ((await shownPlain(page)) && sources[i].text.includes("<script>")) {
+      plain.push(f.path);
+    }
   }
+  expect(plain).toEqual(["src/template.php"]);
   await expectNoElementFromMarkup(page, 1);
   expect([dialogs, await violations()]).toEqual([[], []]);
 });
@@ -441,6 +453,7 @@ test("the hostile fixture's export stays contained", async ({ page }) => {
   const started = workersOf(page);
   const dialogs = dialogsOf(page);
   await openViewer(page, href);
+  const plain: string[] = [];
   for (const [i, f] of files.entries()) {
     await page.evaluate((t) => {
       location.hash = t;
@@ -451,12 +464,16 @@ test("the hostile fixture's export stays contained", async ({ page }) => {
     if (src === undefined)
       throw new Error(`the export holds no source for ${f.id}`);
     await expectSourceAsText(page, src);
+    if ((await shownPlain(page)) && src.text.includes("<script>")) {
+      plain.push(f.path);
+    }
     await tab(page, "Agent").click();
     await expect(agent(page).locator("pre")).toBeVisible();
     expect(await agent(page).locator("pre").textContent()).toBe(
       answers[i]?.text,
     );
   }
+  expect(plain).toEqual(["src/template.php"]);
   await expectNoElementFromMarkup(page, 2);
   expect([dialogs, await violations(), log.outside]).toEqual([[], [], []]);
   expect([besides(asked, href), refused, started]).toEqual([[], [], []]);
