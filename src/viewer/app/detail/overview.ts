@@ -22,7 +22,11 @@ import {
 import { ROWS_SHOWN } from "../constants.js";
 import { h } from "../dom.js";
 import type { Model } from "../model.js";
-import type { Outline, OutlineCache } from "../outline-cache.js";
+import {
+  type Outline,
+  type OutlineCache,
+  presentWhile,
+} from "../outline-cache.js";
 import type { Sel, Tab } from "../state.js";
 import { count, whole } from "../words.js";
 import { type FileFacts, fileFacts } from "./facts.js";
@@ -242,15 +246,12 @@ function partnersSection(
       },
     },
   });
-  // the button is there from when it is made, before the pane is placed in the page, until it
-  // leaves the page: a press, or another pane in its place
-  let placed = false;
-  const there = () => {
-    if (show.isConnected) placed = true;
-    return show.isConnected || !placed;
-  };
-  ctx.outlines.whenFetched(file, there, (outline) =>
-    settle(show, listed(outline), document.activeElement === show),
+  // the button is there from when it is made, before the pane that holds it is placed in the
+  // page, until it leaves the page: a press, or another pane in its place
+  ctx.outlines.whenFetched(
+    file,
+    presentWhile(() => show.isConnected),
+    (outline) => settle(show, listed(outline), document.activeElement === show),
   );
   return h("section", { class: "list" }, h("h3", {}, ...heading()), show);
 }

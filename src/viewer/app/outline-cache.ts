@@ -50,6 +50,23 @@ interface Wait {
   fn(outline: Outline): void;
 }
 
+// A wait's alive() for an owner that the page places in the same task or microtask that makes it,
+// as every pane is: present until that is over, whatever isThere() says yet, then while isThere()
+// holds; once it fails, gone for good. So an owner that leaves the page goes with its wait, even
+// when nothing asked whether it was there while it was.
+export function presentWhile(isThere: () => boolean): () => boolean {
+  let made = true;
+  let gone = false;
+  queueMicrotask(() => {
+    made = false;
+  });
+  return () => {
+    if (made) return true;
+    if (!gone && !isThere()) gone = true;
+    return !gone;
+  };
+}
+
 export function createOutlineCache(
   model: Model,
   source: DataSource,

@@ -15,7 +15,10 @@ import { openStore, type Store } from "../../../../src/store/index.js";
 import { OUTLINE_CACHE_LIMIT } from "../../../../src/viewer/app/constants.js";
 import type { DataSource } from "../../../../src/viewer/app/data-types.js";
 import { buildModel, type Model } from "../../../../src/viewer/app/model.js";
-import { createOutlineCache } from "../../../../src/viewer/app/outline-cache.js";
+import {
+  createOutlineCache,
+  presentWhile,
+} from "../../../../src/viewer/app/outline-cache.js";
 import { tinyStore } from "../tiny-store.js";
 import { tinyModel } from "./helpers.js";
 import { syntheticMap } from "./synthetic-map.js";
@@ -343,6 +346,49 @@ describe("waiting for an outline another part of the page fetches", () => {
     } finally {
       said.mockRestore();
     }
+  });
+});
+
+describe("a wait's owner, present while it is in the page", () => {
+  it("is present until the task that made it is over, then while it is there, and once gone stays gone", async () => {
+    let there = false;
+    const present = presentWhile(() => there);
+    // made before its pane is placed: present, whatever the page says yet
+    expect(present()).toBe(true);
+    await Promise.resolve();
+    expect(present()).toBe(false);
+    there = true;
+    expect(present()).toBe(false);
+    const placed = presentWhile(() => there);
+    await Promise.resolve();
+    expect(placed()).toBe(true);
+    there = false;
+    expect(placed()).toBe(false);
+    there = true;
+    expect(placed()).toBe(false);
+  });
+
+  it("lets a wait whose owner left the page before anything asked be dropped at the next wait", async () => {
+    const c = createOutlineCache(fetchedModel(), countingSource([]));
+    let there = true;
+    const seen: string[] = [];
+    c.whenFetched(
+      3,
+      presentWhile(() => there),
+      () => seen.push("left"),
+    );
+    await Promise.resolve();
+    // its pane replaced while no other wait began and no outline came
+    there = false;
+    c.whenFetched(
+      2,
+      () => true,
+      () => seen.push("here"),
+    );
+    there = true;
+    await c.get(3);
+    await c.get(2);
+    expect(seen).toEqual(["here"]);
   });
 });
 
