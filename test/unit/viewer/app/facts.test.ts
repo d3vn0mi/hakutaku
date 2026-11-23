@@ -102,18 +102,24 @@ it("a dot's class and title say the same thing", () => {
   ]);
   expect([dotClass(m, 5, false), dotTitle(m, 5, false)]).toEqual([
     "exp untested",
-    "clamp \u00b7 function \u00b7 line 2 \u00b7 no test mentions it",
+    "clamp \u00b7 function \u00b7 line 2 \u00b7 exported, unused \u00b7 no test mentions it",
   ]);
   expect([dotClass(m, 3, false), dotTitle(m, 3, false)]).toEqual([
     "untested",
-    "helper \u00b7 function \u00b7 line 30 \u00b7 no test mentions it",
+    "helper \u00b7 function \u00b7 line 30 \u00b7 internal \u00b7 no test mentions it",
   ]);
 });
 
-it("definition rows carry the untested mark in words", () => {
-  expect(defRowText(m, 5, false)).toBe(
-    "\u0192  clamp \u00b7 0 users \u00b7 line 2 \u00b7 no test mentions it",
-  );
+it("definition rows say in words what the dot's colour and ring say", () => {
+  expect([
+    defRowText(m, 2, false),
+    defRowText(m, 5, false),
+    defRowText(m, 3, true),
+  ]).toEqual([
+    "m  Graph.add \u00b7 1 user \u00b7 line 9 \u00b7 no test mentions it",
+    "\u0192  clamp \u00b7 exported, unused \u00b7 line 2 \u00b7 no test mentions it",
+    "\u0192  helper \u00b7 internal \u00b7 line 30",
+  ]);
 });
 
 it("a file's facts are copies, so whoever reads them cannot change the model", () => {
@@ -237,7 +243,7 @@ it("a dot names a definition used by many files, and a method nothing uses", () 
   ]);
   expect([dotClass(v, 2, false), dotTitle(v, 2, false)]).toEqual([
     "method untested",
-    "Graph.add \u00b7 method \u00b7 line 9 \u00b7 no test mentions it",
+    "Graph.add \u00b7 method \u00b7 line 9 \u00b7 internal \u00b7 no test mentions it",
   ]);
   expect(dotClass(v, 2, true)).toBe("method");
 });
@@ -250,15 +256,15 @@ it("a definition row counts one user in the singular, and says nothing of tests 
   ]).toEqual([
     "C  Graph \u00b7 1 user \u00b7 line 5",
     "m  Graph.add \u00b7 1 user \u00b7 line 9",
-    "\u0192  helper \u00b7 0 users \u00b7 line 30 \u00b7 no test mentions it",
+    "\u0192  helper \u00b7 internal \u00b7 line 30 \u00b7 no test mentions it",
   ]);
   const v = variant((map) => {
     map.defs.kind[5] = DEF_KINDS.indexOf("constant");
     map.defs.kind[0] = DEF_KINDS.indexOf("type");
   });
   expect([defRowText(v, 5, true), defRowText(v, 0, true)]).toEqual([
-    "K  clamp \u00b7 0 users \u00b7 line 2",
-    "T  main \u00b7 0 users \u00b7 line 3",
+    "K  clamp \u00b7 exported, unused \u00b7 line 2",
+    "T  main \u00b7 exported, unused \u00b7 line 3",
   ]);
 });
 

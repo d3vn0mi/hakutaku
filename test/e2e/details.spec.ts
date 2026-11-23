@@ -83,6 +83,20 @@ function must<T>(value: T | undefined | null, what: string): T {
   return value;
 }
 
+// Whether the map holds the definition an ID names as exported.
+function exportedOf(m: MapData, id: string): boolean {
+  const file = fileOf(m, pathOf(id.slice(0, id.indexOf("#"))));
+  const part = id.slice(id.indexOf("#") + 1);
+  const d = m.defs.file.findIndex(
+    (f, i) =>
+      f === file &&
+      (m.defs.ordinal[i] === 1
+        ? m.defs.name[i]
+        : `${m.defs.name[i]}(${m.defs.ordinal[i]})`) === part,
+  );
+  return must(m.defs.exported[d], `definition ${id}`) === 1;
+}
+
 function fileOf(m: MapData, path: string): number {
   const file = m.files.findIndex((f) => f[F.path] === path);
   must(m.files[file], path);
@@ -258,6 +272,7 @@ test("Inside shows one dot and one row per definition, and a dot opens its defin
   page,
 }) => {
   const a: Explained = explain(`observatory:${KEPLER}`);
+  const m = await fetchMap(E2E.sample);
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
   await tab(page, "Inside").click();
   await expect(tab(page, "Inside")).toHaveAttribute("aria-selected", "true");
@@ -269,14 +284,17 @@ test("Inside shows one dot and one row per definition, and a dot opens its defin
     a.definitions.total,
   );
   // in file order, each dot titled and named as code_explain describes its definition, and the
-  // list saying the same in a full-size row
+  // list saying the same in a full-size row; a definition no other file uses says whether it is
+  // exported, which the map holds
   const defs = [...a.definitions.top].sort((x, y) => x.line - y.line);
+  const unused = (d: (typeof defs)[number]) =>
+    exportedOf(m, d.id) ? "exported, unused" : "internal";
   const titles = defs.map(
     (d) =>
-      `${d.id.slice(d.id.indexOf("#") + 1)}${SEP}${d.kind}${SEP}line ${d.line}` +
+      `${d.id.slice(d.id.indexOf("#") + 1)}${SEP}${d.kind}${SEP}line ${d.line}${SEP}` +
       (d.usedByFiles > 0
-        ? `${SEP}used by ${count(d.usedByFiles, "file")}`
-        : "") +
+        ? `used by ${count(d.usedByFiles, "file")}`
+        : unused(d)) +
       (d.mentionedByTests ? "" : `${SEP}no test mentions it`),
   );
   const dots = page.locator("#pane .dots button");
@@ -290,7 +308,9 @@ test("Inside shows one dot and one row per definition, and a dot opens its defin
   await expect(page.locator("#pane .defs button")).toHaveText(
     defs.map(
       (d) =>
-        `${GLYPHS[d.kind]}  ${d.id.slice(d.id.indexOf("#") + 1)}${SEP}${count(d.usedByFiles, "user")}${SEP}line ${d.line}` +
+        `${GLYPHS[d.kind]}  ${d.id.slice(d.id.indexOf("#") + 1)}${SEP}` +
+        (d.usedByFiles > 0 ? count(d.usedByFiles, "user") : unused(d)) +
+        `${SEP}line ${d.line}` +
         (d.mentionedByTests ? "" : `${SEP}no test mentions it`),
     ),
   );

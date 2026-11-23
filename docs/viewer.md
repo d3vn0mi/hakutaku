@@ -141,9 +141,10 @@ tabs:
   libraries and the entry points that launch it. Every row selects its node. A component lists its
   files, one dot each, its core files and its entry points; a library, the files that import it.
 - **Inside:** one dot per definition, in file order, and the list of definitions with their glyph,
-  name, users and line. A dot is ivory when other files use the definition, dimmed when it is
-  exported but unused, and faint when it is internal; it is round for a method; an orange ring says
-  that no test mentions it. A dot opens the source at its line.
+  name, users (or, with none, "exported, unused" or "internal") and line. A dot is ivory when other
+  files use the definition, dimmed when it is exported but unused, and faint when it is internal; it
+  is round for a method; an orange ring says that no test mentions it. Each dot's title says the
+  same in words, as its row does. A dot opens the source at its line.
 - **Source:** the file's source, from the store's redacted copy, highlighted for TypeScript,
   JavaScript, Python, shell, JSON, YAML, TOML, INI and Markdown, and shown as plain text in any other
   language. The gutter marks each definition's first line; with a definition selected, its line is
@@ -493,8 +494,8 @@ page holds none.
   whose rows are buttons. A polite live region says each selection, and each change of lens or
   depth. The Source tab lists its marked lines after the code.
 - **Colour is never the only signal.** Hotspots are also larger, cycles are also listed and
-  filtered, and "no test mentions it" is also in each definition's dot title and in the definitions
-  list.
+  filtered, and what a definition's dot says, used by other files, exported but unused, or internal,
+  and "no test mentions it", is also in its title and in the definitions list.
 - **Contrast.** Text reaches 4.5:1, WCAG AA. The faintest ink is for decoration only, and the marks
   and the curves that carry meaning reach 3:1.
 - **Hit targets.** Every target meets WCAG 2.2's target size, by its own size or by its spacing; the

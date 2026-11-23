@@ -118,6 +118,14 @@ export const GLYPH: Readonly<Record<DefKind, string>> = Object.freeze({
   type: "T",
 });
 
+// What a dot's marks mean, in the words of the key under the dots, and of each dot's title and
+// row: its colour says whether other files use the definition, else whether it is exported; its
+// ring that no test mentions it.
+export const USED = "used by other files";
+export const EXPORTED_UNUSED = "exported, unused";
+export const INTERNAL = "internal";
+export const UNTESTED = "no test mentions it";
+
 // A definition's dot: "used" when another file uses it, else "exp" when it is exported, else
 // nothing (internal); then "method" for a method, and "untested" when no test mentions it.
 export function dotClass(model: Model, def: number, tested: boolean): string {
@@ -128,21 +136,29 @@ export function dotClass(model: Model, def: number, tested: boolean): string {
   return marks.join(" ").trim();
 }
 
-// What a dot says, in its title and to a screen reader: what its class shows, in words.
-export function dotTitle(model: Model, def: number, tested: boolean): string {
-  const { name, kind, line, usedBy } = model.map.defs;
-  let title = `${name[def]}${SEP}${DEF_KINDS[kind[def]]}${SEP}line ${line[def]}`;
-  if (usedBy[def] > 0) title += `${SEP}used by ${count(usedBy[def], "file")}`;
-  if (!tested) title += `${SEP}no test mentions it`;
-  return title;
+// What a definition's colour says, in words: the files that use it, counted as many says, else
+// that it is exported and unused, or internal.
+function useOf(model: Model, def: number, many: (n: number) => string): string {
+  const { usedBy, exported } = model.map.defs;
+  if (usedBy[def] > 0) return many(usedBy[def]);
+  return exported[def] === 1 ? EXPORTED_UNUSED : INTERNAL;
 }
 
-// A definition's row in the definitions list: its glyph, its name, its users and its line, and
-// the untested mark in words.
+// What a dot says, in its title and to a screen reader: what its class shows, in words.
+export function dotTitle(model: Model, def: number, tested: boolean): string {
+  const { name, kind, line } = model.map.defs;
+  const use = useOf(model, def, (n) => `used by ${count(n, "file")}`);
+  const title = `${name[def]}${SEP}${DEF_KINDS[kind[def]]}${SEP}line ${line[def]}${SEP}${use}`;
+  return tested ? title : `${title}${SEP}${UNTESTED}`;
+}
+
+// A definition's row in the definitions list: its glyph, its name, its users (or, with none,
+// whether it is exported) and its line, and the untested mark, all in words.
 export function defRowText(model: Model, def: number, tested: boolean): string {
-  const { name, kind, line, usedBy } = model.map.defs;
-  const row = `${GLYPH[DEF_KINDS[kind[def]]]}  ${name[def]}${SEP}${count(usedBy[def], "user")}${SEP}line ${line[def]}`;
-  return tested ? row : `${row}${SEP}no test mentions it`;
+  const { name, kind, line } = model.map.defs;
+  const use = useOf(model, def, (n) => count(n, "user"));
+  const row = `${GLYPH[DEF_KINDS[kind[def]]]}  ${name[def]}${SEP}${use}${SEP}line ${line[def]}`;
+  return tested ? row : `${row}${SEP}${UNTESTED}`;
 }
 
 // The details' tabs for a node: a file and a definition have all four, a component and a library

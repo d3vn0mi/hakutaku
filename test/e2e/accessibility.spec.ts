@@ -35,6 +35,7 @@ const AT_SOLVE_KEPLER = "web~src~orbits~kepler.ts--solveKepler";
 const AT_TARGET = "src~big.ts--target";
 const ACCENT = "rgb(232, 97, 60)";
 const CODE = 0; // FILE_KINDS.indexOf("code")
+const SEP = " \u00b7 ";
 const WHY_NO_TESTS = "The map shows tests at Files depth only.";
 
 // The value, or a failure naming what the repo lacks.
@@ -531,6 +532,63 @@ test("colour is never the only signal", async ({ page }) => {
   await expect(
     page.locator("#pane .defs li").filter({ hasText: "no test mentions it" }),
   ).toHaveCount(n);
+  // a dot's colour says whether other files use its definition, else whether it is exported or
+  // internal: its title, its accessible name and its row say the same in words, on a file that
+  // holds definitions of both colours no other file uses
+  const unused = (d: number) =>
+    m.defs.usedBy[d] > 0
+      ? null
+      : m.defs.exported[d] === 1
+        ? "exported, unused"
+        : "internal";
+  const own = (f: number) =>
+    m.defs.file.flatMap((g, d) => (g === f ? [d] : []));
+  const mixed = must(
+    m.files
+      .map((_, f) => f)
+      .find(
+        (f) =>
+          m.files[f][F.kind] === CODE &&
+          own(f).some((d) => unused(d) === "exported, unused") &&
+          own(f).some((d) => unused(d) === "internal"),
+      ),
+    "code file with an exported definition and an internal one, neither used elsewhere",
+  );
+  await openViewer(page, E2E.sample, {
+    token: toToken({
+      kind: "file",
+      repo: m.repo,
+      path: m.files[mixed][F.path],
+    }),
+  });
+  await page.getByRole("tab", { name: "Inside" }).click();
+  const all = page.locator("#pane .dots button");
+  const rows = page.locator("#pane .defs li");
+  await expect(all).toHaveCount(own(mixed).length);
+  await expect(rows).toHaveCount(own(mixed).length);
+  const seen = new Set<string>();
+  for (const [i, dot] of (await all.all()).entries()) {
+    const marks = ((await dot.getAttribute("class")) ?? "").split(" ");
+    const colour = marks.includes("used")
+      ? "used"
+      : marks.includes("exp")
+        ? "exp"
+        : "";
+    seen.add(colour);
+    // a title reads <name> . <kind> . line <n> . <use>, then the untested mark
+    const title = (await dot.getAttribute("title")) ?? "";
+    await expect(dot).toHaveAccessibleName(title);
+    const use = title.split(SEP)[3];
+    if (colour === "used") {
+      expect(use).toMatch(/^used by \d+ files?$/);
+      await expect(rows.nth(i)).toContainText(/ \d+ users? /);
+    } else {
+      const words = colour === "exp" ? "exported, unused" : "internal";
+      expect(use).toBe(words);
+      await expect(rows.nth(i)).toContainText(`${SEP}${words}${SEP}`);
+    }
+  }
+  expect([...seen].sort()).toEqual(expect.arrayContaining(["", "exp"]));
   // cycles are counted, and listed: the filter lists the files in a cycle
   const cyclic = m.files.filter((f) => f[F.kind] === CODE && f[F.cycle] !== 0);
   expect(cyclic.length).toBeGreaterThan(0);

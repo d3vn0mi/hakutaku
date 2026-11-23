@@ -1,20 +1,29 @@
 // The Inside tab of a file or a definition: one dot per definition of the file, in file order,
 // its class saying whether other files use it, whether it is exported, whether it is a method and
 // whether a test mentions it, with the same said in words in its title and to a screen reader;
-// a key to the dots; and the definitions list, every definition in one full-size row each. A dot
-// or a row opens its definition's source. Above the inline limit the file's outline is fetched
-// when the tab opens, and a note says it is loading until it arrives.
+// a key to the dots; and the definitions list, every definition in one full-size row each, which
+// says the same in words again. A dot or a row opens its definition's source. Above the inline
+// limit the file's outline is fetched when the tab opens, and a note says it is loading until it
+// arrives.
 import { h } from "../dom.js";
 import type { Outline } from "../outline-cache.js";
-import { defRowText, dotClass, dotTitle } from "./facts.js";
+import {
+  defRowText,
+  dotClass,
+  dotTitle,
+  EXPORTED_UNUSED,
+  INTERNAL,
+  UNTESTED,
+  USED,
+} from "./facts.js";
 import { note, type PaneContext, withOutline } from "./overview.js";
 
-// The key to the dots: each mark's class and what it means.
+// The key to the dots: each mark's class and what it means, in the words of each dot's title.
 const KEY: ReadonlyArray<readonly [string, string]> = [
-  ["used", "used by other files"],
-  ["exp", "exported, unused"],
-  ["", "internal"],
-  ["untested", "no test mentions it"],
+  ["used", USED],
+  ["exp", EXPORTED_UNUSED],
+  ["", INTERNAL],
+  ["untested", UNTESTED],
   ["method", "method"],
 ];
 
