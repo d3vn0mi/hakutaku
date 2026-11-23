@@ -25,7 +25,7 @@ export interface HlRequest {
   lang: HlLanguage | null;
 }
 
-// What the worker answers, SOURCE_CHUNK_LINES lines at a time: the lines from index from (0 for
+// What the worker answers, a chunk of lines at a time (chunkEnd): the lines from index from (0 for
 // the first line), and done on the last chunk.
 export interface HlChunk {
   id: number;

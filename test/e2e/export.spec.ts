@@ -453,6 +453,61 @@ test("the export's Source tab shows the sources it holds, a large file as plain 
   expect(besides(seen, href, pageUrl("sample"))).toEqual([]);
 });
 
+test("the export highlights a file on the page up to 16,384 characters, and shows a larger one as plain text a chunk at a time", async ({
+  page,
+}) => {
+  const tried = await watchWorkerMaking(page);
+  const html = readFileSync(pageFile("bigfile"), "utf8");
+  const b = bundleOf("bigfile");
+  const id = `${b.map.repo}:src/crlf.ts`;
+  const stored = b.sources?.[id];
+  if (stored === undefined)
+    throw new Error(`the export holds no source for ${id}`);
+  // 100 lines of TypeScript, chars characters long with the final line feed
+  const codeOf = (chars: number): string => {
+    const lines = Array.from({ length: 100 }, (_, i) =>
+      `x += ${i % 10};`.padEnd(Math.floor(chars / 100) - 1),
+    );
+    const text = `${lines.join("\n")}\n`;
+    return `${text.slice(0, -1).padEnd(chars - 1)}\n`;
+  };
+  for (const { chars, highlighted } of [
+    { chars: 16_384, highlighted: true },
+    { chars: 16_385, highlighted: false },
+  ]) {
+    const text = codeOf(chars);
+    expect(text.length).toBe(chars);
+    // a copy of the page whose crlf.ts holds that text: the data block is not hashed, so the copy
+    // keeps its CSP and runs as the export does
+    const { start, end } = dataBlockAt(html);
+    const file = ownFile(`chars-${chars}`);
+    const bundle: StaticBundle = {
+      ...b,
+      sources: { ...b.sources, [id]: { ...stored, text, lines: 100 } },
+    };
+    writeFileSync(
+      file,
+      `${html.slice(0, start)}${escapeForDataBlock(JSON.stringify(bundle))}${html.slice(end)}`,
+    );
+    await openViewer(page, pathToFileURL(file).href, { token: AT_CRLF });
+    await tab(page, "Source").click();
+    await expect(complete(page)).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(".code .line")).toHaveCount(100);
+    if (highlighted) {
+      await expect(note(page)).toHaveText("100 lines");
+      expect(
+        await page.locator(".code [class^='hljs-']").count(),
+      ).toBeGreaterThan(0);
+    } else {
+      await expect(note(page)).toHaveText(
+        "100 lines, without colours (large file)",
+      );
+      await expect(page.locator(".code [class^='hljs-']")).toHaveCount(0);
+    }
+  }
+  expect(await tried()).toEqual([]);
+});
+
 test("an export with no answer for a node, or with the tool's error, says so", async ({
   page,
 }) => {

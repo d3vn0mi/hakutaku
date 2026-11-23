@@ -8,6 +8,13 @@
 //   return as a line break, which would split the line in two on the page.
 // - A text that ends in a line feed gives a last, empty fragment; the store does not count it as
 //   a line, and the page does not draw it.
+// Also which texts are too large to highlight on the page, and where each chunk of lines ends.
+import {
+  HIGHLIGHT_ON_PAGE_CHARS,
+  SOURCE_CHUNK_CHARS,
+  SOURCE_CHUNK_LINES,
+  WORKER_HIGHLIGHT_ABOVE,
+} from "../constants.js";
 
 // A tag, a line feed, or text; a "<" that starts no tag is text too, so no character is lost.
 const TOKEN = /<[^>]*>|\n|[^<\n]+|</g;
@@ -43,4 +50,29 @@ export function lineCount(text: string): number {
     n++;
   }
   return text.length > 0 && !text.endsWith("\n") ? n + 1 : n;
+}
+
+// Whether a text is highlighted away from the page, in the worker, or, where there is none, shown
+// as plain text a chunk at a time: one of more than WORKER_HIGHLIGHT_ABOVE lines, or of more than
+// HIGHLIGHT_ON_PAGE_CHARS characters, whose highlighting in one task would block the page.
+export function highlightedOffPage(text: string): boolean {
+  return (
+    text.length > HIGHLIGHT_ON_PAGE_CHARS ||
+    lineCount(text) > WORKER_HIGHLIGHT_ABOVE
+  );
+}
+
+// Where the chunk of lines that starts at index from ends: at most SOURCE_CHUNK_LINES lines, and
+// at most SOURCE_CHUNK_CHARS characters of them, but always one line at least, and never past
+// total, the lines the store counts.
+export function chunkEnd(lines: string[], from: number, total: number): number {
+  const last = Math.min(from + SOURCE_CHUNK_LINES, total);
+  let chars = 0;
+  let to = from;
+  while (to < last) {
+    chars += lines[to].length;
+    if (chars > SOURCE_CHUNK_CHARS && to > from) break;
+    to++;
+  }
+  return to;
 }

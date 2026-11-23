@@ -141,7 +141,9 @@ tabs:
   JavaScript, Python, shell, JSON, YAML, TOML, INI and Markdown, and shown as plain text in any other
   language. The gutter marks each definition's first line; with a definition selected, its line is
   flashed and its call sites in the file are marked by their label. A list of the marked lines
-  follows the code. A file over 2,500 lines is highlighted in a worker, 500 lines at a time.
+  follows the code. A file over 2,500 lines or 16,384 characters is highlighted in a worker and
+  added a chunk of lines at a time; an exported page, which has no worker, shows such a file as
+  plain text, a chunk at a time, and says so above it.
 - **Agent:** the call an agent would make for the node, `code_explain` for a file or a definition,
   `code_overview` for a component and `code_references` for a library, above the tool's own answer,
   as `hakutaku query` prints it.
@@ -392,7 +394,8 @@ Find takes 50 ms or less over 100,000 items, and no step blocks the page for mor
 - at most 15,000 curves are drawn in a frame; beyond that, only the core view's and the selection's;
 - labels go through a grid, and the layout is computed, never simulated;
 - Find keeps the best matches in one pass, and never sorts every match;
-- a large file is highlighted in a worker and added 500 lines at a time, and lines far out of view
+- a file over 2,500 lines or 16,384 characters is highlighted in a worker, never on the page, and
+  added at most 500 lines and 65,536 characters at a time, one chunk per task; lines far out of view
   are not laid out.
 
 **How they are checked.** Two spec files, `test/e2e/first-run.spec.ts` and

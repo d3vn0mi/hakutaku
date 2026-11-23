@@ -26,6 +26,10 @@ export const ROWS_SHOWN = 10; // rows a list of the details shows before "and <n
 export const OUTLINE_CACHE_LIMIT = 256; // outlines the page holds, besides the ones it shows
 
 export const WORKER_HIGHLIGHT_ABOVE = 2500; // lines above which a file is highlighted in a worker
-export const SOURCE_CHUNK_LINES = 500; // lines highlighted at a time
+// characters above which a file is highlighted in a worker too: highlighting a text of this size
+// and parsing its HTML take well under 50 ms on the page
+export const HIGHLIGHT_ON_PAGE_CHARS = 16_384;
+export const SOURCE_CHUNK_LINES = 500; // lines appended to the page at a time, at most
+export const SOURCE_CHUNK_CHARS = 65_536; // characters of HTML appended at a time, at most
 export const FIND_MAX = 14; // results Find shows
 export const LIST_PAGE = 200; // files the list view shows at a time

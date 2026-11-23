@@ -2,11 +2,12 @@
 // a .line element. The one module that writes HTML from a string, and only what hl.ts makes:
 // highlight.js's output, or escaped text. Everything else, the gutter included, is built from
 // elements.
-// - A file of up to WORKER_HIGHLIGHT_ABOVE lines is highlighted here, at once.
-// - A larger file goes to the worker, which posts its lines in chunks of SOURCE_CHUNK_LINES, and
-//   each chunk is appended in the task its message arrives in. Without a worker, or when the
-//   worker fails, the file is escaped plain text in the same chunks, one per task, and the note
-//   says so.
+// - A file of up to WORKER_HIGHLIGHT_ABOVE lines and HIGHLIGHT_ON_PAGE_CHARS characters is
+//   highlighted here, at once: small enough that this blocks the page for well under 50 ms.
+// - A larger file goes to the worker, which posts its lines in chunks of at most
+//   SOURCE_CHUNK_LINES lines and SOURCE_CHUNK_CHARS characters, and each chunk is appended in the
+//   task its message arrives in. Without a worker, or when the worker fails, the file is escaped
+//   plain text in the same chunks, one per task, and the note says so.
 // - The gutter carries a definition's glyph beside its first line, and a mark beside each call
 //   site given: b for a bound call, s for a scoped one. The gutter is for a pointer, and a
 //   screen reader skips it, so the same marks are listed after the code, by line, each a button
@@ -19,13 +20,12 @@
 import { parseId } from "../../../model/ids.js";
 import type { DefKind } from "../../../model/types.js";
 import type { SourceData } from "../../../query/view/types.js";
-import { SOURCE_CHUNK_LINES, WORKER_HIGHLIGHT_ABOVE } from "../constants.js";
 import { GLYPH } from "../detail/facts.js";
 import { h, prefersReducedMotion } from "../dom.js";
 import { count } from "../words.js";
 import { type HlChunk, type HlRequest, highlightLines } from "./hl.js";
 import type { HlLanguage } from "./languages.js";
-import { lineCount } from "./split-lines.js";
+import { chunkEnd, highlightedOffPage, lineCount } from "./split-lines.js";
 
 export interface SiteMark {
   line: number;
@@ -124,7 +124,7 @@ export function renderSource(
     pane.replaceChildren(note);
     return { cancel() {} };
   }
-  const large = total > WORKER_HIGHLIGHT_ABOVE;
+  const large = highlightedOffPage(src.text);
   const say = (plain: boolean) => {
     const parts = [
       `${count(total, "line")}${plain && large ? ", without colours (large file)" : ""}`,
@@ -262,7 +262,7 @@ export function renderSource(
     const step = () => {
       timer = undefined;
       if (stopped()) return;
-      const to = Math.min(from + SOURCE_CHUNK_LINES, total);
+      const to = chunkEnd(lines, from, total);
       append(from, lines.slice(from, to));
       from = to;
       if (from < total) timer = setTimeout(step, 0);

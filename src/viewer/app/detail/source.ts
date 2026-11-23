@@ -4,21 +4,21 @@
 // entry point's manifest row does, has that line flashed. A map without sources, a file the store
 // holds no source for, and a source that cannot be had or that comes from another build each
 // draw only a note saying so.
-// - The page has one highlighting worker, made when a file over WORKER_HIGHLIGHT_ABOVE lines
-//   first needs it. Once it fails, or when this page cannot make one, every later large file is
-//   rendered without it.
+// - The page has one highlighting worker, made when a file too large to highlight on the page
+//   (over WORKER_HIGHLIGHT_ABOVE lines or HIGHLIGHT_ON_PAGE_CHARS characters) first needs it.
+//   Once it fails, or when this page cannot make one, every later large file is rendered without
+//   it, as plain text a chunk at a time.
 // - An exported page has no worker, by design: it holds no worker script and its CSP allows none,
 //   so it never tries to make one, and renders every large file without it.
 // - Opening the tab again stops whatever the last opening was still drawing.
 import { F, FLAG_SOURCE } from "../../../query/view/constants.js";
-import { WORKER_HIGHLIGHT_ABOVE } from "../constants.js";
 import { ApiError, type DataSource } from "../data-types.js";
 import { h } from "../dom.js";
 import type { Model } from "../model.js";
 import { idOf } from "../routing.js";
 import { hlLanguage } from "../source/languages.js";
 import { renderSource, type SiteMark } from "../source/render.js";
-import { lineCount } from "../source/split-lines.js";
+import { highlightedOffPage } from "../source/split-lines.js";
 
 const SOURCES_OFF = "Sources are not part of this map.";
 const NO_SOURCE =
@@ -91,10 +91,7 @@ export function createSourceView(model: Model, source: DataSource): SourceView {
             lang: hlLanguage(file[F.path]),
             flashLine: sel.kind === "definition" ? defs.line[sel.def] : line,
             marks,
-            worker:
-              lineCount(src.text) > WORKER_HIGHLIGHT_ABOVE
-                ? highlighter()
-                : null,
+            worker: highlightedOffPage(src.text) ? highlighter() : null,
           });
         },
         (e) => {

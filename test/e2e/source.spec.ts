@@ -1,8 +1,9 @@
 // The Source tab end to end. A file's source is highlighted by its language, in a gutter that
 // numbers exactly the store's lines and marks each definition's first line with its glyph; the
 // selected definition's line is flashed and scrolled into view, at once under reduced motion,
-// and its call sites in the file are marked by their label. A file over 2,500 lines is highlighted in a worker and appended one
-// chunk of lines at a time, or, without a worker, as plain text in the same chunks. A file without
+// and its call sites in the file are marked by their label. A file over 2,500 lines or 16,384
+// characters is highlighted in a worker and appended a chunk of lines at a time, or, without a
+// worker, as plain text in the same chunks, so that no step blocks the page. A file without
 // a source, an empty file, redacted spans and a map without sources each say so. Code that holds
 // markup stays text, and nothing from another build is drawn.
 import { expect, type Locator, type Page, test } from "@playwright/test";
@@ -466,37 +467,132 @@ test("without a worker, a large file renders as plain text in the same chunks, a
   expect(await renderedLines(page)).toEqual({ numbers: 6000, lines: 6000 });
 });
 
-test("a file of up to 2,500 lines is highlighted on the page, a longer one in the worker", async ({
-  page,
-}) => {
-  const started = workers(page);
-  // the large file's answer cut to its first n lines
-  const firstLines = async (n: number) => {
-    await page.unroute(/\/api\/source\?/);
-    await page.route(/\/api\/source\?/, async (route) => {
-      const response = await route.fetch();
-      const src = (await response.json()) as SourceData;
-      const text = `${src.text.split("\n").slice(0, n).join("\n")}\n`;
-      await route.fulfill({ response, json: { ...src, text, lines: n } });
+// A routed answer for big.ts whose text is n lines of TypeScript, chars characters long with its
+// final line feed, each line a statement padded with spaces and the last a comment.
+function codeOf(n: number, chars: number): string {
+  const width = Math.floor(chars / n) - 1;
+  const lines = Array.from({ length: n }, (_, i) =>
+    `x+=${i % 10};`.padEnd(width),
+  );
+  lines[n - 1] = "// end".padEnd(chars - n * (width + 1) + width);
+  return `${lines.join("\n")}\n`;
+}
+
+async function answerWith(page: Page, text: string): Promise<void> {
+  await page.route(/\/api\/source\?/, async (route) => {
+    const response = await route.fetch();
+    const src = (await response.json()) as SourceData;
+    await route.fulfill({
+      response,
+      json: { ...src, text, lines: text.split("\n").length - 1 },
     });
-  };
-  await firstLines(2500);
+  });
+}
+
+test("a file of up to 2,500 lines and 16,384 characters is highlighted on the page, a longer or a larger one in the worker", async ({
+  context,
+}) => {
+  for (const { lines, chars, page: onPage } of [
+    { lines: 2500, chars: 16_384, page: true },
+    { lines: 2501, chars: 16_384, page: false },
+    { lines: 100, chars: 16_385, page: false },
+  ]) {
+    const page = await context.newPage();
+    const started = workers(page);
+    const text = codeOf(lines, chars);
+    expect(text.length).toBe(chars);
+    await answerWith(page, text);
+    await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
+    await tab(page, "Source").click();
+    await expect(complete(page)).toBeVisible({ timeout: 20_000 });
+    await expect(note(page)).toHaveText(
+      `${lines.toLocaleString("en-US")} lines`,
+    );
+    expect(await renderedLines(page)).toEqual({
+      numbers: lines,
+      lines,
+    });
+    // highlighted either way, on the page or in the worker
+    expect(
+      await page.locator(".code .line").nth(0).locator(".hljs-number").count(),
+    ).toBe(1);
+    expect(
+      await page
+        .locator(".code .line")
+        .nth(lines - 1)
+        .locator(".hljs-comment")
+        .count(),
+    ).toBe(1);
+    expect(started, `${lines} lines, ${chars} characters`).toEqual(
+      onPage ? [] : [WORKER_SCRIPT],
+    );
+    await page.close();
+  }
+});
+
+test("a file just under 2,500 lines of long lines renders without blocking the page", async ({
+  page,
+  browserName,
+}) => {
+  await page.addInitScript(() => {
+    const long: Array<[start: number, duration: number]> = [];
+    Object.defineProperty(window, "__long", { value: long });
+    try {
+      new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) long.push([e.startTime, e.duration]);
+      }).observe({ type: "longtask", buffered: true });
+    } catch {
+      // a browser without long-task entries records none
+    }
+  });
+  // 2,400 lines of about 400 characters each, under the store's 1 MiB and its minified mark
+  const lines = Array.from(
+    { length: 2400 },
+    (_, i) =>
+      `export const v${i} = call("${"a".repeat(360)}", ${i}, true); // note ${i}`,
+  );
+  const text = `${lines.join("\n")}\n`;
+  expect(text.length).toBeGreaterThan(950_000);
+  expect(text.length).toBeLessThan(1_048_576);
+  await answerWith(page, text);
   await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
+  const clicked = await page.evaluate(() => performance.now());
   await tab(page, "Source").click();
   await expect(complete(page)).toBeVisible({ timeout: 20_000 });
-  await expect(note(page)).toHaveText("2,500 lines");
-  expect(await renderedLines(page)).toEqual({ numbers: 2500, lines: 2500 });
+  const elapsed = (await page.evaluate(() => performance.now())) - clicked;
+  await expect(note(page)).toHaveText("2,400 lines");
+  expect(await renderedLines(page)).toEqual({ numbers: 2400, lines: 2400 });
   expect(
-    await page.locator(".code .line").nth(501).locator(".hljs-comment").count(),
+    await page.locator(".code .line").nth(2399).locator(".hljs-string").count(),
   ).toBe(1);
-  expect(started).toEqual([]);
-  await firstLines(2501);
-  await tab(page, "Overview").click();
-  await tab(page, "Source").click();
-  await expect(complete(page)).toBeVisible({ timeout: 20_000 });
-  await expect(note(page)).toHaveText("2,501 lines");
-  expect(await renderedLines(page)).toEqual({ numbers: 2501, lines: 2501 });
-  expect(started).toEqual([WORKER_SCRIPT]);
+  // the frames after the last chunk, whose layout is part of rendering it
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => setTimeout(done, 0)),
+        ),
+      ),
+  );
+  const blocks = await page.evaluate((from) => {
+    const long = (window as unknown as { __long: Array<[number, number]> })
+      .__long;
+    return {
+      recorded: PerformanceObserver.supportedEntryTypes.includes("longtask"),
+      longest: Math.max(
+        0,
+        ...long.filter(([start]) => start >= from).map(([, ms]) => ms),
+      ),
+    };
+  }, clicked);
+  if (browserName === "chromium") {
+    expect(blocks.recorded).toBe(true);
+    expect(blocks.longest).toBeLessThan(200);
+  } else {
+    // a browser that reports no long task: the whole rendering stays within a bound of its own
+    expect(blocks.recorded).toBe(false);
+    expect(elapsed).toBeLessThan(10_000);
+  }
 });
 
 test("a browser that cannot start a worker renders a large file as plain text", async ({
