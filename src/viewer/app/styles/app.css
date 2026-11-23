@@ -389,7 +389,7 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 /* A toggle that can change nothing where the map is: off, and the line under it says why. */
-.toggles label:has(input:disabled) {
+.toggles label:has(input[aria-disabled="true"]) {
   color: var(--muted);
   cursor: not-allowed;
 }

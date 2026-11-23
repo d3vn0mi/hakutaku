@@ -2,7 +2,9 @@
 // its count. A toggle sets the state, and follows it when something else changes it. Tests can
 // change nothing at Core and Components depth, which draw no tests, unless the list view is open
 // over the map or in its place, since it lists them at every depth: there the toggle is off, and
-// a line under it says why.
+// a line under it says why. It is off through aria-disabled, not disabled, so that it keeps the
+// focus when a key turns it off and Tab still reaches it and its reason; a click, Space
+// included, then changes nothing.
 import { h } from "../dom.js";
 import type { Model } from "../model.js";
 import type { StateStore, ViewState } from "../state.js";
@@ -34,6 +36,10 @@ export function mountShow(
       const box = h("input", {
         attrs: { type: "checkbox" },
         on: {
+          click: (e) => {
+            if (box.getAttribute("aria-disabled") === "true")
+              e.preventDefault();
+          },
           change: () =>
             state.set({ show: { ...state.get().show, [shown]: box.checked } }),
         },
@@ -55,10 +61,14 @@ export function mountShow(
   const follow = (now: ViewState) => {
     const off = !now.listOpen && now.depth !== "files";
     if (tests === undefined) return;
-    tests.disabled = off;
     why.hidden = !off;
-    if (off) tests.setAttribute("aria-describedby", why.id);
-    else tests.removeAttribute("aria-describedby");
+    if (off) {
+      tests.setAttribute("aria-disabled", "true");
+      tests.setAttribute("aria-describedby", why.id);
+    } else {
+      tests.removeAttribute("aria-disabled");
+      tests.removeAttribute("aria-describedby");
+    }
   };
   follow(state.get());
   state.subscribe((now, before) => {

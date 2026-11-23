@@ -665,6 +665,52 @@ test("the Tests toggle is off where it can change nothing, and says why", async 
   await expect(tests).toHaveAccessibleDescription("");
 });
 
+test("D pressed on the Tests toggle leaves the focus there, where Tab still reaches it and its reason", async ({
+  page,
+  browserName,
+}) => {
+  await openViewer(page, E2E.sample);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) await expectNoWebGL(page);
+  await depthButton(page, "Files").click();
+  const tests = testsBox(page);
+  await tests.focus();
+  await expect(tests).not.toBeChecked();
+  // D steps from Files to Components, where the map draws no tests
+  await page.keyboard.press("d");
+  await expect(depthButton(page, "Components")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(tests).toBeFocused();
+  if (webgl) {
+    await expect(tests).toBeDisabled();
+    await expect(tests).toHaveAccessibleDescription(WHY_NO_TESTS);
+    // Space and a click change nothing while it is off
+    await page.keyboard.press("Space");
+    await expect(tests).not.toBeChecked();
+    // a pointer's click, which Playwright would otherwise hold back until the box is on
+    await page
+      .locator("#show label")
+      .filter({ hasText: "Tests" })
+      .click({ force: true });
+    await expect(tests).not.toBeChecked();
+    // Tab leaves it and comes back to it, so its reason can be read
+    await page.keyboard.press("Tab");
+    await expect(tests).not.toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(tests).toBeFocused();
+  } else {
+    // the list in the map's place lists tests at every depth: the toggle still works
+    await expect(tests).toBeEnabled();
+    await expect(tests).toHaveAccessibleDescription("");
+    await page.keyboard.press("Space");
+    await expect(tests).toBeChecked();
+  }
+});
+
 test("the Source tab's marks reach a keyboard and a screen reader", async ({
   page,
 }) => {
