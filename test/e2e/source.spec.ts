@@ -978,6 +978,97 @@ test("a map without sources says so, and asks for none", async ({ page }) => {
   expect(asked).toEqual([]);
 });
 
+// GET source's answers rewritten: each line named holds the line separator and the paragraph
+// separator, which a browser might break a line at, in a string and in a comment, the line feeds
+// untouched. Built from their codes, so this file stays ASCII.
+const LS = String.fromCharCode(0x2028);
+const PS = String.fromCharCode(0x2029);
+const SEPARATED = `const s = "a${LS}b${PS}c"; // d${LS}e${PS}f`;
+async function separatorsOn(page: Page, lines: number[]): Promise<void> {
+  await page.route(/\/api\/source\?/, async (route) => {
+    const response = await route.fetch();
+    const src = (await response.json()) as SourceData;
+    const text = src.text.split("\n");
+    for (const n of lines) text[n - 1] = SEPARATED;
+    await route.fulfill({ response, json: { ...src, text: text.join("\n") } });
+  });
+}
+
+// Each line named renders whole on one line, as the store counts it: its text, separators kept,
+// lies in one line box, and it and the line after it sit level with their numbers in the gutter.
+async function expectOneLineEach(page: Page, lines: number[]): Promise<void> {
+  const seen = await page.evaluate(
+    (ns) =>
+      ns.map((n) => {
+        const code = document.querySelectorAll(".code .line");
+        const gutter = document.querySelectorAll(".code .gutter .n");
+        const range = document.createRange();
+        range.selectNodeContents(code[n - 1]);
+        const tops = [...range.getClientRects()].map((r) => r.top);
+        const top = (el: Element | undefined) =>
+          el?.getBoundingClientRect().top ?? Number.NaN;
+        return {
+          text: code[n - 1].textContent,
+          spread: Math.max(...tops) - Math.min(...tops),
+          level: Math.abs(top(code[n - 1]) - top(gutter[n - 1])),
+          next: Math.abs(top(code[n]) - top(gutter[n])),
+          height: code[n - 1].getBoundingClientRect().height,
+        };
+      }),
+    lines,
+  );
+  for (const [i, line] of seen.entries()) {
+    expect(line.text, `line ${lines[i]}`).toBe(SEPARATED);
+    expect(line.spread, `line ${lines[i]}`).toBeLessThan(4);
+    expect(line.level, `line ${lines[i]}`).toBeLessThan(0.5);
+    expect(line.next, `line ${lines[i] + 1}`).toBeLessThan(0.5);
+    expect(line.height, `line ${lines[i]}`).toBe(18);
+  }
+}
+
+test("a line that holds a line or paragraph separator renders as one line, on the page and in the worker, highlighted or not", async ({
+  page,
+}) => {
+  await separatorsOn(page, [2, 3]);
+  // highlighted on the page
+  const kepler = await fetchSource(E2E.sample, KEPLER);
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await tab(page, "Source").click();
+  await expect(complete(page)).toBeVisible();
+  await expect(page.locator(".code .line")).toHaveCount(kepler.lines);
+  await expect(page.locator(".code .gutter .n")).toHaveCount(kepler.lines);
+  expect(
+    await page
+      .locator(".code .line")
+      .nth(1)
+      .locator("[class^='hljs-']")
+      .count(),
+  ).toBeGreaterThan(0);
+  await expectOneLineEach(page, [2, 3]);
+  // plain text, for a language the tab does not highlight
+  const m = await fetchMap(E2E.markup);
+  const template = must(
+    m.files.find((f) => f[F.path] === "src/template.php"),
+    "src/template.php in the markup-names case",
+  );
+  const plain = await fetchSource(E2E.markup, `${m.repo}:${template[F.path]}`);
+  await openViewer(page, E2E.markup, {
+    token: toToken({ kind: "file", repo: m.repo, path: template[F.path] }),
+  });
+  await tab(page, "Source").click();
+  await expect(complete(page)).toBeVisible();
+  await expect(page.locator(".code .line")).toHaveCount(plain.lines);
+  await expect(page.locator(".code [class^='hljs-']")).toHaveCount(0);
+  await expectOneLineEach(page, [2, 3]);
+  // highlighted in the worker, a large file's first chunk
+  await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
+  await tab(page, "Source").click();
+  await expect(complete(page)).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator(".code .line")).toHaveCount(6000);
+  await expect(page.locator(".code .gutter .n")).toHaveCount(6000);
+  await expectOneLineEach(page, [2, 3]);
+});
+
 test("code that holds markup stays text, highlighted on the page or in the worker", async ({
   page,
 }) => {
