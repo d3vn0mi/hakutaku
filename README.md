@@ -219,7 +219,7 @@ The road to 0.1:
         how it refuses. A test checks its argument tables, error codes, label wording, examples and
         IDs against the code and the sample.
 - [ ] **Viewer** (in progress). Lenses, depth levels, search and filters, the source view,
-      accessibility and the performance budget. 8 of 17 steps done:
+      accessibility and the performance budget. 12 of 17 steps done:
   - [x] **Viewer data.** The map, file outlines, source and history, read from a store as compact
         payloads that come out byte for byte the same on every read.
   - [x] **The viewer API.** One read-only API over the store and the tools. A file the denylist
@@ -229,18 +229,21 @@ The road to 0.1:
   - [x] **`hakutaku view`.** Serves the viewer on `127.0.0.1` behind a session token, and an
         end-to-end harness drives it in Chromium and Firefox.
   - [x] **The galaxy**, its curves and the panels around it. A fixed layout with no force
-        simulation, so the same store always draws the same picture. A browser without WebGL gets a
-        notice instead of the map.
+        simulation, so the same store always draws the same picture. A browser without WebGL shows
+        the list view in the map's place.
   - [x] **Selection** by link token, and the details header. Any node opens from its token in the
         address bar, from the keyboard too, and each selection is read out to screen readers.
   - [x] **Lenses**, entry points and grouping. Structure, Risk and History on the keys 1 to 3, and
         files grouped by component, folder or language.
   - [x] **Depth levels** and the coverage line. Components, Core and Files on the D key, with a line
         that says how much of the repository the view shows.
-  - [ ] **Find.**
-  - [ ] **Filters** and the list view.
-  - [ ] **The Overview and Inside tabs.**
-  - [ ] **The Source tab.**
+  - [x] **Find.** Files, definitions and libraries in one box, on F or /, ranked by importance.
+  - [x] **Filters** and the list view. A filter dims what it leaves out and never moves anything.
+        The list view, on L, gives the same files as a ranked list for the keyboard and screen readers.
+  - [x] **The Overview and Inside tabs.** A node's facts and its neighbours, and a file's
+        definitions, one dot each.
+  - [x] **The Source tab.** The store's redacted copy of a file, highlighted, with the selected
+        definition flashed and the call sites marked.
   - [ ] **The Agent tab.**
   - [ ] **The static export.**
   - [ ] **Accessibility.**
@@ -733,8 +736,8 @@ hakutaku stands on the work of others.
   dependency-cruiser.
 - **The viewer:** [sigma.js](https://github.com/jacomyal/sigma.js) and
   [graphology](https://github.com/graphology/graphology), with graphology's utilities and the
-  [events](https://github.com/browserify/events) package, and the [IBM Plex](https://github.com/IBM/plex)
-  fonts. [highlight.js](https://github.com/highlightjs/highlight.js) is planned, for the source view.
+  [events](https://github.com/browserify/events) package, [highlight.js](https://github.com/highlightjs/highlight.js)
+  for the source view, and the [IBM Plex](https://github.com/IBM/plex) fonts.
 - **The MCP server:** the [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk).
 - **Algorithms:** PageRank (Brin and Page) and Tarjan's strongly connected components.
 

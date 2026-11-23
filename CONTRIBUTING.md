@@ -58,8 +58,9 @@ uses sudo).
 
 The end-to-end tests never skip a browser. Where a browser cannot create a WebGL context, as headless
 Firefox cannot on some Linux machines, they check the viewer's no-WebGL path in that browser instead
-of the map. Chromium must draw the map. Locally, they leave out the generated 20,000-file repository
-unless you set `HAKUTAKU_E2E_WITH_SCALE=1`; in CI (`CI=true`) it is always built.
+of the map. Chromium must draw the map. One test also turns WebGL off in both browsers, so every
+machine tests that path. Locally, they leave out the generated 20,000-file repository unless you set
+`HAKUTAKU_E2E_WITH_SCALE=1`; in CI (`CI=true`) it is always built.
 
 The analysis engines are not npm dependencies. They are pinned, with integrity hashes, in
 `engines.lock.json`, and installed by `hakutaku engines install`. The oracle and hostile tests build
