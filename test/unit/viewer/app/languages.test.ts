@@ -128,3 +128,39 @@ it("drops carriage returns that end lines, highlighted or plain", () => {
     expect(lines.join(""), String(lang)).not.toContain("\r");
   }
 });
+
+it("keeps a string that spans lines in its colour on every line", () => {
+  const ts = highlightLines("const s = `one\ntwo\nthree`;\n", "typescript");
+  const py = highlightLines('s = """one\ntwo\nthree"""\n', "python");
+  for (const [lang, lines] of [
+    ["typescript", ts],
+    ["python", py],
+  ] as const) {
+    expect(lines, lang).toHaveLength(4);
+    for (const line of lines.slice(0, 3)) {
+      expect(line, `${lang}: ${line}`).toMatch(
+        /<span class="hljs-string">[^<]*(?:one|two|three)[^<]*<\/span>/,
+      );
+    }
+  }
+  expect(ts[1]).toBe('<span class="hljs-string">two</span>');
+  expect(py[1]).toBe('<span class="hljs-string">two</span>');
+});
+
+it("keeps a script element in markdown or HTML-bearing code as text", () => {
+  const code =
+    "# T\n\n<script>alert(1)</script>\n<img src=x onerror=alert(1)>\n";
+  for (const lang of ["markdown", "typescript", "javascript", null] as const) {
+    const html = highlightLines(code, lang).join("\n");
+    // every tag is a span; without them, the text is the code, escaped
+    for (const [tag] of html.matchAll(/<[^>]*>/g)) {
+      expect(tag, `${lang}: ${tag}`).toMatch(/^<\/?span[ >]/);
+    }
+    expect(html.replace(/<[^>]*>/g, ""), String(lang)).toBe(
+      code
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;"),
+    );
+  }
+});

@@ -17,6 +17,7 @@ import {
   query,
   selectedId,
   toToken,
+  watchCsp,
 } from "./helpers.js";
 
 const SEP = " \u00b7 ";
@@ -40,7 +41,8 @@ const GLYPHS: Readonly<Record<string, string>> = {
   type: "T",
 };
 const WORKER_SCRIPT = "/assets/hl-worker.js";
-const MARKUP = '<img src=x onerror="alert(1)"></span><b>bold</b>';
+const MARKUP =
+  '<img src=x onerror="alert(1)"></span><b>bold</b><script>alert(2)</script>';
 
 // The value, or a failure naming what the repo lacks.
 function must<T>(value: T | undefined | null, what: string): T {
@@ -144,7 +146,7 @@ async function expectMarkupAsText(page: Page, dialogs: string[]) {
   );
   expect(
     await page.evaluate(() => ({
-      elements: document.querySelectorAll(".code img, .code b").length,
+      elements: document.querySelectorAll(".code :is(img, b, script)").length,
       handlers: [...document.querySelectorAll(".code *")].filter((e) =>
         [...e.attributes].some((a) => a.name.startsWith("on")),
       ).length,
@@ -454,6 +456,47 @@ test("without a worker, a large file renders as plain text in the same chunks, a
   ).toHaveLength(5000);
   expect(await chunks()).toEqual(Array.from({ length: 12 }, () => 1));
   await expectMarkupAsText(page, dialogs);
+  // a worker that failed is not asked again: the next opening renders plain text at once
+  await tab(page, "Overview").click();
+  await tab(page, "Source").click();
+  await expect(complete(page)).toBeVisible({ timeout: 20_000 });
+  await expect(note(page)).toHaveText(
+    "6,000 lines, without colours (large file)",
+  );
+  expect(await renderedLines(page)).toEqual({ numbers: 6000, lines: 6000 });
+});
+
+test("a file of up to 2,500 lines is highlighted on the page, a longer one in the worker", async ({
+  page,
+}) => {
+  const started = workers(page);
+  // the large file's answer cut to its first n lines
+  const firstLines = async (n: number) => {
+    await page.unroute(/\/api\/source\?/);
+    await page.route(/\/api\/source\?/, async (route) => {
+      const response = await route.fetch();
+      const src = (await response.json()) as SourceData;
+      const text = `${src.text.split("\n").slice(0, n).join("\n")}\n`;
+      await route.fulfill({ response, json: { ...src, text, lines: n } });
+    });
+  };
+  await firstLines(2500);
+  await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
+  await tab(page, "Source").click();
+  await expect(complete(page)).toBeVisible({ timeout: 20_000 });
+  await expect(note(page)).toHaveText("2,500 lines");
+  expect(await renderedLines(page)).toEqual({ numbers: 2500, lines: 2500 });
+  expect(
+    await page.locator(".code .line").nth(501).locator(".hljs-comment").count(),
+  ).toBe(1);
+  expect(started).toEqual([]);
+  await firstLines(2501);
+  await tab(page, "Overview").click();
+  await tab(page, "Source").click();
+  await expect(complete(page)).toBeVisible({ timeout: 20_000 });
+  await expect(note(page)).toHaveText("2,501 lines");
+  expect(await renderedLines(page)).toEqual({ numbers: 2501, lines: 2501 });
+  expect(started).toEqual([WORKER_SCRIPT]);
 });
 
 test("a browser that cannot start a worker renders a large file as plain text", async ({
@@ -676,11 +719,14 @@ test("code that holds markup stays text, highlighted on the page or in the worke
 }) => {
   const dialogs = dialogsOf(page);
   const started = workers(page);
+  const violations = await watchCsp(page);
   await markupOnLineTwo(page);
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
   await tab(page, "Source").click();
   await expect(complete(page)).toBeVisible();
   await expectMarkupAsText(page, dialogs);
+  // highlighted, flashed and laid out under the page's policy
+  expect(await violations()).toEqual([]);
   await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
   await tab(page, "Source").click();
   await expect(complete(page)).toBeVisible({ timeout: 20_000 });
@@ -695,4 +741,45 @@ test("code that holds markup stays text, highlighted on the page or in the worke
     script.status,
     script.headers.get("content-security-policy"),
   ]).toEqual([200, "default-src 'none'"]);
+  expect(await violations()).toEqual([]);
+});
+
+test("opening the Source tab again stops what the last opening was still drawing", async ({
+  page,
+}) => {
+  // Each append of lines to the code, with whether that code was still on the page. Once the
+  // first chunk of the large file is in, the page opens Overview, then Source again, before the
+  // worker's next chunk arrives.
+  await page.addInitScript(() => {
+    const appends: boolean[] = [];
+    Object.defineProperty(window, "__appends", { value: appends });
+    const append = Element.prototype.append;
+    let reopened = false;
+    Element.prototype.append = function (this: Element, ...nodes) {
+      const lines = this.matches(".code code");
+      if (lines) appends.push(this.isConnected);
+      append.apply(this, nodes);
+      if (lines && !reopened) {
+        reopened = true;
+        queueMicrotask(() => {
+          document.getElementById("tab-overview")?.click();
+          document.getElementById("tab-source")?.click();
+        });
+      }
+    };
+  });
+  const asked = sourceRequests(page);
+  await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
+  await tab(page, "Source").click();
+  await expect(complete(page)).toBeVisible({ timeout: 20_000 });
+  expect(asked).toEqual([BIG, BIG]);
+  expect(await renderedLines(page)).toEqual({ numbers: 6000, lines: 6000 });
+  // The worker answers in order, so the first opening's chunks all came before the second's
+  // last: none of them reached the page, or the code it had left. One chunk of the first, then
+  // the twelve of the second.
+  expect(
+    await page.evaluate(() => [
+      ...(window as unknown as { __appends: boolean[] }).__appends,
+    ]),
+  ).toEqual(Array.from({ length: 13 }, () => true));
 });
