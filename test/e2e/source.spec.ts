@@ -119,6 +119,51 @@ async function watchChunks(page: Page): Promise<() => Promise<number[]>> {
     ]);
 }
 
+// For each chunk of lines appended to the code, the animation frame it came in and how many
+// lines it held. The frames are counted by a callback the page asks for before the app does, so
+// it runs first in every frame: two chunks counted in one frame were laid out together.
+async function watchChunkFrames(
+  page: Page,
+): Promise<() => Promise<{ frames: number[]; lines: number[] }>> {
+  await page.addInitScript(() => {
+    const seen = { frames: [] as number[], lines: [] as number[] };
+    Object.defineProperty(window, "__hakutakuChunkFrames", { value: seen });
+    let frame = 0;
+    const beat = () => {
+      frame += 1;
+      requestAnimationFrame(beat);
+    };
+    requestAnimationFrame(beat);
+    new MutationObserver((records) => {
+      for (const r of records) {
+        if (!(r.target instanceof Element && r.target.matches(".code code"))) {
+          continue;
+        }
+        for (const node of r.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          seen.frames.push(frame);
+          seen.lines.push(node.querySelectorAll(".line").length);
+        }
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
+  return () =>
+    page.evaluate(() => {
+      const seen = (
+        window as unknown as {
+          __hakutakuChunkFrames: { frames: number[]; lines: number[] };
+        }
+      ).__hakutakuChunkFrames;
+      return { frames: [...seen.frames], lines: [...seen.lines] };
+    });
+}
+
+// Each chunk came in a frame of its own, so no frame lays out more than one chunk's lines.
+function expectOneChunkPerFrame(frames: number[]): void {
+  const shared = frames.filter((at, i) => frames.indexOf(at) !== i);
+  expect(shared, "frames that took more than one chunk").toEqual([]);
+}
+
 // Once a large file is complete, and two frames later, the lines the browser has laid out are the
 // ones near the view: what the code box has room for, and the rest of their chunk. A chunk near
 // the view is laid out whole in one frame, and a chunk far from it not at all (content-visibility),
@@ -387,6 +432,7 @@ test("a 6,000-line file renders fully without blocking the page", async ({
 }) => {
   const blocks = await watchLongTasks(page);
   const chunks = await watchChunks(page);
+  const chunkFrames = await watchChunkFrames(page);
   const started = workers(page);
   await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
   // what the Source tab does, from its click on; the page's own load is another matter
@@ -425,9 +471,10 @@ test("a 6,000-line file renders fully without blocking the page", async ({
     ),
   ).toEqual([true, false]);
   await expectLaidOutNearView(page);
-  // highlighted in the worker, and appended a chunk of 100 lines per task
+  // highlighted in the worker, and appended a chunk of 100 lines per task, one per frame
   expect(started).toEqual([WORKER_SCRIPT]);
   expect(await chunks()).toEqual(Array.from({ length: 60 }, () => 1));
+  expectOneChunkPerFrame((await chunkFrames()).frames);
   await expect(note(page)).toHaveText("6,000 lines");
   await expect(page.locator(".code .line")).toHaveCount(6000);
   expect(
@@ -447,6 +494,7 @@ test("without a worker, a large file renders as plain text in the same chunks, a
   // the worker's script never arrives, so the worker fails
   await page.route(`**${WORKER_SCRIPT}`, (route) => route.abort());
   const chunks = await watchChunks(page);
+  const chunkFrames = await watchChunkFrames(page);
   const dialogs = dialogsOf(page);
   await markupOnLineTwo(page);
   await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
@@ -463,6 +511,7 @@ test("without a worker, a large file renders as plain text in the same chunks, a
     await page.locator(".code .line").nth(3999).textContent(),
   ).toHaveLength(5000);
   expect(await chunks()).toEqual(Array.from({ length: 60 }, () => 1));
+  expectOneChunkPerFrame((await chunkFrames()).frames);
   await expectLaidOutNearView(page);
   await expectMarkupAsText(page, dialogs);
   // a worker that failed is not asked again: the next opening renders plain text at once
@@ -473,6 +522,42 @@ test("without a worker, a large file renders as plain text in the same chunks, a
     "6,000 lines, without colours (large file)",
   );
   expect(await renderedLines(page)).toEqual({ numbers: 6000, lines: 6000 });
+});
+
+test("a worker that fails after its first chunks leaves plain text from line 1, each line once", async ({
+  page,
+}) => {
+  // a worker that sends three chunks of lines of its own, then fails: the page has appended at
+  // most one of them when it hears of the failure, and the rest wait for their frames
+  await page.route(`**${WORKER_SCRIPT}`, (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: `self.onmessage = ({ data }) => {
+  for (let from = 0; from < 300; from += 100) {
+    self.postMessage({
+      id: data.id,
+      from,
+      lines: Array.from({ length: 100 }, () => "from the worker"),
+      done: false,
+    });
+  }
+  throw new Error("the worker failed");
+};`,
+    }),
+  );
+  const chunkFrames = await watchChunkFrames(page);
+  await openViewer(page, E2E.bigfile, { token: "src~big.ts" });
+  await tab(page, "Source").click();
+  await expect(complete(page)).toBeVisible({ timeout: 20_000 });
+  await expect(note(page)).toHaveText(
+    "6,000 lines, without colours (large file)",
+  );
+  expect(await renderedLines(page)).toEqual({ numbers: 6000, lines: 6000 });
+  await expect(
+    page.locator(".code .line", { hasText: "from the worker" }),
+  ).toHaveCount(0);
+  await expect(page.locator(".code .line").nth(1)).toHaveText("let total = 0;");
+  expectOneChunkPerFrame((await chunkFrames()).frames);
 });
 
 // A routed answer for big.ts whose text is n lines of TypeScript, chars characters long with its
@@ -543,6 +628,7 @@ test("a file just under 2,500 lines of long lines renders without blocking the p
   browserName,
 }) => {
   const watched = await watchLongTasks(page);
+  const chunkFrames = await watchChunkFrames(page);
   // 2,400 lines of about 400 characters each, under the store's 1 MiB and its minified mark
   const lines = Array.from(
     { length: 2400 },
@@ -572,6 +658,13 @@ test("a file just under 2,500 lines of long lines renders without blocking the p
         ),
       ),
   );
+  // The browser lays out every line near the view, about a hundred here, however the lines are
+  // cut. So the chunks are cut by their characters too, each about thirty of these lines, and
+  // each comes in a frame of its own: no frame lays out all of those lines at once.
+  const { frames, lines: held } = await chunkFrames();
+  expect(held.reduce((sum, n) => sum + n, 0)).toBe(2400);
+  expect(Math.max(...held)).toBeLessThanOrEqual(30);
+  expectOneChunkPerFrame(frames);
   const blocks = await watched(clicked);
   if (browserName === "chromium") {
     expect(blocks.recorded).toBe(true);

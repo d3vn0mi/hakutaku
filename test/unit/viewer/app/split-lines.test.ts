@@ -130,21 +130,21 @@ it("highlights a file on the page only while it is small in lines and in charact
   expect(highlightedOffPage("")).toBe(false);
 });
 
-it("cuts lines into chunks of at most 100 lines and 65,536 characters, a whole line at least", () => {
-  expect([SOURCE_CHUNK_LINES, SOURCE_CHUNK_CHARS]).toEqual([100, 65_536]);
+it("cuts lines into chunks of at most 100 lines and 16,384 characters, a whole line at least", () => {
+  expect([SOURCE_CHUNK_LINES, SOURCE_CHUNK_CHARS]).toEqual([100, 16_384]);
   const short = Array.from({ length: 1200 }, () => "a".repeat(20));
   expect(chunkEnd(short, 0, 1200)).toBe(100);
   expect(chunkEnd(short, 100, 1200)).toBe(200);
   expect(chunkEnd(short, 1150, 1200)).toBe(1200);
   // the total stops it before a line it could not hold
   const wide = Array.from({ length: 300 }, () => "b".repeat(1000));
-  expect(chunkEnd(wide, 0, 300)).toBe(65);
-  expect(chunkEnd(wide, 65, 300)).toBe(130);
+  expect(chunkEnd(wide, 0, 300)).toBe(16);
+  expect(chunkEnd(wide, 16, 300)).toBe(32);
   // exactly at the limit, the line is kept
-  const exact = Array.from({ length: 4 }, () => "c".repeat(16_384));
+  const exact = Array.from({ length: 4 }, () => "c".repeat(4_096));
   expect(chunkEnd(exact, 0, 4)).toBe(4);
   // a line longer than the limit is a chunk of its own
-  const huge = ["d", "e".repeat(70_000), "f"];
+  const huge = ["d", "e".repeat(20_000), "f"];
   expect(chunkEnd(huge, 0, 3)).toBe(1);
   expect(chunkEnd(huge, 1, 3)).toBe(2);
   expect(chunkEnd(huge, 2, 3)).toBe(3);

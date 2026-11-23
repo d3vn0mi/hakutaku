@@ -1,7 +1,8 @@
 // The Source tab's highlighting worker, built as assets/hl-worker.js. It highlights a large file's
 // whole text away from the page, so a comment or a string that spans lines is read whole, then
 // posts the file's lines back in chunks of at most SOURCE_CHUNK_LINES lines and SOURCE_CHUNK_CHARS
-// characters, each a message of its own, which the page appends one per task. The line feed that may end the text starts no line of its own.
+// characters, each a message of its own, which the page appends one per animation frame. The line
+// feed that may end the text starts no line of its own.
 import { type HlChunk, type HlRequest, highlightLines } from "./hl.js";
 import { chunkEnd, lineCount } from "./split-lines.js";
 

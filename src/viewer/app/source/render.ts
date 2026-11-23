@@ -5,9 +5,11 @@
 // - A file of up to WORKER_HIGHLIGHT_ABOVE lines and HIGHLIGHT_ON_PAGE_CHARS characters is
 //   highlighted here, at once: small enough that this blocks the page for well under 50 ms.
 // - A larger file goes to the worker, which posts its lines in chunks of at most
-//   SOURCE_CHUNK_LINES lines and SOURCE_CHUNK_CHARS characters, and each chunk is appended in the
-//   task its message arrives in. Without a worker, or when the worker fails, the file is escaped
-//   plain text in the same chunks, one per task, and the note says so.
+//   SOURCE_CHUNK_LINES lines and SOURCE_CHUNK_CHARS characters, and the chunks are appended one
+//   per animation frame: the browser lays out a chunk near the view whole, in the frame after it
+//   is appended, so two chunks in one frame would make one long frame. Without a worker, or when
+//   the worker fails, the file is escaped plain text in the same chunks, one per frame too, and
+//   the note says so. A page out of view draws no frame, so its chunks wait until it is shown.
 // - The gutter carries a definition's glyph beside its first line, and a mark beside each call
 //   site given: b for a bound call, s for a scoped one. The gutter is for a pointer, and a
 //   screen reader skips it, so the same marks are listed after the code, by line, each a button
@@ -164,9 +166,30 @@ export function renderSource(
   );
 
   let cancelled = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
   let stopWorker = () => {};
   const stopped = () => cancelled || !box.isConnected;
+
+  // The appends waiting for a frame, in order, and the frame asked for: one append a frame.
+  let waiting: Array<() => void> = [];
+  let frame: number | undefined;
+  const pump = () => {
+    frame = undefined;
+    if (stopped()) return;
+    waiting.shift()?.();
+    // the work may have asked for the next frame itself
+    if (waiting.length > 0 && frame === undefined) {
+      frame = requestAnimationFrame(pump);
+    }
+  };
+  const nextFrame = (work: () => void) => {
+    waiting.push(work);
+    if (frame === undefined) frame = requestAnimationFrame(pump);
+  };
+  const stopFrames = () => {
+    waiting = [];
+    if (frame !== undefined) cancelAnimationFrame(frame);
+    frame = undefined;
+  };
 
   const flash = (line: number) => {
     box.querySelector(".flash")?.remove();
@@ -250,8 +273,10 @@ export function renderSource(
     box.dataset.complete = "true";
   };
 
-  // Escaped plain text, appended a chunk per task.
+  // Escaped plain text, appended a chunk per frame, from line 1: the chunks the worker sent and
+  // the page has not appended yet are dropped.
   const plain = () => {
+    stopFrames();
     gutter.replaceChildren();
     code.replaceChildren();
     landed = 0;
@@ -260,20 +285,18 @@ export function renderSource(
     const lines = highlightLines(src.text, null);
     let from = 0;
     const step = () => {
-      timer = undefined;
-      if (stopped()) return;
       const to = chunkEnd(lines, from, total);
       append(from, lines.slice(from, to));
       from = to;
-      if (from < total) timer = setTimeout(step, 0);
+      if (from < total) nextFrame(step);
       else finish();
     };
-    timer = setTimeout(step, 0);
+    nextFrame(step);
   };
 
   const cancel = () => {
     cancelled = true;
-    clearTimeout(timer);
+    stopFrames();
     stopWorker();
   };
 
@@ -297,11 +320,12 @@ export function renderSource(
       stopWorker();
       return;
     }
-    append(e.data.from, e.data.lines);
-    if (e.data.done) {
-      stopWorker();
-      finish();
-    }
+    const { from, lines, done } = e.data;
+    if (done) stopWorker();
+    nextFrame(() => {
+      append(from, lines);
+      if (done) finish();
+    });
   };
   const onFailure = (e: Event) => {
     console.error("hakutaku: the highlighting worker failed", e);
