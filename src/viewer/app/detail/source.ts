@@ -11,7 +11,7 @@
 // - An exported page has no worker, by design: it holds no worker script and its CSP allows none,
 //   so it never tries to make one, and renders every large file without it.
 // - Opening the tab again stops whatever the last opening was still drawing.
-import { F, FLAG_SOURCE } from "../../../query/view/constants.js";
+import { F, FILE_KINDS, FLAG_SOURCE } from "../../../query/view/constants.js";
 import { refusalOfOtherBuild, sameBuild } from "../build-guard.js";
 import { ApiError, type DataSource } from "../data-types.js";
 import { h } from "../dom.js";
@@ -22,6 +22,11 @@ import { renderSource, type SiteMark } from "../source/render.js";
 import { highlightedOffPage } from "../source/split-lines.js";
 
 const SOURCES_OFF = "Sources are not part of this map.";
+const OTHER = FILE_KINDS.indexOf("other");
+// Why a file has no source: the store keeps none for a file that is not code, a test, config or
+// a doc, and none for one of those kinds that is over 1 MB, minified or generated.
+const NOT_KEPT =
+  "No source for this file: the map keeps sources for code, tests, config and docs only.";
 const NO_SOURCE =
   "No source for this file: it is over 1 MB, minified or generated.";
 const LOADING = "Loading the source\u2026";
@@ -38,6 +43,8 @@ export interface SourceView {
 }
 
 const srcnote = (text: string) => h("p", { class: "srcnote", text });
+const noSource = (kind: number) =>
+  srcnote(kind === OTHER ? NOT_KEPT : NO_SOURCE);
 
 export function createSourceView(model: Model, source: DataSource): SourceView {
   let drawing: { cancel(): void } | null = null;
@@ -68,7 +75,7 @@ export function createSourceView(model: Model, source: DataSource): SourceView {
       const { files, defs } = model.map;
       const file = files[sel.file];
       if (!model.map.sources) return [srcnote(SOURCES_OFF)];
-      if ((file[F.flags] & FLAG_SOURCE) === 0) return [srcnote(NO_SOURCE)];
+      if ((file[F.flags] & FLAG_SOURCE) === 0) return [noSource(file[F.kind])];
       const holder = h("div", { class: "source" }, srcnote(LOADING));
       const id = idOf(model, { kind: "file", file: sel.file });
       if (id === null) return [srcnote(FAILED)];
@@ -104,7 +111,9 @@ export function createSourceView(model: Model, source: DataSource): SourceView {
           if (!absent)
             console.error("hakutaku: the source could not be loaded", e);
           if (holder.isConnected) {
-            holder.replaceChildren(srcnote(absent ? NO_SOURCE : FAILED));
+            holder.replaceChildren(
+              absent ? noSource(file[F.kind]) : srcnote(FAILED),
+            );
           }
         },
       );

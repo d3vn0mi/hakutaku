@@ -7,7 +7,7 @@
 // a source, an empty file, redacted spans and a map without sources each say so. Code that holds
 // markup stays text, and nothing from another build is drawn.
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { FLAG_SOURCE } from "../../dist/query/view/constants.js";
+import { FILE_KINDS, FLAG_SOURCE } from "../../dist/query/view/constants.js";
 import type { MapData, SourceData } from "../../src/query/view/index.js";
 import {
   E2E,
@@ -24,6 +24,10 @@ import {
 
 const SEP = " \u00b7 ";
 const CODE = 0; // FILE_KINDS.indexOf("code")
+const OTHER = FILE_KINDS.indexOf("other");
+// What the tab says of a file whose kind the store keeps no source for
+const NOT_KEPT =
+  "No source for this file: the map keeps sources for code, tests, config and docs only.";
 const OTHER_BUILD = "0123456789ab";
 const KEPLER = "observatory:web/src/orbits/kepler.ts";
 const BIG = "bigfile:src/big.ts";
@@ -730,6 +734,45 @@ test("files without a source, empty files and CRLF files say what they are", asy
   expect(await page.locator(".code code").textContent()).not.toContain("\r");
   // a file the map says has no source is never asked for
   expect(asked).toEqual(["bigfile:src/empty.ts", "bigfile:src/crlf.ts"]);
+});
+
+test("a file of a kind whose source is never kept says so, not that it is too large", async ({
+  page,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  const other = must(
+    m.files.find((f) => f[F.kind] === OTHER),
+    "file that is neither code, a test, config nor a doc",
+  );
+  expect(other[F.flags] & FLAG_SOURCE).toBe(0);
+  const token = toToken({ kind: "file", repo: m.repo, path: other[F.path] });
+  const asked = sourceRequests(page);
+  await openViewer(page, E2E.sample, { token });
+  await tab(page, "Source").click();
+  await expect(note(page)).toHaveText(NOT_KEPT);
+  await expect(page.locator(".code")).toHaveCount(0);
+  expect(asked).toEqual([]);
+  // a map that says it has a source asks, and the store's refusal gives the same reason
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    const map = (await response.json()) as MapData;
+    await route.fulfill({
+      response,
+      json: {
+        ...map,
+        files: map.files.map((f) =>
+          f[F.path] === other[F.path]
+            ? f.map((v, i) => (i === F.flags ? Number(v) | FLAG_SOURCE : v))
+            : f,
+        ),
+      },
+    });
+  });
+  await openViewer(page, E2E.sample, { token });
+  await tab(page, "Source").click();
+  await expect(note(page)).toHaveText(NOT_KEPT);
+  await expect(page.locator(".code")).toHaveCount(0);
+  expect(asked).toEqual([`observatory:${other[F.path]}`]);
 });
 
 test("redacted spans are counted above the code", async ({ page }) => {

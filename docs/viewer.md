@@ -147,7 +147,9 @@ tabs:
   flashed and its call sites in the file are marked by their label. A list of the marked lines
   follows the code. A file over 2,500 lines or 16,384 characters is highlighted in a worker and
   added a chunk of lines at a time; an exported page, which has no worker, shows such a file as
-  plain text, a chunk at a time, and says so above it.
+  plain text, a chunk at a time, and says so above it. A file without a source says why: the store
+  keeps sources for code, tests, config and docs only, and none for a file over 1 MB, minified or
+  generated.
 - **Agent:** the call an agent would make for the node, `code_explain` for a file or a definition,
   `code_overview` for a component and `code_references` for a library, above the tool's own answer,
   as `hakutaku query` prints it.
