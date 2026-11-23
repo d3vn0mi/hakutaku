@@ -22,6 +22,18 @@ it("brightens a file by its share of the top PageRank", () => {
   ).toEqual([INK.hi, INK.hi, INK.mid, INK.mid, INK.lo]);
 });
 
+it("keeps a share of exactly 0.08 or 0.015 at the dimmer ink", () => {
+  const map = syntheticMap(3);
+  map.files[1][F.pagerank] = 0.08;
+  map.files[2][F.pagerank] = 0.015;
+  const s = buildModel(map);
+  expect(s.maxPagerank).toBe(1);
+  expect([1, 2].map((f) => fileColor(s, f, "structure", false))).toEqual([
+    INK.mid,
+    INK.lo,
+  ]);
+});
+
 it("grows a file with the square root of its share", () => {
   const s = buildModel(syntheticMap(200));
   expect(fileSize(s, s.production[0], "structure")).toBeCloseTo(11.2, 12);

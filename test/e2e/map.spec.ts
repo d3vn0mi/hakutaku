@@ -116,6 +116,13 @@ test("the stat band, legend and bottom panels read from the map", async ({
   );
 
   await expect(page.locator("#timeline rect")).toHaveCount(26);
+  // the latest week, and only that one, is drawn in the accent
+  await expect(page.locator("#timeline rect.now")).toHaveCount(1);
+  await expect(page.locator("#timeline rect").last()).toHaveClass(/\bnow\b/);
+  await expect(page.locator("#timeline rect.now")).toHaveCSS(
+    "fill",
+    "rgb(232, 97, 60)",
+  );
   await expect(page.locator("#timeline rect title")).toHaveText(
     history.weeks.map(
       (w) =>
