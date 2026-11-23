@@ -1,8 +1,9 @@
 // The supply chain, read from the repository's own files: every GitHub Action pinned by a full
 // commit SHA, with its tag in a comment; no workflow that runs on pull_request_target, reads a
-// secret or names a stored npm token; installs through npm ci; every dependency pinned to one exact
-// version, with the lockfile committed; Renovate's update proposals, which wait 14 days and never
-// push or merge on their own; and ci.yml's triggers and its read-only token.
+// secret, passes secrets on to a workflow it calls or names a stored npm token; installs through
+// npm ci; every dependency and override pinned to one exact version, with the lockfile committed;
+// Renovate's update proposals, which wait 14 days and never push or merge on their own; and
+// ci.yml's triggers and its read-only token.
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { expect, it } from "vitest";
@@ -17,7 +18,7 @@ interface Step {
 interface Workflow {
   on?: unknown;
   permissions?: unknown;
-  jobs?: Record<string, { steps?: Step[] }>;
+  jobs?: Record<string, { steps?: Step[]; secrets?: unknown }>;
 }
 
 const WORKFLOWS = ".github/workflows";
@@ -99,6 +100,27 @@ it("no workflow uses pull_request_target, a secret or a stored npm token", () =>
   }
 });
 
+it("no job passes secrets on to a called workflow, and no workflow takes any when called", () => {
+  const offenders: string[] = [];
+  const all = workflows();
+  expect(all.length).toBeGreaterThan(0);
+  for (const w of all) {
+    for (const [job, j] of Object.entries(w.doc.jobs ?? {})) {
+      if (j !== null && typeof j === "object" && "secrets" in j) {
+        offenders.push(`${w.file}: ${job}: secrets`);
+      }
+    }
+    const on = w.doc.on;
+    if (on !== null && typeof on === "object" && !Array.isArray(on)) {
+      const call = (on as Record<string, unknown>).workflow_call;
+      if (call !== null && typeof call === "object" && "secrets" in call) {
+        offenders.push(`${w.file}: workflow_call: secrets`);
+      }
+    }
+  }
+  expect(offenders).toEqual([]);
+});
+
 it("installs use npm ci", () => {
   const offenders: string[] = [];
   for (const w of workflows()) {
@@ -120,14 +142,29 @@ it("installs use npm ci", () => {
   expect(offenders).toEqual([]);
 });
 
+// Every version an overrides map sets, with the path to it: an override may hold one version, or
+// a map for the package's own dependencies, whose "." key is the version of the package itself.
+function overrideVersions(
+  map: unknown,
+  path: string[] = [],
+): Array<[string, unknown]> {
+  if (map === null || typeof map !== "object") return [[path.join(" > "), map]];
+  return Object.entries(map as Record<string, unknown>).flatMap(([name, v]) =>
+    overrideVersions(v, name === "." ? path : [...path, name]),
+  );
+}
+
 it("every dependency is pinned exactly", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
-  const loose = Object.entries({
-    ...pkg.dependencies,
-    ...pkg.devDependencies,
-  }).filter(
-    ([, v]) => !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v as string),
-  );
+  const exact = (v: unknown) =>
+    typeof v === "string" && /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(v);
+  const loose = [
+    ...Object.entries({ ...pkg.dependencies, ...pkg.devDependencies }),
+    ...overrideVersions(pkg.overrides ?? {}).map(([name, v]) => [
+      `overrides: ${name}`,
+      v,
+    ]),
+  ].filter(([, v]) => !exact(v));
   expect(loose).toEqual([]);
 });
 
