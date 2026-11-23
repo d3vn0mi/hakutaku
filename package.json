@@ -53,6 +53,7 @@
     "ci:local": "npm run build && npm run typecheck && npm run lint && npm test && npm run test:oracle && npm run test:golden && npm run test:hostile && npm run test:mcp && npm run test:e2e && npm run check:secrets && npm run check:tree"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@biomejs/biome": "2.6.5",
     "@ibm/plex-mono": "2.5.0",
     "@ibm/plex-sans-condensed": "2.0.0",

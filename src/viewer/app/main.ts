@@ -127,7 +127,7 @@ function compose(map: MapData, fetched: DataSource): void {
   });
   prefersReducedMotion(); // records html[data-motion] from the start
   mountLegend(byId("legend"), state);
-  mountLens(byId("lens"), state);
+  mountLens(byId("lens"), state, byId("announce"));
   mountDepth(byId("depth"), state, byId("announce"), prefs.pickDepth);
   mountShow(byId("show"), model, state);
   mountFilters(byId("filters"), model, state);
@@ -232,6 +232,16 @@ function compose(map: MapData, fetched: DataSource): void {
   byId("zoom-in").addEventListener("click", () => view.zoom(1));
   byId("zoom-out").addEventListener("click", () => view.zoom(-1));
   byId("zoom-fit").addEventListener("click", () => view.fit());
+  // the list, open over the map, covers the stat band and the zoom: meanwhile neither takes the
+  // focus, nor is read
+  const covered = [byId<HTMLElement>("statband"), byId<HTMLElement>("zoom")];
+  const cover = (open: boolean) => {
+    for (const el of covered) el.inert = open;
+  };
+  cover(state.get().listOpen);
+  state.subscribe((now, before) => {
+    if (now.listOpen !== before.listOpen) cover(now.listOpen);
+  });
   selection.openToken(location.hash.slice(1));
 }
 

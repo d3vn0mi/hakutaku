@@ -329,8 +329,8 @@ test("L lists the files under the filters, and Enter opens one", async ({
   if (!webgl) await expectNoWebGL(page);
   const box = page.getByLabel("Entry points only");
   await box.check();
-  // a key pressed on a checkbox is the checkbox's, so the focus leaves it before L
-  await box.blur();
+  // a checkbox takes no typed text, so L pressed on it reaches the list
+  await expect(box).toBeFocused();
   await page.keyboard.press("l");
   const list = listView(page);
   await expect(list.getByRole("button")).toHaveCount(entries.length);

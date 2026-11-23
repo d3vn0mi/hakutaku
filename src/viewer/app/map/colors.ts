@@ -1,5 +1,6 @@
 // The map's inks, and how each lens draws a file: its colour, its size, and which files it
-// labels; and the legend over the map. No DOM here: Node tests import it.
+// labels; the curves' inks and the labels'; and the legend over the map. No DOM here: Node tests
+// import it.
 // - Structure: the larger a file's share of the top PageRank, the brighter and larger its dot.
 //   With entry points on, entry files are orange and every other file is faint.
 // - Risk: a file in a cycle, or a hotspot above HOTSPOT_MARK, is orange, a hotspot above 0.12 a
@@ -24,6 +25,29 @@ export const INK = Object.freeze({
   lib: "#7D7568",
   accent: "#E8613C",
   accentMid: "#9A4A30",
+  label: "#CFC6B4", // a label's text, on the ground
+  tag: "#25211B", // the hover tag's ground, its text hi and its ring accent
+  tagLine: "#3A332B",
+} as const);
+
+// A colour of the palette at an opacity, as a canvas takes it.
+function rgba(hex: string, alpha: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+// The import curves' inks, each a colour of the palette at an opacity, laid over the ground. The
+// curves that mark something reach 3:1 on the ground: an import in a cycle, a pair of files that
+// change together, the selection's imports, and the imports between hubs that touch the selected
+// hub. Every other import is the map's faint texture: all imports at once, and the imports
+// between hubs, thicker for more.
+export const CURVE_INK = Object.freeze({
+  base: rgba(INK.hi, 0.055),
+  selected: rgba(INK.hi, 0.55),
+  cycle: rgba(INK.accent, 0.9),
+  cochange: rgba(INK.accent, 0.85),
+  hubs: rgba(INK.hi, 0.16),
+  hubsSelected: rgba(INK.accent, 0.8),
 } as const);
 
 // How to read the map under each lens, and with entry points on.

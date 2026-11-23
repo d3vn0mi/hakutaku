@@ -3,8 +3,9 @@
 // the whole name in its title where the list cuts it. The arrows move the active match round the
 // list, and open the list again once it is closed; Enter or a click picks a match; Esc closes the
 // list and leaves the box. Focus stays in the box, whose aria-activedescendant names the active
-// match, so the matches take no focus, and a press on one keeps it there. Each search is measured
-// as the performance entry hakutaku:find.
+// match, so the matches take no focus, and a press on one keeps it there. A query that matches
+// nothing lists one option that says so: disabled, never selected, and it picks nothing. Each
+// search is measured as the performance entry hakutaku:find.
 import { h } from "../dom.js";
 import type { FindHit, FindIndex, FindKind } from "./index.js";
 
@@ -69,7 +70,12 @@ export function mountFind(
         ? [
             h("div", {
               text: NOTHING,
-              attrs: { role: "option", "aria-disabled": "true" },
+              attrs: {
+                id: `${list.id}-none`,
+                role: "option",
+                "aria-disabled": "true",
+                "aria-selected": "false",
+              },
             }),
           ]
         : hits.map((hit, i) =>

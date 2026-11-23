@@ -1,8 +1,8 @@
 // Depth, in the left panel: Components, the hubs alone; Core, the files that matter most; Files,
-// every file. The depth in use is pressed, and D steps through them in this order. A button
-// picks its depth through pick, which remembers it. D moves no focus, so a change of depth is
-// said in the live region, unless a selection made it: the selection says what it selected there
-// instead.
+// every file. The depth in use is pressed, and D steps through them in this order, with or
+// without Shift, as each button says in aria-keyshortcuts. A button picks its depth through
+// pick, which remembers it. D moves no focus, so a change of depth is said in the live region,
+// unless a selection made it: the selection says what it selected there instead.
 import { DEPTHS } from "../depth.js";
 import { h } from "../dom.js";
 import type { Depth, StateStore } from "../state.js";
@@ -25,7 +25,11 @@ export function mountDepth(
     const button = h(
       "button",
       {
-        attrs: { type: "button", "aria-pressed": "false" },
+        attrs: {
+          type: "button",
+          "aria-pressed": "false",
+          "aria-keyshortcuts": "D Shift+D",
+        },
         on: { click: () => pick(depth) },
       },
       h("span", { text: name }),

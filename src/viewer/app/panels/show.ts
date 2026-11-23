@@ -1,10 +1,15 @@
 // The Show toggles in the left panel: code files, tests, libraries and import curves, each with
-// its count. A toggle sets the state, and follows it when something else changes it.
+// its count. A toggle sets the state, and follows it when something else changes it. Tests can
+// change nothing at Core and Components depth, which draw no tests, unless the list view is open
+// over the map or in its place, since it lists them at every depth: there the toggle is off, and
+// a line under it says why.
 import { h } from "../dom.js";
 import type { Model } from "../model.js";
 import type { StateStore, ViewState } from "../state.js";
 
 type Shown = keyof ViewState["show"];
+
+const WHY_NO_TESTS = "The map shows tests at Files depth only.";
 
 export function mountShow(
   root: HTMLElement,
@@ -19,8 +24,13 @@ export function mountShow(
     ["curves", "Import curves", counts.importEdges],
   ];
   const boxes = new Map<Shown, HTMLInputElement>();
+  const why = h("p", {
+    class: "why",
+    text: WHY_NO_TESTS,
+    attrs: { id: "tests-why" },
+  });
   root.replaceChildren(
-    ...rows.map(([shown, label, n]) => {
+    ...rows.flatMap(([shown, label, n]) => {
       const box = h("input", {
         attrs: { type: "checkbox" },
         on: {
@@ -30,17 +40,33 @@ export function mountShow(
       });
       box.checked = state.get().show[shown];
       boxes.set(shown, box);
-      return h(
+      const row = h(
         "label",
         {},
         box,
         document.createTextNode(label),
         h("span", { class: "n", text: n.toLocaleString("en-US") }),
       );
+      return shown === "tests" ? [row, why] : [row];
     }),
   );
+  const tests = boxes.get("tests");
+  // Tests is off while nothing it shows is drawn or listed, and says why
+  const follow = (now: ViewState) => {
+    const off = !now.listOpen && now.depth !== "files";
+    if (tests === undefined) return;
+    tests.disabled = off;
+    why.hidden = !off;
+    if (off) tests.setAttribute("aria-describedby", why.id);
+    else tests.removeAttribute("aria-describedby");
+  };
+  follow(state.get());
   state.subscribe((now, before) => {
-    if (now.show === before.show) return;
-    for (const [shown, box] of boxes) box.checked = now.show[shown];
+    if (now.show !== before.show) {
+      for (const [shown, box] of boxes) box.checked = now.show[shown];
+    }
+    if (now.depth !== before.depth || now.listOpen !== before.listOpen) {
+      follow(now);
+    }
   });
 }

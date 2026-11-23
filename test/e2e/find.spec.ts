@@ -196,7 +196,9 @@ test("the Find button and F focus the box with its text selected, so typing repl
   await expect(q).toHaveValue("orbit");
 });
 
-test("F and / typed into a field stay in that field", async ({ page }) => {
+test("F and / typed into the box stay there, and pressed on a checkbox reach Find", async ({
+  page,
+}) => {
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
   const q = box(page);
   // typed into the box, each is part of the query: neither selects the box's text again
@@ -206,15 +208,19 @@ test("F and / typed into a field stay in that field", async ({ page }) => {
   await expect(q).toBeFocused();
   await page.keyboard.press("Shift+F");
   await expect(q).toHaveValue("orbits/kepler.fF");
-  // pressed on a checkbox, a field too, F leaves the focus where it is (a / there is not tried:
-  // Firefox gives it to its own quick find, since the page leaves a key in a field alone)
+  // a checkbox takes no typed text, so each pressed on one moves the focus to the box, its
+  // text selected, and leaves the checkbox as it was
   const tests = page.getByRole("checkbox", { name: /^Tests/ });
-  await tests.focus();
-  for (const key of ["f", "Shift+F"]) {
+  const selected = () =>
+    q.evaluate((el: HTMLInputElement) => [el.selectionStart, el.selectionEnd]);
+  for (const key of ["f", "Shift+F", "/"]) {
+    await tests.focus();
     await page.keyboard.press(key);
-    await expect(tests, key).toBeFocused();
+    await expect(q, key).toBeFocused();
+    expect(await selected(), key).toEqual([0, 16]);
   }
   await expect(q).toHaveValue("orbits/kepler.fF");
+  await expect(tests).not.toBeChecked();
   expect(await selectedId(page)).toBe(`observatory:${KEPLER}`);
 });
 
@@ -238,6 +244,9 @@ test("each search is measured as hakutaku:find, and a query that matches nothing
   await expect(matches(page)).toHaveCount(1);
   await expect(matches(page)).toHaveText("Nothing matches.");
   await expect(matches(page)).toHaveAttribute("aria-disabled", "true");
+  // an option of its own, never the active one
+  await expect(matches(page)).toHaveAttribute("id", "results-none");
+  await expect(matches(page)).toHaveAttribute("aria-selected", "false");
   await expect(box(page)).not.toHaveAttribute("aria-activedescendant", /./);
   await page.keyboard.press("Enter");
   expect(await selectedId(page)).toBeNull();

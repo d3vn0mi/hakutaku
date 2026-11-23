@@ -79,6 +79,23 @@ fieldset {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* Where a box clips its edges, the ring is drawn inside the element instead: the zoom's buttons
+   fill a box that clips, the list view's files fill the list where it stands in the map's place,
+   and the list view and the panels that scroll take the focus themselves. */
+.zoom button:focus-visible,
+.list-view .file:focus-visible,
+.list-view:focus-visible,
+.left:focus-visible,
+.right:focus-visible {
+  outline-offset: -2px;
+}
+/* An element the focus scrolls into view keeps room for its ring. */
+button,
+input,
+select,
+[tabindex] {
+  scroll-margin: 6px;
+}
 kbd {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -101,7 +118,7 @@ h3 {
 .app {
   height: 100%;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) 150px;
+  grid-template-rows: auto minmax(0, 1fr) 170px;
   grid-template-columns: 252px minmax(0, 1fr) auto;
   grid-template-areas:
     "top top top"
@@ -230,7 +247,8 @@ h3 {
   border-right: 1px solid var(--line);
 }
 .search {
-  position: relative;
+  display: grid;
+  gap: 4px;
 }
 .search input {
   width: 100%;
@@ -241,12 +259,9 @@ h3 {
   font-family: var(--font-mono);
   font-size: 12.5px;
 }
+/* The matches open under the box and push the controls below them down, so that they cover none
+   of them. */
 .results {
-  position: absolute;
-  z-index: 6;
-  left: 0;
-  right: 0;
-  top: 38px;
   max-height: 320px;
   overflow-y: auto;
   background: var(--panel);
@@ -272,7 +287,7 @@ h3 {
   cursor: default;
 }
 .results [aria-selected="true"],
-.results [aria-selected]:hover {
+.results [aria-selected]:not([aria-disabled="true"]):hover {
   background: var(--panel-2);
   color: var(--ink);
 }
@@ -373,6 +388,17 @@ h3 {
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
+/* A toggle that can change nothing where the map is: off, and the line under it says why. */
+.toggles label:has(input:disabled) {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.toggles .why {
+  margin: -2px 0 0 24px;
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--muted);
+}
 /* The filters: a select under its name, a checkbox before its name, and the hotspot threshold,
    which its box turns on, its value beside the box and its slider under both. */
 .filters {
@@ -439,6 +465,7 @@ h3 {
   position: relative;
   min-width: 0;
   overflow: hidden;
+  container-type: inline-size;
 }
 #edges,
 #sigma {
@@ -700,6 +727,20 @@ h3 {
   display: none;
 }
 
+/* A map too narrow for the legend and the stat band beside the zoom, as the wide details leave
+   it: the legend wraps within the map, and the stat band stands over the zoom, never on it. */
+@container (max-width: 520px) {
+  .caption {
+    right: 16px;
+    max-width: none;
+  }
+  .statband {
+    left: 16px;
+    bottom: 56px;
+    justify-content: flex-start;
+  }
+}
+
 /* The details. */
 .right {
   grid-area: right;
@@ -885,11 +926,12 @@ h3 {
 }
 /* One dot per definition of a file, or per code file of a component: the brightest are used by
    other files, or depended on most; a round one is a method, and an orange ring says no test
-   mentions it. The key repeats the marks in words. */
+   mentions it. The key repeats the marks in words. The dots stand 24px apart, centre to centre,
+   so that a pointer can hit each. */
 .dots {
   display: grid;
   grid-template-columns: repeat(auto-fill, 13px);
-  gap: 4px;
+  gap: 11px;
   padding: 8px 0;
 }
 .dots button {
@@ -1187,7 +1229,9 @@ h3 {
   font-size: 12px;
   color: var(--ink-2);
 }
+/* Each row's name is a button 24px tall, so that a pointer can hit it. */
 .rank button.name {
+  min-height: 24px;
   background: none;
   border: 0;
   padding: 0;

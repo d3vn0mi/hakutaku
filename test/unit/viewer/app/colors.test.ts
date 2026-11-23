@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import { F, FLAG_ENTRY } from "../../../../src/query/view/constants.js";
 import type { MapData } from "../../../../src/query/view/types.js";
 import {
+  CURVE_INK,
   componentsLegend,
   fileColor,
   fileSize,
@@ -346,5 +347,70 @@ describe("the map's inks", () => {
     for (const ink of ["hi", "mid", "accent", "accentMid"] as const) {
       expect(contrast(INK[ink], ground), ink).toBeGreaterThanOrEqual(3);
     }
+  });
+
+  // A canvas colour "rgba(r, g, b, a)" laid over a ground, as the canvas composites it: the hex
+  // it shows, and the hex of its own colour.
+  const parse = (css: string) => {
+    const m = /^rgba\((\d+), (\d+), (\d+), ([\d.]+)\)$/.exec(css);
+    if (m === null) throw new Error(`not an rgba colour: ${css}`);
+    const [r, g, b, alpha] = m.slice(1).map(Number);
+    return { rgb: [r, g, b], alpha };
+  };
+  const hex = (rgb: number[]) =>
+    `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+  const over = (ground: string, css: string) => {
+    const { rgb, alpha } = parse(css);
+    const n = Number.parseInt(ground.slice(1), 16);
+    const base = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    return hex(rgb.map((c, i) => alpha * c + (1 - alpha) * base[i]));
+  };
+
+  it("draw the curves in the palette's ink and accent", () => {
+    for (const [kind, css] of Object.entries(CURVE_INK)) {
+      expect([token("ink"), token("accent")], kind).toContain(
+        hex(parse(css).rgb),
+      );
+    }
+    // a selection's imports in ink, a cycle and a co-change in the accent
+    expect(hex(parse(CURVE_INK.selected).rgb)).toBe(INK.hi);
+    expect(hex(parse(CURVE_INK.cycle).rgb)).toBe(INK.accent);
+    expect(hex(parse(CURVE_INK.cochange).rgb)).toBe(INK.accent);
+    expect(hex(parse(CURVE_INK.hubsSelected).rgb)).toBe(INK.accent);
+  });
+
+  it("draw the curves that mark something at 3:1 or more on the map's ground", () => {
+    // a cycle under Risk, a co-change under History, a selection's imports, and the imports
+    // between hubs that touch the selected hub; all imports at once, and the imports between
+    // hubs, are the map's texture
+    const ground = token("ground") ?? "";
+    for (const kind of [
+      "cycle",
+      "cochange",
+      "selected",
+      "hubsSelected",
+    ] as const) {
+      expect(
+        contrast(over(ground, CURVE_INK[kind]), ground),
+        kind,
+      ).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it("are the only colours the map draws in: its renderer names none of its own", () => {
+    const render = readFileSync(
+      fileURLToPath(
+        new URL("../../../../src/viewer/app/map/render.ts", import.meta.url),
+      ),
+      "utf8",
+    );
+    expect(render).toMatch(/\bCURVE_INK\.cycle\b/); // the scan reads the real file
+    expect(render).not.toMatch(/#[0-9A-Fa-f]{3,8}\b|\brgba?\(|\bhsla?\(/);
+  });
+
+  it("write the labels and the hover tag's name at 4.5:1 or more", () => {
+    const ground = token("ground") ?? "";
+    expect(contrast(INK.label, ground)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(INK.hi, INK.tag)).toBeGreaterThanOrEqual(4.5);
   });
 });

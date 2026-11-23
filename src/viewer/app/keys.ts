@@ -1,9 +1,11 @@
 // The page's keys, by KeyboardEvent.key: F or / finds, Esc climbs one level, 1, 2 and 3 choose
 // the Structure, Risk and History lenses, D steps to the next depth, and L opens the list view.
-// A key typed into a field (an input, a select, a textarea or editable text), or pressed with
-// Ctrl, Alt or Meta, belongs to the field or to the browser. Shift does not count: it only picks
-// the character a key types. A key handled here does nothing else, so the F or / that moves the
-// focus into the Find box is not typed into it.
+// A key typed into a field (an input that takes text, a select, a textarea or editable text), or
+// pressed with Ctrl, Alt or Meta, belongs to the field or to the browser. A checkbox and a slider
+// take no typed text, so the viewer's keys reach the viewer through them; Space and the arrows,
+// which they use, are none of the viewer's keys. Shift does not count: it only picks the
+// character a key types. A key handled here does nothing else, so the F or / that moves the focus
+// into the Find box is not typed into it.
 import type { Lens } from "./state.js";
 
 export interface KeyActions {
@@ -13,6 +15,9 @@ export interface KeyActions {
   depth(): void;
   list(): void;
 }
+
+// The inputs that take no typed text.
+const KEYLESS = new Set(["checkbox", "range"]);
 
 export function bindKeys(actions: KeyActions): void {
   const keys = new Map<string, () => void>([
@@ -39,8 +44,8 @@ export function bindKeys(actions: KeyActions): void {
 }
 
 function typedInto(target: EventTarget | null): boolean {
+  if (target instanceof HTMLInputElement) return !KEYLESS.has(target.type);
   return (
-    target instanceof HTMLInputElement ||
     target instanceof HTMLSelectElement ||
     target instanceof HTMLTextAreaElement ||
     (target instanceof HTMLElement && target.isContentEditable)

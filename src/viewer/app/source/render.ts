@@ -8,9 +8,11 @@
 //   worker fails, the file is escaped plain text in the same chunks, one per task, and the note
 //   says so.
 // - The gutter carries a definition's glyph beside its first line, and a mark beside each call
-//   site given: b for a bound call, s for a scoped one.
+//   site given: b for a bound call, s for a scoped one. The gutter is for a pointer, and a
+//   screen reader skips it, so the same marks are listed after the code, by line, each a button
+//   that flashes its line: a keyboard and a screen reader reach them there.
 // - The flash lies over the line to show once that line is in, and is scrolled into view,
-//   smoothly unless the viewer asks for reduced motion.
+//   smoothly unless the viewer asks for reduced motion. A mark's button moves it to its line.
 // - Once every line is in, .code gets data-complete="true".
 // The lines rendered are the ones the store counts: the line feed that may end the text starts
 // no line of its own.
@@ -60,6 +62,51 @@ function glyphsOf(
   return glyphs;
 }
 
+// The gutter's marks again, as a list after the code: each definition that starts in the file and
+// each call site marked, in line order, a definition before a call site on the same line, each
+// as "line <n>: <what>", what the mark's title says. A press on one shows its line. Nothing when
+// the file has no mark.
+function markList(
+  src: SourceData,
+  marks: SiteMark[],
+  show: (line: number) => void,
+): Node[] {
+  const rows = [
+    ...src.defs.map((def) => ({
+      line: def.line,
+      what: `${def.kind} ${qualnameOf(def.id)}`,
+    })),
+    ...marks.map((mark) => ({
+      line: mark.line,
+      what: `${mark.label} call to ${qualnameOf(mark.target)}`,
+    })),
+  ].sort((a, b) => a.line - b.line);
+  if (rows.length === 0) return [];
+  return [
+    h(
+      "section",
+      { class: "list marks" },
+      h("h4", { text: "Marked lines" }),
+      h(
+        "ol",
+        { class: "rows" },
+        ...rows.map(({ line, what }) =>
+          h(
+            "li",
+            {},
+            h("button", {
+              class: "name",
+              text: `line ${line}: ${what}`,
+              attrs: { type: "button" },
+              on: { click: () => show(line) },
+            }),
+          ),
+        ),
+      ),
+    ),
+  ];
+}
+
 export function renderSource(
   pane: HTMLElement,
   src: SourceData,
@@ -93,6 +140,9 @@ export function renderSource(
   for (const mark of opts.marks) {
     sites.set(mark.line, [...(sites.get(mark.line) ?? []), mark]);
   }
+  // the line to flash, once its chunk is in, and how many lines are in so far
+  let flashAt = opts.flashLine;
+  let landed = 0;
   const gutter = h("div", {
     class: "gutter",
     attrs: { "aria-hidden": "true" },
@@ -107,7 +157,11 @@ export function renderSource(
     gutter,
     h("pre", {}, code),
   );
-  pane.replaceChildren(note, box);
+  pane.replaceChildren(
+    note,
+    box,
+    ...markList(src, opts.marks, (line) => show(line)),
+  );
 
   let cancelled = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -115,6 +169,7 @@ export function renderSource(
   const stopped = () => cancelled || !box.isConnected;
 
   const flash = (line: number) => {
+    box.querySelector(".flash")?.remove();
     const band = h("div", {
       class: "flash",
       attrs: { "data-line": String(line) },
@@ -179,8 +234,16 @@ export function renderSource(
     if (chunk instanceof HTMLElement)
       chunk.style.containIntrinsicBlockSize = tall;
     code.append(parsed.content);
-    const at = opts.flashLine;
-    if (at !== null && at > from && at <= from + shown.length) flash(at);
+    landed = from + shown.length;
+    const at = flashAt;
+    if (at !== null && at > from && at <= landed) flash(at);
+  };
+
+  // A mark's line: flashed now when its chunk is in, else when the chunk lands.
+  const show = (line: number) => {
+    flashAt = line;
+    if (line <= landed) flash(line);
+    else box.querySelector(".flash")?.remove();
   };
 
   const finish = () => {
@@ -191,6 +254,7 @@ export function renderSource(
   const plain = () => {
     gutter.replaceChildren();
     code.replaceChildren();
+    landed = 0;
     box.querySelector(".flash")?.remove();
     say(true);
     const lines = highlightLines(src.text, null);

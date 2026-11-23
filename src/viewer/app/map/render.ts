@@ -44,7 +44,13 @@ import { groupKey, type Model } from "../model.js";
 import { motionMs } from "../motion.js";
 import type { OutlineCache } from "../outline-cache.js";
 import type { Filters, Sel, StateStore, ViewState } from "../state.js";
-import { fileColor, fileSize, INK, labelledFiles } from "./colors.js";
+import {
+  CURVE_INK,
+  fileColor,
+  fileSize,
+  INK,
+  labelledFiles,
+} from "./colors.js";
 import {
   aggregateCurves,
   type CurveKind,
@@ -87,10 +93,10 @@ const HUB_GROWTH = 2.2; // how much larger hubs are drawn at Components depth, w
 
 // How each kind of import curve is stroked, in CSS pixels; drawn in this order.
 const STROKES = [
-  ["base", 0.6, "rgba(234, 228, 214, 0.055)", []],
-  ["selected", 1.1, "rgba(234, 228, 214, 0.55)", []],
-  ["cycle", 1.6, "rgba(232, 97, 60, 0.9)", []],
-  ["cochange", 1.2, "rgba(232, 97, 60, 0.85)", [4, 4]],
+  ["base", 0.6, CURVE_INK.base, []],
+  ["selected", 1.1, CURVE_INK.selected, []],
+  ["cycle", 1.6, CURVE_INK.cycle, []],
+  ["cochange", 1.2, CURVE_INK.cochange, [4, 4]],
 ] as const satisfies ReadonlyArray<
   readonly [CurveKind, number, string, readonly number[]]
 >;
@@ -128,20 +134,20 @@ const drawHover: Settings<NodeAttrs>["defaultDrawNodeHover"] = (
     const h = size + 9;
     const x = data.x + data.size + 5;
     const y = data.y - h / 2;
-    ctx.fillStyle = "#25211B";
-    ctx.strokeStyle = "#3A332B";
+    ctx.fillStyle = INK.tag;
+    ctx.strokeStyle = INK.tagLine;
     ctx.lineWidth = 1;
     ctx.beginPath();
     if (typeof ctx.roundRect === "function") ctx.roundRect(x, y, w, h, 3);
     else ctx.rect(x, y, w, h);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = "#EAE4D6";
+    ctx.fillStyle = INK.hi;
     ctx.fillText(name, x + 6, data.y + size / 3);
   }
   ctx.beginPath();
   ctx.arc(data.x, data.y, data.size + 3, 0, Math.PI * 2);
-  ctx.strokeStyle = "#E8613C";
+  ctx.strokeStyle = INK.accent;
   ctx.lineWidth = 1.5;
   ctx.stroke();
 };
@@ -332,7 +338,7 @@ export function mountMap(
       labelFont: "IBM Plex Mono",
       labelSize: 11,
       labelWeight: "400",
-      labelColor: { color: "#CFC6B4" },
+      labelColor: { color: INK.label },
       labelRenderedSizeThreshold: 9,
       labelDensity: 0.35,
       labelGridCellSize: 140,
@@ -603,11 +609,7 @@ export function mountMap(
           ctx.beginPath();
           trace(a.shape);
           const width = 0.5 + Math.log2(1 + a.weight) * (a.hot ? 1 : 0.7);
-          stroke(
-            width,
-            a.hot ? "rgba(232, 97, 60, 0.8)" : "rgba(234, 228, 214, 0.16)",
-            [],
-          );
+          stroke(width, a.hot ? CURVE_INK.hubsSelected : CURVE_INK.hubs, []);
         }
       }
     });
