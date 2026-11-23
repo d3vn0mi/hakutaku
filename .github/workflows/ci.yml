@@ -1,8 +1,12 @@
 name: ci
 
+# Every branch push and pull request, and a call from another workflow, with no inputs. Tag pushes
+# are left out, so that a workflow run for a tag can call this one rather than run beside it.
 on:
   push:
+    branches: ["**"]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
