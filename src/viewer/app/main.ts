@@ -109,7 +109,17 @@ function compose(map: MapData, fetched: DataSource): void {
       action: { label: "Reload", run: () => location.reload() },
     }),
   );
-  const outlines = createOutlineCache(model, source);
+  // one outline per file, fetched once and shared; the selection's is never dropped
+  const outlines = createOutlineCache(model, source, {
+    keep: (file) => {
+      const sel = state.get().sel;
+      return (
+        sel !== null &&
+        (sel.kind === "file" || sel.kind === "definition") &&
+        sel.file === file
+      );
+    },
+  });
   prefersReducedMotion(); // records html[data-motion] from the start
   mountLegend(byId("legend"), state);
   mountLens(byId("lens"), state);

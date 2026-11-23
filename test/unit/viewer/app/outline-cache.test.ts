@@ -12,11 +12,13 @@ import {
   outlineData,
 } from "../../../../src/query/view/index.js";
 import { openStore, type Store } from "../../../../src/store/index.js";
+import { OUTLINE_CACHE_LIMIT } from "../../../../src/viewer/app/constants.js";
 import type { DataSource } from "../../../../src/viewer/app/data-types.js";
 import { buildModel, type Model } from "../../../../src/viewer/app/model.js";
 import { createOutlineCache } from "../../../../src/viewer/app/outline-cache.js";
 import { tinyStore } from "../tiny-store.js";
 import { tinyModel } from "./helpers.js";
+import { syntheticMap } from "./synthetic-map.js";
 
 const open = (p: string): Store => {
   const s = openStore(p);
@@ -205,5 +207,110 @@ describe("above the inline limit", () => {
     fail = false;
     expect(await c.get(3)).toEqual(GRAPH);
     expect(calls).toHaveLength(2);
+  });
+});
+
+describe("a bounded cache", () => {
+  const LIMIT = OUTLINE_CACHE_LIMIT;
+  // A synthetic map of a few more production files than the cache holds, as a map above the
+  // inline limit sends it, or with its outlines inline.
+  const synthetic = (inline: boolean): Model => {
+    const map = syntheticMap(LIMIT + 4);
+    return buildModel(inline ? map : { ...map, outline: null, cochange: null });
+  };
+  // A data source whose outline(id) answers an empty outline of that file, of the map's build,
+  // and records each ID it is asked for.
+  const echoing = (calls: string[]): DataSource => {
+    const none = () =>
+      Promise.reject(new Error("not called by the outline cache"));
+    return {
+      kind: "http",
+      map: none,
+      async outline(id) {
+        calls.push(id);
+        return {
+          builtCommit: "0123456789ab",
+          file: id,
+          defs: [],
+          cochange: [],
+        };
+      },
+      source: none,
+      history: none,
+      tool: none,
+    };
+  };
+  const range = (from: number, to: number) =>
+    Array.from({ length: to - from }, (_, i) => from + i);
+  const fetchAll = async (
+    c: ReturnType<typeof createOutlineCache>,
+    files: number[],
+  ) => {
+    for (const f of files) await c.get(f);
+  };
+
+  it("holds at most its limit of outlines, dropping the least recently used", async () => {
+    const calls: string[] = [];
+    const c = createOutlineCache(synthetic(false), echoing(calls));
+    await fetchAll(c, range(0, LIMIT + 1));
+    expect(c.peek(0)).toBeNull();
+    expect(c.peek(LIMIT)).not.toBeNull();
+    // a dropped outline is fetched again when it is asked for, and drops the next oldest
+    await c.get(0);
+    expect(calls).toHaveLength(LIMIT + 2);
+    expect(c.peek(1)).toBeNull();
+    expect(c.peek(2)).not.toBeNull();
+  });
+
+  it("makes an outline recent again each time peek() or get() answers it", async () => {
+    const calls: string[] = [];
+    const c = createOutlineCache(synthetic(false), echoing(calls));
+    await fetchAll(c, range(0, LIMIT));
+    expect(c.peek(0)).not.toBeNull();
+    await c.get(1);
+    expect(calls).toHaveLength(LIMIT);
+    await fetchAll(c, [LIMIT, LIMIT + 1]);
+    expect([0, 1, 2, 3].map((f) => c.peek(f) !== null)).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it("never drops an outline it is told to keep, as the one the details show", async () => {
+    const c = createOutlineCache(synthetic(false), echoing([]), {
+      keep: (file) => file === 0,
+    });
+    await fetchAll(c, range(0, LIMIT + 3));
+    expect([1, 2, 3].map((f) => c.peek(f))).toEqual([null, null, null]);
+    expect(c.peek(0)).not.toBeNull();
+    expect(c.peek(4)).not.toBeNull();
+  });
+
+  it("drops a kept outline, the least recently used, once it is no longer kept", async () => {
+    const calls: string[] = [];
+    let shown = 0;
+    const c = createOutlineCache(synthetic(false), echoing(calls), {
+      keep: (file) => file === shown,
+    });
+    await fetchAll(c, range(0, LIMIT + 1));
+    expect(c.peek(1)).toBeNull();
+    shown = -1;
+    await c.get(1);
+    expect(c.peek(0)).toBeNull();
+    await c.get(0);
+    expect(calls).toHaveLength(LIMIT + 3);
+  });
+
+  it("reads a dropped outline of an inline map again, without fetching", () => {
+    const calls: string[] = [];
+    const c = createOutlineCache(synthetic(true), echoing(calls));
+    const first = c.peek(0);
+    for (const f of range(1, LIMIT + 1)) c.peek(f);
+    const again = c.peek(0);
+    expect(again).not.toBe(first);
+    expect(again).toEqual(first);
+    expect(calls).toEqual([]);
   });
 });

@@ -3,6 +3,8 @@
 // and with entry points on, entry files orange. Risk: cycles and hotspots orange, and a dot sized
 // by its hotspot. History: brighter and larger for more change in the last 90 days. Tests are
 // faint and small under every lens.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { F, FLAG_ENTRY } from "../../../../src/query/view/constants.js";
 import type { MapData } from "../../../../src/query/view/types.js";
@@ -301,5 +303,48 @@ describe("the legend", () => {
     expect(legendOf({ ...view, depth: "components", lens: "history" })).toBe(
       componentsLegend("component"),
     );
+  });
+});
+
+describe("the map's inks", () => {
+  // WCAG 2.1: the relative luminance of an sRGB colour, and the ratio of two, lighter first.
+  const channel = (c: number) => {
+    const v = c / 255;
+    return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = (hex: string) => {
+    const n = Number.parseInt(hex.slice(1), 16);
+    return (
+      0.2126 * channel((n >> 16) & 255) +
+      0.7152 * channel((n >> 8) & 255) +
+      0.0722 * channel(n & 255)
+    );
+  };
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const tokens = readFileSync(
+    fileURLToPath(
+      new URL("../../../../src/viewer/app/styles/tokens.css", import.meta.url),
+    ),
+    "utf8",
+  );
+  const token = (name: string) =>
+    new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`)
+      .exec(tokens)?.[1]
+      .toUpperCase();
+
+  it("take the palette's ink and accent", () => {
+    expect([INK.hi, INK.accent]).toEqual([token("ink"), token("accent")]);
+  });
+
+  it("draw each lens's marks at 3:1 or more on the map's ground", () => {
+    // the dots a lens marks, the brightest tiers and both oranges, must stand out as graphics;
+    // the lowest tier, lo, is also the smallest dot, and faint is decoration
+    const ground = token("ground") ?? "";
+    for (const ink of ["hi", "mid", "accent", "accentMid"] as const) {
+      expect(contrast(INK[ink], ground), ink).toBeGreaterThanOrEqual(3);
+    }
   });
 });

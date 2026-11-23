@@ -362,26 +362,32 @@ export function mountMap(
       : null;
 
   // The files that change together with a file, as far as they are known: from the map, or from
-  // an outline fetched once. The first time a file's are not known, they are asked for, and the
-  // map refreshes when they arrive if that file is still selected under History. A request that
-  // failed, as one answered by another build does, is not made again.
-  const asked = new Set<number>();
+  // an outline the cache holds. When a file's are not known, they are asked for, once at a time,
+  // and the map refreshes when they arrive if that file is still selected under History; an
+  // outline the cache has since dropped is asked for again. A request that failed, as one
+  // answered by another build does, is not made again.
+  const asking = new Set<number>();
+  const failed = new Set<number>();
   const partnersOf = (file: number): number[] => {
     if (outlines === undefined) return [];
     const outline = outlines.peek(file);
     if (outline !== null) return outline.cochange.map(([partner]) => partner);
-    if (!asked.has(file)) {
-      asked.add(file);
+    if (!asking.has(file) && !failed.has(file)) {
+      asking.add(file);
       outlines.get(file).then(
         () => {
+          asking.delete(file);
           const now = state.get();
           if (now.lens === "history" && fileOf(now.sel) === file) refresh();
         },
-        (e) =>
+        (e) => {
+          asking.delete(file);
+          failed.add(file);
           console.error(
             "hakutaku: the files that change with a file could not be loaded",
             e,
-          ),
+          );
+        },
       );
     }
     return [];

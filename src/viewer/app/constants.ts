@@ -22,6 +22,7 @@ export const LABEL_TOP = 8; // files labelled for the lens, besides the selectio
 export const HOTSPOT_MARK = 0.35; // a hotspot above this is marked
 export const CORE_DEPTH_ABOVE = 400; // production files above which the map opens at Core depth
 export const BOTTOM_TOP = 5; // rows in the Core and Hotspots lists
+export const OUTLINE_CACHE_LIMIT = 256; // outlines the page holds, besides the ones it shows
 
 export const WORKER_HIGHLIGHT_ABOVE = 2500; // lines above which a file is highlighted in a worker
 export const SOURCE_CHUNK_LINES = 500; // lines highlighted at a time

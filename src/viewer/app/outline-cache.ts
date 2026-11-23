@@ -10,10 +10,14 @@
 // - An answer from another build, or about another file, is refused and not kept: nothing of a
 //   rebuilt repo enters this map, whose rebuild notice the page shows. A failed fetch is not kept
 //   either, so a later get() asks again.
+// - It holds at most OUTLINE_CACHE_LIMIT outlines, dropping the least recently used first, but
+//   never one keep() names, as the one the details panel shows; a dropped outline is read or
+//   fetched again when it is next asked for.
 import { formatId, parseId } from "../../model/ids.js";
 import type { Id } from "../../model/types.js";
 import { F } from "../../query/view/constants.js";
 import type { OutlineData } from "../../query/view/types.js";
+import { OUTLINE_CACHE_LIMIT } from "./constants.js";
 import type { DataSource } from "./data-types.js";
 import type { Model } from "./model.js";
 
@@ -31,9 +35,11 @@ export interface OutlineCache {
 export function createOutlineCache(
   model: Model,
   source: DataSource,
+  options: { keep?: (file: number) => boolean } = {},
 ): OutlineCache {
   const { map } = model;
-  const known = new Map<number, Outline>();
+  const keep = options.keep ?? (() => false);
+  const known = new Map<number, Outline>(); // in order of use, the least recent first
   const asking = new Map<number, Promise<Outline>>();
   const inline =
     map.outline !== null && map.cochange !== null
@@ -105,13 +111,31 @@ export function createOutlineCache(
     return { endLine, tested, cochange };
   };
 
+  // Keeps an outline as the most recently used, then drops the least recently used ones over
+  // the limit that keep() does not name.
+  const hold = (file: number, outline: Outline) => {
+    known.delete(file);
+    known.set(file, outline);
+    if (known.size <= OUTLINE_CACHE_LIMIT) return;
+    let over = known.size - OUTLINE_CACHE_LIMIT;
+    for (const old of [...known.keys()]) {
+      if (over === 0) break;
+      if (old === file || keep(old)) continue;
+      known.delete(old);
+      over--;
+    }
+  };
+
   const peek = (file: number): Outline | null => {
     if (!onMap(file)) return null;
     const outline = known.get(file);
-    if (outline !== undefined) return outline;
+    if (outline !== undefined) {
+      hold(file, outline);
+      return outline;
+    }
     if (inline === null) return null;
     const read = fromMap(file, inline);
-    known.set(file, read);
+    hold(file, read);
     return read;
   };
 
@@ -126,7 +150,7 @@ export function createOutlineCache(
     const id = formatId({ kind: "file", repo: map.repo, path: pathOf(file) });
     const fetched = source.outline(id).then((answer) => {
       const read = fromAnswer(file, id, answer);
-      known.set(file, read);
+      hold(file, read);
       return read;
     });
     asking.set(file, fetched);
