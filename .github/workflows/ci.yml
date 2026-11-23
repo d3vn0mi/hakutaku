@@ -100,6 +100,11 @@ jobs:
       - name: viewer end-to-end
         if: matrix.node == 'lts/*'
         run: npx playwright install --with-deps chromium firefox && npm run test:e2e
+      # What npm pack would ship, from its dry run: every path on the allowlist, the files the
+      # package needs and the whole viewer bundle; and every packed text file scanned for
+      # home-directory paths and secrets.
+      - name: pack allowlist
+        run: npm run check:pack
       - name: secret scan
         run: npm run check:secrets
       - name: home paths and stray stores
