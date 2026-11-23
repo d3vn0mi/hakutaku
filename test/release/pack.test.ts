@@ -165,6 +165,11 @@ it("scanText finds a home path and a planted private key", () => {
   expect(scanText("a.js", `const p = '${home}/x';`)).toEqual([
     { file: "a.js", line: 1, kind: "home-path", detail: home },
   ]);
+  // a macOS home, as a build on a Mac would embed it
+  const mac = `/${"Users"}/alice`;
+  expect(scanText("m.js", `x\n//# file://${mac}/src/a.ts`)).toEqual([
+    { file: "m.js", line: 2, kind: "home-path", detail: mac },
+  ]);
   // assembled from parts, so that no literal key sits in hakutaku's tree
   const key = [
     "-----BEGIN ",
