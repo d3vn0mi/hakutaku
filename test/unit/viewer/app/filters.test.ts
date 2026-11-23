@@ -2,7 +2,7 @@
 // must hold; the list holds the production files by rank, then, when tests are shown, the test
 // files by path, under the filters; and each row's label reads well aloud.
 import { describe, expect, it } from "vitest";
-import { F } from "../../../../src/query/view/constants.js";
+import { F, FILE_KINDS } from "../../../../src/query/view/constants.js";
 import {
   languageCounts,
   listFiles,
@@ -174,6 +174,14 @@ describe("listLabel", () => {
       "src/core/util.ts, rank 2, 1 importer",
       "src/cli/main.ts, rank 3, 0 importers",
     ]);
+  });
+
+  it("calls a test-support file a test, as it does a test file", () => {
+    const map = structuredClone(m.map);
+    map.files[2][F.kind] = FILE_KINDS.indexOf("test-support");
+    const s = buildModel(map);
+    expect(s.tests).toEqual([2]);
+    expect(listLabel(s, 2)).toBe("src/core/graph.test.ts, test");
   });
 
   it("names a file off the map by its path alone", () => {
