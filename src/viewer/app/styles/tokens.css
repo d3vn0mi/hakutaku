@@ -22,6 +22,9 @@
   --faint: #574f45;
   --accent: #e8613c;
   --accent-soft: rgba(232, 97, 60, 0.16);
+  /* the band over a flashed line of source, its text included: light enough that every text
+     colour keeps 4.5:1 on the code's ground under it */
+  --flash: rgba(232, 97, 60, 0.1);
 
   /* source highlighting */
   --hl-keyword: #d6a980;

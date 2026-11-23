@@ -603,7 +603,10 @@ test("a definition's Overview gives its own facts, then its file's", async ({
     (name, i) => name === "solveKepler" && m.defs.file[i] === kepler,
   );
   const endLine = must(m.outline, "inline outline").endLine[def];
+  // a definition's token opens its Source tab; its Overview is a tab away
   await openViewer(page, E2E.sample, { token: AT_SOLVE_KEPLER });
+  await expect(tab(page, "Source")).toHaveAttribute("aria-selected", "true");
+  await tab(page, "Overview").click();
   await expect(tab(page, "Overview")).toHaveAttribute("aria-selected", "true");
   const [own, file] = [
     page.locator("#pane dl").first(),
@@ -659,6 +662,7 @@ test("a definition's Overview gives its own facts, then its file's", async ({
   await page.evaluate((t) => {
     location.hash = t;
   }, toToken(ref));
+  await tab(page, "Overview").click();
   await expect(term(own, "Kind")).toHaveText(q.kind);
   await expect(term(own, "Lines")).toHaveText(
     `${q.line}\u2013${outline.endLine[quiet]}`,
@@ -675,6 +679,8 @@ test("above the inline limit, a definition's Overview waits for the outline, say
   const asked = await aboveTheInlineLimit(page);
   const release = await holdOutlines(page);
   await openViewer(page, E2E.sample, { token: AT_SOLVE_KEPLER });
+  // the token opens the Source tab, which needs no outline; the Overview asks for it
+  await tab(page, "Overview").click();
   await expect(page.locator("#pane")).toContainText(LOADING);
   // its file's facts need no outline
   await expect(page.locator("#pane dl")).toHaveCount(1);
@@ -704,13 +710,14 @@ test("files and definitions have four tabs, components and libraries two, and a 
   await expect(page.locator('[role="tab"][aria-selected="true"]')).toHaveText([
     "Inside",
   ]);
-  // a definition keeps the tab in use
+  // a definition's token opens its Source tab, widened, whatever tab was in use
   await page.evaluate((t) => {
     location.hash = t;
   }, AT_SOLVE_KEPLER);
   await expect(tabs).toHaveText(["Overview", "Inside", "Source", "Agent"]);
-  await expect(tab(page, "Inside")).toHaveAttribute("aria-selected", "true");
-  // a component has no Inside: its Overview shows instead
+  await expect(tab(page, "Source")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#app")).toHaveClass(/\bwide\b/);
+  // a component has no Source: its Overview shows instead
   const component = m.files[fileOf(m, KEPLER)][F.component];
   await page.evaluate(
     (t) => {

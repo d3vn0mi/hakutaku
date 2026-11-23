@@ -1,6 +1,8 @@
 // Builds the viewer's browser bundle into dist/viewer, next to tsc's output:
 // - assets/app.js and assets/app.css, bundled by esbuild from src/viewer/app/main.ts and the
 //   styles it imports;
+// - assets/hl-worker.js, the Source tab's highlighting worker, bundled from
+//   src/viewer/app/source/hl-worker.ts;
 // - the six fonts, under the names the styles use;
 // - page.html, the page template, copied as it is;
 // - manifest.json, which lists every asset with its type, size and hash, and every bundled
@@ -71,11 +73,15 @@ rmSync(ASSETS, { recursive: true, force: true });
 rmSync(join(OUT, "page.html"), { force: true });
 rmSync(join(OUT, "manifest.json"), { force: true });
 
-// 2. The app. Its entry is named "app", so that the outputs are app.js and app.css. The fonts
-// stay as the styles name them: they sit next to app.css.
+// 2. The app and its worker. The app's entry is named "app", so that its outputs are app.js and
+// app.css, and the worker's "hl-worker", the script the page starts it from. The fonts stay as
+// the styles name them: they sit next to app.css.
 const result = await build({
   absWorkingDir: ROOT,
-  entryPoints: { app: join(APP, "main.ts") },
+  entryPoints: {
+    app: join(APP, "main.ts"),
+    "hl-worker": join(APP, "source", "hl-worker.ts"),
+  },
   tsconfig: join(APP, "tsconfig.json"),
   bundle: true,
   format: "iife",
@@ -97,7 +103,11 @@ if (result.warnings.length > 0) {
   );
 }
 const outputs = Object.keys(result.metafile.outputs).sort();
-const expected = ["dist/viewer/assets/app.css", "dist/viewer/assets/app.js"];
+const expected = [
+  "dist/viewer/assets/app.css",
+  "dist/viewer/assets/app.js",
+  "dist/viewer/assets/hl-worker.js",
+];
 if (JSON.stringify(outputs) !== JSON.stringify(expected)) {
   throw new Error(
     `esbuild wrote ${outputs.join(", ")}, not ${expected.join(", ")}`,

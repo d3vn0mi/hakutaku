@@ -8,7 +8,9 @@
 // - A node's rows and dots select through the selection, with the tab they open: a row the
 //   Overview, a definition its source, widened, and an entry point its manifest's source at the
 //   line, which the Source tab is given.
-// - Every pane reads outlines from the page's one outline cache.
+// - Every pane reads outlines from the page's one outline cache, and the Source tab asks the
+//   page's data source for the file's source each time it opens.
+import type { DataSource } from "../data-types.js";
 import { h } from "../dom.js";
 import type { Model } from "../model.js";
 import type { OutlineCache } from "../outline-cache.js";
@@ -22,6 +24,7 @@ import {
   fileOverview,
   type PaneContext,
 } from "./overview.js";
+import { createSourceView } from "./source.js";
 
 const NAMES: Readonly<Record<Tab, string>> = {
   overview: "Overview",
@@ -48,10 +51,12 @@ export function createTabs(deps: {
   model: Model;
   state: StateStore;
   outlines: OutlineCache;
+  source: DataSource;
   select(sel: Sel, opts: { tab?: Tab; line?: number }): void;
 }): DetailTabs {
   const { model, state, outlines } = deps;
   const app = document.getElementById("app");
+  const sources = createSourceView(model, deps.source);
   let shown: Shown | null = null;
 
   const ctx: PaneContext = {
@@ -63,8 +68,13 @@ export function createTabs(deps: {
     },
   };
 
-  // What a tab shows for a node. The Source and Agent tabs are drawn by their own modules.
-  const paneOf = (sel: Exclude<Sel, null>, tab: Tab): Node[] => {
+  // What a tab shows for a node, and for the Source tab the line the selection names. The Agent
+  // tab is drawn by its own module.
+  const paneOf = (
+    sel: Exclude<Sel, null>,
+    line: number | null,
+    tab: Tab,
+  ): Node[] => {
     if (tab === "overview") {
       switch (sel.kind) {
         case "file":
@@ -85,6 +95,12 @@ export function createTabs(deps: {
     ) {
       return insidePane(ctx, sel.file);
     }
+    if (
+      tab === "source" &&
+      (sel.kind === "file" || sel.kind === "definition")
+    ) {
+      return sources.pane(sel, line);
+    }
     return [];
   };
 
@@ -96,7 +112,7 @@ export function createTabs(deps: {
       button.setAttribute("aria-selected", String(t === tab));
     }
     now.pane.setAttribute("aria-labelledby", `tab-${tab}`);
-    now.pane.replaceChildren(...paneOf(now.sel, tab));
+    now.pane.replaceChildren(...paneOf(now.sel, now.line, tab));
   };
 
   const syncWide = () => {

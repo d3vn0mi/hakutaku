@@ -14,7 +14,8 @@
 // A selection may name a line for the Source tab to show, as an entry point's manifest row does.
 // back(), which is Esc, climbs one level: a definition to its file, a file to its component (or
 // its group under another grouping), and anything else to no selection, with the whole map in
-// view. openToken() opens the node a link token names, and refuses a token the map does not hold.
+// view. openToken() opens the node a link token names, a definition on its Source tab with the
+// details widened, as a Find pick of one does, and refuses a token the map does not hold.
 // Everything here happens at once, in the same task, so the page never shows half a selection.
 import type { RepoId } from "../../model/types.js";
 import { F, FILE_KINDS } from "../../query/view/constants.js";
@@ -103,6 +104,7 @@ export function createSelection(ctx: AppContext): Selector {
     model,
     state,
     outlines: ctx.outlines,
+    source: ctx.source,
     select: (sel, opts) => select(sel, opts),
   });
 
@@ -179,8 +181,14 @@ export function createSelection(ctx: AppContext): Selector {
     },
     openToken(token) {
       const sel = selFromToken(model, token);
-      if (sel === "unknown") showToast(`Not in this map: ${token}`);
-      else select(sel);
+      if (sel === "unknown") {
+        showToast(`Not in this map: ${token}`);
+      } else if (sel?.kind === "definition") {
+        state.set({ wide: true });
+        select(sel, { tab: "source" });
+      } else {
+        select(sel);
+      }
     },
   };
 }

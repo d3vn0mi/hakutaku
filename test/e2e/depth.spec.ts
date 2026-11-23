@@ -28,6 +28,10 @@ import {
 } from "./helpers.js";
 
 const CODE = 0;
+const KEPLER = "web/src/orbits/kepler.ts";
+// The fragment that opens kepler.ts. The repository's secret scan reads a quoted value of 16
+// characters or more after a name such as "token" as a secret, so it is passed by this name.
+const AT_KEPLER = "web~src~orbits~kepler.ts";
 const ON_MAP = new Set([0, 1, 2]); // code, test and test-support files are drawn
 const HOTSPOT_MARK = 0.35;
 const PREFS = "hakutaku:view:observatory";
@@ -615,6 +619,39 @@ test("each depth the viewer picks is remembered, and keeps the selection it hide
   await atDepth(page, "Files");
   await depthSaved("files");
   expect(await selectedId(page)).toBe(id);
+});
+
+test("Definitions and Source are reachable from a file", async ({ page }) => {
+  const m = await fetchMap(E2E.sample);
+  const kepler = m.files.findIndex((f) => f[F.path] === KEPLER);
+  const [component] = must(
+    m.components[must(m.files[kepler], KEPLER)[F.component]],
+    `component of ${KEPLER}`,
+  );
+  // kepler.ts's first definition in file order, which Inside draws first
+  const first = must(
+    m.defs.file
+      .map((file, def) => ({ file, def }))
+      .filter(({ file }) => file === kepler)
+      .sort((x, y) => m.defs.line[x.def] - m.defs.line[y.def] || x.def - y.def)
+      .at(0),
+    `definition in ${KEPLER}`,
+  ).def;
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await page.getByRole("tab", { name: "Inside" }).click();
+  await page.locator("#pane .dots button").first().click();
+  await expect(page.locator(".code .flash")).toBeVisible();
+  await expect(page.locator(".code .flash")).toHaveAttribute(
+    "data-line",
+    String(m.defs.line[first]),
+  );
+  await expect(page.locator("#crumbs > *")).toHaveCount(4); // Map / component / file / definition
+  await expect(page.locator("#crumbs > *")).toHaveText([
+    "Map",
+    component,
+    "kepler.ts",
+    m.defs.name[first],
+  ]);
 });
 
 test("a repo above 400 production files opens at Core depth", async ({

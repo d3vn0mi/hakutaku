@@ -55,6 +55,13 @@ Licence: MIT
 Copyright: Copyright Joyent, Inc. and other Node contributors.
 Use: the event emitter that sigma and graphology use in the browser, bundled into the viewer's script
 
+### highlight.js
+Package: npm:highlight.js
+Version: 11.12.0
+Licence: BSD-3-Clause
+Copyright: Copyright (c) 2006, Ivan Sagalaev.
+Use: highlights the viewer's source view, its core with the TypeScript, JavaScript, XML, Python, Bash, JSON, YAML, INI and Markdown grammars, bundled into the viewer's script and into its highlighting worker
+
 ## Installed with the package
 
 ### @modelcontextprotocol/sdk

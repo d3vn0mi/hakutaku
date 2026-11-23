@@ -22,8 +22,10 @@ const read = (f: string) => readFileSync(join(ROOT, f), "utf8");
 const files = listFiles("src/viewer/app");
 
 it("app code never writes markup from strings, styles by attribute, or reaches outside", () => {
-  const code = files.filter((p) => p.endsWith(".ts"));
+  // TypeScript, and the one script, which sets up highlight.js
+  const code = files.filter((p) => p.endsWith(".ts") || p.endsWith(".js"));
   expect(code).toContain("src/viewer/app/main.ts"); // the scan reads real files
+  expect(code).toContain("src/viewer/app/source/hljs.js");
   for (const f of code) {
     const s = read(f);
     for (const bad of [

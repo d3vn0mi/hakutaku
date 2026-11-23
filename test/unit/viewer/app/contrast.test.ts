@@ -81,6 +81,44 @@ it("never sets text in --faint", () => {
   ).not.toMatch(/(^|[;{\s])color:\s*var\(--faint\)/m);
 });
 
+// A colour laid over another at an opacity, as a browser composites them: channel by channel.
+const over = (base: string, top: number[], alpha: number): string => {
+  const b = Number.parseInt(base.slice(1), 16);
+  return `#${[16, 8, 0]
+    .map((shift, i) =>
+      Math.round((1 - alpha) * ((b >> shift) & 255) + alpha * top[i])
+        .toString(16)
+        .padStart(2, "0"),
+    )
+    .join("")
+    .toUpperCase()}`;
+};
+
+it("text under the flashed line keeps 4.5:1 on the code's background", () => {
+  // The flash is a translucent colour laid over the line, its text and its background alike.
+  const flash = /--flash:\s*rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(
+    css,
+  );
+  if (flash === null) throw new Error("tokens.css defines no --flash");
+  const [r, g, b, alpha] = flash.slice(1).map(Number);
+  expect(alpha).toBeGreaterThan(0);
+  const app = readFileSync(`${ROOT}src/viewer/app/styles/app.css`, "utf8");
+  const code = /(?:^|\})\s*\.code\s*\{([^{}]*)\}/.exec(app)?.[1] ?? "";
+  const ground = /(?:^|[;\s])background:\s*var\(--([a-z0-9-]+)\)/.exec(
+    code,
+  )?.[1];
+  expect(ground, ".code sets its background").toBe("ground-2");
+  expect(
+    /\.code \.flash\s*\{[^{}]*background:\s*var\(--flash\)/.test(app),
+  ).toBe(true);
+  const under = over(tok["ground-2"], [r, g, b], alpha);
+  for (const t of TEXT)
+    expect(
+      contrast(over(tok[t], [r, g, b], alpha), under),
+      `${t} under the flash`,
+    ).toBeGreaterThanOrEqual(4.5);
+});
+
 it("text in another colour, or on another background, reaches 4.5:1 on the background its rule sets", () => {
   const app = readFileSync(`${ROOT}src/viewer/app/styles/app.css`, "utf8");
   let measured = 0;

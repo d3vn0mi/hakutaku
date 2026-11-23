@@ -17,6 +17,7 @@ it("lists every asset with its size and hash", () => {
     expect.arrayContaining([
       "app.js",
       "app.css",
+      "hl-worker.js",
       "plex-mono-400.woff2",
       "plex-mono-500.woff2",
       "plex-sans-condensed-300.woff2",
@@ -44,6 +45,7 @@ it("types each asset by its extension, and keeps its keys sorted", () => {
     ]),
   );
   expect(types["app.js"]).toBe("text/javascript; charset=utf-8");
+  expect(types["hl-worker.js"]).toBe("text/javascript; charset=utf-8");
   expect(types["app.css"]).toBe("text/css; charset=utf-8");
   for (const [name, type] of Object.entries(types))
     if (name.endsWith(".woff2")) expect(type, name).toBe("font/woff2");
@@ -65,6 +67,7 @@ it("names every bundled package with an allowed licence", () => {
       "@ibm/plex-mono",
       "@ibm/plex-sans-condensed",
       "graphology",
+      "highlight.js",
       "sigma",
     ]),
   );
@@ -140,9 +143,12 @@ it("inlines the styles, the fonts and the script under a CSP that names exactly 
   );
   const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}">`;
   expect(html).toContain(`<meta charset="utf-8">${meta}<style>`);
+  // One script and one style element, counted in the markup around the two inline texts: the
+  // script's text names <script and <style itself, in highlight.js's grammar for HTML.
+  const markup = html.replace(css, "").replace(js, "");
   expect([
-    html.match(/<script/g)?.length,
-    html.match(/<style/g)?.length,
+    markup.match(/<script/g)?.length,
+    markup.match(/<style/g)?.length,
   ]).toEqual([1, 1]);
   expect(js).toBe(readFileSync(`${ROOT}dist/viewer/assets/app.js`, "utf8"));
   // Each font is one of the six files, as a data: URI, and nothing loads from anywhere else.
@@ -156,7 +162,6 @@ it("inlines the styles, the fonts and the script under a CSP that names exactly 
   expect([...fonts].sort()).toEqual([...files].sort());
   expect(css).not.toMatch(/url\(plex-/);
   // The markup around the two inline texts loads nothing and names no API.
-  const markup = html.replace(css, "").replace(js, "");
   expect(markup).not.toMatch(/\sstyle=|<base|<link|\ssrc=|hakutaku-api|\{\{/);
 });
 
