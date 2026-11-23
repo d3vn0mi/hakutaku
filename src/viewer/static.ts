@@ -11,6 +11,10 @@ import type { ViewerResponse } from "./types.js";
 // needs escaping inside an HTML attribute.
 const BASE = /^\/([A-Za-z0-9._~-]+\/)*$/;
 const ASSETS = "assets/";
+// A script started as a worker runs under the policy of its own answer, never the page's. The
+// highlighting worker fetches and imports nothing, so every asset carries a policy that allows
+// nothing; a stylesheet, a font or the page's own script ignore it.
+const ASSET_CSP = "default-src 'none'";
 
 function checked(name: string, value: unknown): string {
   if (typeof value !== "string" || !BASE.test(value)) {
@@ -53,7 +57,11 @@ export function viewerStatic(
   if (asset === undefined) return notFound(path);
   return {
     status: 200,
-    headers: { ...SECURITY_HEADERS, "content-type": asset.type },
+    headers: {
+      ...SECURITY_HEADERS,
+      "content-type": asset.type,
+      "content-security-policy": ASSET_CSP,
+    },
     body: asset.bytes,
   };
 }

@@ -686,4 +686,13 @@ test("code that holds markup stays text, highlighted on the page or in the worke
   await expect(complete(page)).toBeVisible({ timeout: 20_000 });
   expect(started).toEqual([WORKER_SCRIPT]);
   await expectMarkupAsText(page, dialogs);
+  // the worker highlights under the policy of its own script's answer, which allows it nothing
+  expect(
+    await page.locator(".code .line").nth(501).locator(".hljs-comment").count(),
+  ).toBe(1);
+  const script = await fetch(new URL(WORKER_SCRIPT, E2E.bigfile));
+  expect([
+    script.status,
+    script.headers.get("content-security-policy"),
+  ]).toEqual([200, "default-src 'none'"]);
 });

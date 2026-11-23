@@ -105,6 +105,18 @@ it("every response carries the security headers", () => {
       expect(r.headers[k]).toBe(v);
 });
 
+it("gives every asset a policy that allows nothing, which a worker started from it runs under", () => {
+  // A worker takes its policy from its own answer, never from the page's; the highlighting
+  // worker fetches and imports nothing, so nothing is what it is allowed.
+  for (const name of ["hl-worker.js", "app.js", "app.css"]) {
+    const r = viewerStatic(`assets/${name}`, { base: "/" });
+    expect([r.status, r.headers["content-security-policy"]], name).toEqual([
+      200,
+      "default-src 'none'",
+    ]);
+  }
+});
+
 it("refuses a base or API address outside the allowed form", () => {
   for (const base of ["", "/x", "x/", "/a b/", "//evil.example/", '/a"/'])
     expect(() => viewerStatic("", { base })).toThrow(TypeError);
