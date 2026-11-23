@@ -45,6 +45,9 @@ const DATA_OPEN = '<script type="application/json" id="hakutaku-data">';
 
 // An address in a text: a scheme, "://", and what follows up to a quote, a bracket or a space.
 const ADDRESS = /[A-Za-z][A-Za-z0-9+.-]*:\/\/[^\s"'`()<>\\]*/g;
+// An address with no scheme, "//" and a dotted host right after a quote, a bracket or "=": a
+// browser reads it in the page's own scheme, on another host.
+const SCHEMELESS = /["'`(=]\/\/[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
 // The only addresses the built viewer holds, each beside why it is harmless: highlight.js prints
 // them in console warnings, from code paths the viewer never takes, and nothing ever asks for them.
 const INERT: Readonly<Record<string, string>> = {
@@ -491,6 +494,12 @@ test("the built viewer names no outside address but highlight.js's two console w
   }
   // each address allowed is still there, so the allowance cannot outlive its reason
   expect([...found].sort()).toEqual(Object.keys(INERT).sort());
+  // and none is written without its scheme
+  expect(
+    texts.flatMap(([name, text]) =>
+      [...text.matchAll(SCHEMELESS)].map(([address]) => `${name}: ${address}`),
+    ),
+  ).toEqual([]);
   // and the styles ask for nothing but the bundle's own fonts
   const css = readFileSync(join(DIST, "assets", "app.css"), "utf8");
   const fonts = Object.keys(manifest.assets).filter((n) =>
