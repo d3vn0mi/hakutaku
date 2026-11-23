@@ -39,6 +39,8 @@ test("draws the sample's production files, hubs and libraries at Files depth", a
   // Chromium draws with SwiftShader, so it must always draw. A browser that has no WebGL at
   // all, as headless Firefox can be, must say so in place of the map.
   const webgl = await hasWebGL(page);
+  // once per browser in the run's output, so that a CI log says which path each browser took
+  console.log(`webgl: ${browserName} ${webgl}`);
   if (browserName === "chromium") expect(webgl).toBe(true);
   expect(await mapDrawn(page)).toBe(webgl);
   if (!webgl) {
