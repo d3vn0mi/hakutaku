@@ -618,6 +618,62 @@ it("writes atomically, leaving no temporary file", async () => {
   expect(readFileSync(file, "utf8")).toMatch(/^<!doctype html>/);
 });
 
+it("puts the page on disk before it takes the page's name, so a crash leaves one page whole", async () => {
+  // what the export does with its files, in order, through the real file system
+  const FS = "node:fs/promises";
+  const done: string[] = [];
+  vi.resetModules();
+  vi.doMock(FS, async (importOriginal) => {
+    const real = await importOriginal<typeof import("node:fs/promises")>();
+    const open: typeof real.open = async (...args) => {
+      const handle = await real.open(...args);
+      done.push(`open ${String(args[0]).replace(/^.*\//, "")}`);
+      for (const name of ["writeFile", "sync", "datasync", "close"] as const) {
+        const method = handle[name] as (...a: unknown[]) => Promise<void>;
+        Object.defineProperty(handle, name, {
+          value: (...a: unknown[]) => {
+            done.push(name);
+            return method.apply(handle, a);
+          },
+        });
+      }
+      return handle;
+    };
+    const rename: typeof real.rename = async (from, to) => {
+      done.push(
+        `rename ${String(from).replace(/^.*\//, "")} ${String(to).replace(/^.*\//, "")}`,
+      );
+      return real.rename(from, to);
+    };
+    return { ...real, open, rename };
+  });
+  try {
+    const page = await import("../../../src/viewer/export-page.js");
+    const dir = tmp();
+    const file = join(dir, "m.html");
+    writeFileSync(file, "old");
+    await page.exportStaticPage({
+      host: tinyHost(tinyStore()),
+      ctx: undefined,
+      repo: "tiny",
+      file,
+      withSource: false,
+    });
+    const temporary = `m.html.tmp-${process.pid}`;
+    expect(done).toEqual([
+      `open ${temporary}`,
+      "writeFile",
+      "sync",
+      "close",
+      `rename ${temporary} m.html`,
+    ]);
+    expect(readdirSync(dir)).toEqual(["m.html"]);
+    expect(readFileSync(file, "utf8")).toMatch(/^<!doctype html>/);
+  } finally {
+    vi.doUnmock(FS);
+  }
+});
+
 it("a page that cannot be put in place leaves no temporary file", async () => {
   const dir = tmp();
   // a directory where the page should go: the temporary file is written, the rename fails

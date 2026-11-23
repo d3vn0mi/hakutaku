@@ -175,9 +175,10 @@ export function escapeForDataBlock(json: string): string {
   );
 }
 
-// Writes the page to <file>.tmp-<pid>, then renames it over file, so that a reader finds the old
-// page or the new one, never a part of either. What is at the temporary name is removed first,
-// and the page is created only where nothing is, so a link left there is never written through.
+// Writes the page to <file>.tmp-<pid>, puts it on disk (fsync), then renames it over file, so that
+// a reader, or a machine that stops at any moment, finds the old page or the new one, never a part
+// of either. What is at the temporary name is removed first, and the page is created only where
+// nothing is, so a link left there is never written through.
 // It fails, writing nothing, when the repo has no usable store, or when the viewer's script,
 // styles or data could not go inline in one page.
 export async function exportStaticPage(opts: {
@@ -197,6 +198,7 @@ export async function exportStaticPage(opts: {
     const handle = await open(temporary, "wx");
     try {
       await handle.writeFile(html, "utf8");
+      await handle.sync();
     } finally {
       await handle.close();
     }
