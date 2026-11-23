@@ -406,6 +406,20 @@ it("--export prints the page's absolute path for a relative one", () => {
   expect(readdirSync(dir)).toEqual(["rel.html"]);
 });
 
+it("--export prints a path that holds control characters as the terminal may show it", () => {
+  const dir = outDir();
+  // an escape sequence and a line feed in the page's name: the page is written under that very
+  // name, and the line printed says "?" for the escape and "; " for the line break
+  const name = `a${String.fromCharCode(0x1b)}[31m\nb.html`;
+  const r = view(["tiny", "--export", join(dir, name)]);
+  expect([r.status, r.stdout, r.stderr]).toEqual([
+    0,
+    `${join(dir, "a?[31m; b.html")}\n`,
+    "",
+  ]);
+  expect(readdirSync(dir)).toEqual([name]);
+});
+
 it("--export of a repo with no store exits 1, names hakutaku map and writes nothing", () => {
   const dir = outDir();
   const r = view(["nostore", "--export", join(dir, "m.html")]);
