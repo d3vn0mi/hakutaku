@@ -130,6 +130,42 @@ it("NOTICE names every bundled package with its version and licence", () => {
   }
 });
 
+// A package's licence file, as the bundle carries it: the text as written, with any address
+// written without its scheme, so the bundle names no address a browser could be sent to.
+function licenceOf(name: string): string {
+  const dir = `${ROOT}node_modules/${name}/`;
+  const file = readdirSync(dir).find((f) => /^licen[cs]e(\.\w+)?$/i.test(f));
+  if (file === undefined) throw new Error(`${name} has no licence file`);
+  return readFileSync(dir + file, "utf8")
+    .replaceAll(/[a-z][a-z0-9+.-]*:\/\//gi, "")
+    .trim();
+}
+
+it("carries the licence of every package bundled into a script, in that script and in a self-contained page", () => {
+  const code = manifest.bundled
+    .map((p: { name: string }) => p.name)
+    .filter((name: string) => !name.startsWith("@ibm/plex-"));
+  expect(code).toEqual(
+    expect.arrayContaining(["graphology", "highlight.js", "sigma"]),
+  );
+  const app = readFileSync(`${ROOT}dist/viewer/assets/app.js`, "utf8");
+  const worker = readFileSync(`${ROOT}dist/viewer/assets/hl-worker.js`, "utf8");
+  const { html } = inlineViewerHtml(null);
+  for (const name of code) {
+    const licence = licenceOf(name);
+    expect(licence, name).toMatch(/copyright/i);
+    expect(app.includes(licence), `${name} in app.js`).toBe(true);
+    expect(html.includes(licence), `${name} in the page`).toBe(true);
+    // the worker bundles highlight.js alone, and carries its licence alone
+    expect(worker.includes(licence), `${name} in hl-worker.js`).toBe(
+      name === "highlight.js",
+    );
+  }
+  // the notices open each script, as one comment a minifier keeps
+  expect(app.startsWith("/*!")).toBe(true);
+  expect(worker.startsWith("/*!")).toBe(true);
+});
+
 it("stays within 2 MiB as one self-contained page", () => {
   const bytes = Buffer.byteLength(inlineViewerHtml(null).html);
   console.log(`one self-contained page: ${bytes} bytes`);

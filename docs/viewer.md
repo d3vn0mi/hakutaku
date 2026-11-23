@@ -58,9 +58,11 @@ usage: hakutaku view <id> [--open] [--export <file.html> [--with-source]]
   mapped without sources, or with snippets off, has none to give: the page is written without them,
   and `view` says so.
 
-The exported page asks nothing of any server, so it opens from a file and can be published as it
-is. Its answers stop above 2,000 production files: the page of a larger repository holds none, and
-its Agent tab says "This export holds no agent answer for this node."
+The exported page asks nothing of any server, so it opens from a file. Its script opens with the
+licence of every package bundled into it, and its fonts carry theirs in their own metadata, so the
+page holds the notices those licences ask every copy to keep. Its answers stop above 2,000
+production files: the page of a larger repository holds none, and its Agent tab says "This export
+holds no agent answer for this node."
 
 `--open` and `--export` exclude each other, and `--with-source` goes with `--export` only. `view`
 exits 0 once the server has closed or the page is written, 1 on a failure (a repository with no
@@ -431,13 +433,13 @@ The 20,000-file repository is made by `fixtures/scale/generate.mjs` when CI is s
 bench's numbers will be published here once they are measured on a reference laptop.
 
 **The exported page's size,** as `hakutaku view --export` writes it, with and without
-`--with-source`:
+`--with-source`, rounded, since every change to the viewer's own script moves it by a few kilobytes:
 
 | Repository | Without sources | With sources |
 |---|---|---|
-| `observatory`, the sample: 71 production files of 142, 301 definitions, 469 answers | 1,112,930 bytes | 1,326,739 bytes |
-| A generated repository, `--files 2298`: 1,998 production files of 2,298, 15,456 definitions, 17,782 answers | 27,019,468 bytes | 33,491,862 bytes |
-| A generated repository, `--files 2304`: 2,003 production files of 2,304, over the limit, so no answers | 1,234,085 bytes | 7,718,148 bytes |
+| `observatory`, the sample: 71 production files of 142, 301 definitions, 469 answers | about 1.1 MB | about 1.3 MB |
+| A generated repository, `--files 2298`: 1,998 production files of 2,298, 15,456 definitions, 17,782 answers | about 27 MB | about 33.5 MB |
+| A generated repository, `--files 2304`: 2,003 production files of 2,304, over the limit, so no answers | about 1.2 MB | about 7.7 MB |
 
 Each repository was mapped at the default detail, the generated ones as
 `node fixtures/scale/generate.mjs --files <n> --out <dir>` writes them. The answers make most of a
@@ -475,4 +477,6 @@ The viewer bundles [sigma.js](https://github.com/jacomyal/sigma.js) and
 [events](https://github.com/browserify/events) package,
 [highlight.js](https://github.com/highlightjs/highlight.js) and the
 [IBM Plex](https://github.com/IBM/plex) fonts. [NOTICE](../NOTICE) names each, with its version,
-licence and copyright line, and the tools the viewer is built and tested with.
+licence and copyright line, and the tools the viewer is built and tested with. The viewer's
+scripts, served or inlined into an exported page, open with the full licence of each package
+bundled into them; the fonts carry their copyright and licence in their name tables.
