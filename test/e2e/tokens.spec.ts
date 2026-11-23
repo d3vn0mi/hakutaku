@@ -9,6 +9,7 @@ import {
   E2E,
   F,
   fetchMap,
+  formatId,
   mapDrawn,
   openViewer,
   selectedId,
@@ -371,33 +372,38 @@ test("a selection dims all but its node and its neighbours, and draws only its c
   if (!drawn) return;
   const { kepler, component } = keplerIn(m);
   const code = (f: number) => m.files[f][F.kind] === 0;
-  // tests are hidden, so the bright files are kepler.ts and the code files an import joins to
-  // it, and a curve is drawn for each pair of code files with an import between them
-  const near = new Set<number>([kepler]);
-  const pairs = new Set<string>();
-  for (let i = 0; i < m.imports.length; i += 3) {
-    const [a, b] = [m.imports[i], m.imports[i + 1]];
-    if (a !== kepler && b !== kepler) continue;
-    near.add(a === kepler ? b : a);
-    if (code(a) && code(b)) pairs.add(`${a} ${b}`);
-  }
-  const bright = [...near].filter(code).length;
-  const libraries = new Set<number>();
-  for (let i = 0; i < m.libImports.length; i += 2) {
-    if (m.libImports[i] === kepler) libraries.add(m.libImports[i + 1]);
-  }
   const hubs = m.components.filter((c) => c[1] > 0).length;
   const shown = m.counts.productionFiles + hubs + m.counts.libraries;
   const map = page.locator("#map");
-  await expect(map).toHaveAttribute("data-nodes", String(shown));
-  await expect(map).toHaveAttribute(
-    "data-dimmed",
-    String(shown - bright - libraries.size),
-  );
-  await expect(map).toHaveAttribute(
-    "data-curves",
-    String(pairs.size + libraries.size),
-  );
+  // tests are hidden, so the bright nodes are the file, the code files an import joins to it and
+  // the libraries it imports; a curve is drawn for each pair of code files with an import
+  // between them, and from the file to each of its libraries
+  const expectFocusOn = async (file: number) => {
+    const near = new Set<number>([file]);
+    const pairs = new Set<string>();
+    for (let i = 0; i < m.imports.length; i += 3) {
+      const [a, b] = [m.imports[i], m.imports[i + 1]];
+      if (a !== file && b !== file) continue;
+      near.add(a === file ? b : a);
+      if (code(a) && code(b)) pairs.add(`${a} ${b}`);
+    }
+    const bright = [...near].filter(code).length;
+    const libraries = new Set<number>();
+    for (let i = 0; i < m.libImports.length; i += 2) {
+      if (m.libImports[i] === file) libraries.add(m.libImports[i + 1]);
+    }
+    await expect(map).toHaveAttribute("data-nodes", String(shown));
+    await expect(map).toHaveAttribute(
+      "data-dimmed",
+      String(shown - bright - libraries.size),
+    );
+    await expect(map).toHaveAttribute(
+      "data-curves",
+      String(pairs.size + libraries.size),
+    );
+    return libraries.size;
+  };
+  await expectFocusOn(kepler);
   // a component keeps its hub and its files bright, and has no curves of its own
   await page.keyboard.press("Escape");
   expect(await selectedId(page)).toBe(`observatory:${component.path}/`);
@@ -423,6 +429,19 @@ test("a selection dims all but its node and its neighbours, and draws only its c
     "data-dimmed",
     String(shown - 1 - importers.size),
   );
+  await expect(map).toHaveAttribute("data-curves", String(importers.size));
+  // a file that imports a library keeps that library bright too
+  const importer = Math.min(...importers);
+  await page.evaluate(
+    (t) => {
+      location.hash = t;
+    },
+    toToken({ kind: "file", repo: m.repo, path: m.files[importer][F.path] }),
+  );
+  expect(await expectFocusOn(importer)).toBeGreaterThan(0);
+  await page.evaluate(() => {
+    location.hash = "npm:react";
+  });
   await expect(map).toHaveAttribute("data-curves", String(importers.size));
   // a selection whose node is hidden dims nothing and draws no curve
   await page.getByRole("checkbox", { name: /^Libraries/ }).uncheck();
@@ -538,6 +557,9 @@ test("an answer from another build says the map was rebuilt", async ({
   const notice = "The map was rebuilt at 0123456789ab. Reload to see it.";
   await expect(toast).toContainText(notice);
   await expect(toast.getByRole("button", { name: "Reload" })).toBeVisible();
+  // the other build's change activity is not drawn under this build's map
+  const bars = page.locator("#timeline rect");
+  await expect(bars).toHaveCount(0);
   // a later message passes, and the notice comes back after it
   await page.evaluate(() => {
     location.hash = "npm:left-pad";
@@ -555,4 +577,130 @@ test("an answer from another build says the map was rebuilt", async ({
   await expect(page.locator(".brand")).not.toContainText("0123456789ab");
   await expect(toast).not.toContainText("rebuilt");
   await expect(toast.getByRole("button", { name: "Reload" })).toHaveCount(0);
+  await expect(bars.first()).toBeAttached();
+});
+
+test("odd and hostile paths travel through the token, the address and the title as text", async ({
+  page,
+}) => {
+  const detail = page.locator("#detail");
+  // every node of the case whose file names hold markup, quotes and shell syntax
+  const markup = await fetchMap(E2E.markup);
+  await openViewer(page, E2E.markup);
+  for (const { id, token } of allNodes(markup)) {
+    await page.evaluate((t) => {
+      location.hash = t;
+    }, token);
+    await expect(detail).toHaveAttribute("data-node-id", id);
+    expect(new URL(page.url()).hash, token).toBe(`#${token}`);
+  }
+  for (const [path] of markup.files) {
+    await page.evaluate(
+      (t) => {
+        location.hash = t;
+      },
+      toToken({ kind: "file", repo: markup.repo, path }),
+    );
+    await expect(detail.locator("h2")).toHaveText(path);
+  }
+  // a fragment that is markup, and names nothing, is refused as text
+  await page.evaluate(() => {
+    location.hash = "<img src=x onerror=alert(1)>";
+  });
+  await expect(page.locator("#toast")).toContainText(/^Not in this map: /);
+  await expect(page.locator("img, [onerror], [onload]")).toHaveCount(0);
+
+  // the sample, with four of its files renamed to paths that hold every character a token
+  // escapes or splits on: "%", "#", ":", "~", "&", quotes, markup, a space, a trailing "-", an
+  // inner "--" and non-ASCII
+  const odd = [
+    'web/a b/<img src=x onerror=alert(1)>"&.ts',
+    "web/c#d%e:f~g/main.ts",
+    "web/tr-/inner--dash-.ts",
+    `web/${String.fromCodePoint(0xfc)}ber/${String.fromCodePoint(0xf1, 0x2d, 0x1f600)}.ts`,
+  ];
+  const m = await fetchMap(E2E.sample);
+  const withDefs = [...new Set(m.defs.file)].slice(0, odd.length);
+  const rename = (map: MapData) => {
+    withDefs.forEach((f, i) => {
+      map.files[f][F.path] = odd[i];
+    });
+  };
+  rename(m);
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    const map = (await response.json()) as MapData;
+    rename(map);
+    await route.fulfill({ response, json: map });
+  });
+  const repo = m.repo;
+  const fileRef = (f: number) => ({
+    kind: "file" as const,
+    repo,
+    path: m.files[f][F.path],
+  });
+  // a fresh load opens each renamed file from the address
+  for (const f of withDefs) {
+    await openViewer(page, E2E.sample, { token: toToken(fileRef(f)) });
+    await expect(detail).toHaveAttribute("data-node-id", formatId(fileRef(f)));
+    await expect(detail.locator("h2")).toHaveText(m.files[f][F.path]);
+  }
+  // a hash change opens each of their definitions, and a crumb writes the file's token back
+  for (const f of withDefs) {
+    const d = m.defs.file.indexOf(f);
+    const ref = {
+      kind: "definition" as const,
+      repo,
+      path: m.files[f][F.path],
+      qualname: m.defs.name[d],
+      ordinal: m.defs.ordinal[d],
+    };
+    await page.evaluate((t) => {
+      location.hash = t;
+    }, toToken(ref));
+    await expect(detail).toHaveAttribute("data-node-id", formatId(ref));
+    await expect(detail.locator(".kind")).toContainText(m.files[f][F.path]);
+    const name = m.files[f][F.path].slice(
+      m.files[f][F.path].lastIndexOf("/") + 1,
+    );
+    await page
+      .locator("#crumbs")
+      .getByRole("button", { name, exact: true })
+      .click();
+    await expect(detail).toHaveAttribute("data-node-id", formatId(fileRef(f)));
+    const u = new URL(page.url());
+    expect(u.hash).toBe(`#${toToken(fileRef(f))}`);
+    expect(u.searchParams.get("s")).toBe(
+      new URL(E2E.sample).searchParams.get("s"),
+    );
+  }
+  await expect(page.locator("img, [onerror], [onload]")).toHaveCount(0);
+});
+
+test("a keyboard alone selects, and the heading takes focus", async ({
+  page,
+}) => {
+  await openViewer(page, E2E.sample);
+  const first = page.locator("#core-list button").first();
+  const path = await first.textContent();
+  await first.focus();
+  await page.keyboard.press("Enter");
+  expect(await selectedId(page)).toBe(`observatory:${path}`);
+  await expect(page.locator("#detail h2")).toBeFocused();
+  // Tab moves on to the ID line's buttons, and Esc, from there, climbs a level
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Copy ID" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  expect(await selectedId(page)).not.toBe(`observatory:${path}`);
+});
+
+test("the page records whether the viewer asked for reduced motion", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "reduce");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await expect(page.locator("html")).toHaveAttribute("data-motion", "full");
 });

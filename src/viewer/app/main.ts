@@ -121,8 +121,12 @@ function compose(map: MapData, fetched: DataSource): void {
   addEventListener("hashchange", () =>
     selection.openToken(location.hash.slice(1)),
   );
+  // the change activity of another build is not drawn under this map: the notice says why
   source.history().then(
-    (history) => drawTimeline(byId<SVGSVGElement>("timeline"), history),
+    (history) => {
+      if (history.builtCommit !== map.builtCommit) return;
+      drawTimeline(byId<SVGSVGElement>("timeline"), history);
+    },
     (e) =>
       console.error("hakutaku: the change activity could not be loaded", e),
   );
