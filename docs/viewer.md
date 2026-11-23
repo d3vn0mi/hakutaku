@@ -27,6 +27,10 @@ The viewer is a window onto the answers the agents get, not a second model of th
 
 ## Running it
 
+hakutaku is not on npm yet: this page gives the commands as 0.1 will run them, as the README's
+[quick start](../README.md#quick-start-planned-for-01) does. From a clone of this repository, after
+`npm ci` and `npm run build`, `node dist/cli/main.js` stands in for `hakutaku`.
+
 Map the repository first, then view it by the id that `map` registered. To try it on the sample,
 write the sample first with `node fixtures/observatory/make.mjs <dir>`, from a clone of this
 repository:
@@ -246,8 +250,8 @@ link for people.
 
 ## Mounting the viewer in another server
 
-The package exports the page and the API for a host that serves the viewer itself, behind its own
-login:
+The package's main export, `hakutaku` once it is on npm (`dist/index.js` in a built clone), holds the
+page and the API for a host that serves the viewer itself, behind its own login:
 
 ```ts
 import { viewerApi, viewerStatic } from "hakutaku";
