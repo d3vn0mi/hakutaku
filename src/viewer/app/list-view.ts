@@ -3,8 +3,8 @@
 // screen reader reads for the canvas, and what a browser that cannot draw the map shows in its
 // place. It shows LIST_PAGE files, then LIST_PAGE more at each press of the button after them,
 // which moves the focus to the first file it added. A press on a file selects that file.
-// - Over the map, L opens the list with the focus on its first file; L again, Esc or a pick
-//   closes it, and L or Esc gives the focus back to where it was.
+// - Over the map, L opens the list with the focus on its first file; L again, Esc, the Back
+//   button or a pick closes it, and all but a pick give the focus back to where it was.
 // - In a browser that cannot draw the map, the list stands in the map's place, open for good: L
 //   moves the focus to its first file, a pick leaves it open, and Esc climbs a level as anywhere.
 import { LIST_PAGE } from "./constants.js";

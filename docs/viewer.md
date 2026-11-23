@@ -108,7 +108,8 @@ selection, besides the hubs and the libraries, and a pointer over a dot shows it
    smaller repositories.
 
 Inside a file, the Inside tab shows its definitions, and the Source tab its source. The breadcrumb
-always says where you are (Map, component, file, definition), and Esc climbs one level.
+always says where you are (Map, component, file, definition), and Esc, or the Back button, climbs
+one level.
 
 **Lenses**, on the keys 1, 2 and 3. Each has its legend, one line under the map:
 
@@ -175,15 +176,16 @@ and moves nothing, so the picture stays the one you learnt.
 
 **The list view**, on L, gives the same files as a ranked list, under the filters: the production
 files by rank, then, with Tests on, the tests by path, 200 at a time. Each row is a button that
-reads its path, its rank and its importers. Over the map, L or Esc closes it again. In a browser
-without WebGL, which cannot draw the map, the list view stands in its place.
+reads its path, its rank and its importers. Over the map, L closes it again, and so do Esc and the
+Back button, before they climb any level. In a browser without WebGL, which cannot draw the map, the
+list view stands in its place.
 
 **The keys:**
 
 | Key | What it does |
 |---|---|
 | `F` or `/` | Find: puts the focus in the Find box |
-| `Esc` | Back: climbs one level |
+| `Esc` | Back: closes a list open over the map, else climbs one level, as the Back button does |
 | `1` | The Structure lens |
 | `2` | The Risk lens |
 | `3` | The History lens |

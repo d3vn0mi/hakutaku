@@ -199,17 +199,18 @@ function compose(map: MapData, fetched: DataSource): void {
   );
   whenIdle(findIndex);
   byId("find-btn").addEventListener("click", () => find.focus());
+  // Esc and the Back button: a list open over the map is the level they close first
+  const back = () => {
+    if (!list.escape()) selection.back();
+  };
   bindKeys({
     find: () => find.focus(),
-    // a list open over the map is the level Esc closes first
-    back: () => {
-      if (!list.escape()) selection.back();
-    },
+    back,
     lens: (lens) => setLens(state, lens),
     depth: () => prefs.pickDepth(nextDepth(state.get().depth)),
     list: () => list.key(),
   });
-  byId("back-btn").addEventListener("click", () => selection.back());
+  byId("back-btn").addEventListener("click", back);
   addEventListener("hashchange", () =>
     selection.openToken(location.hash.slice(1)),
   );

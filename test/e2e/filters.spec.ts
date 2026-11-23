@@ -1,9 +1,9 @@
 // Filters and the list view end to end, on the sample: a filter dims the files it leaves out, as
 // well as what a selection dims and never the selected node, and moves and hides nothing; each
 // filter keeps the files it names, on the map and in the list view; L lists the files, ranked,
-// under the filters, and Enter or a click selects one; over the map, L and Esc close the list,
-// while in a browser that cannot draw the map the list stays in its place; the list shows 200
-// files at a time; and names that hold markup are listed as text.
+// under the filters, and Enter or a click selects one; over the map, L, Esc and the Back button
+// close the list, while in a browser that cannot draw the map the list stays in its place; the
+// list shows 200 files at a time; and names that hold markup are listed as text.
 import { expect, test } from "@playwright/test";
 import type { MapData, MapFile } from "../../src/query/view/index.js";
 import {
@@ -399,6 +399,41 @@ test("over the map, L and Esc close the list and keep the selection; in the map'
   await expect(q).toBeFocused();
   if (webgl) await expect(list).toBeHidden();
   else await expect(first).not.toBeFocused();
+});
+
+test("the Back button does what Esc does: it closes a list over the map first, then climbs", async ({
+  page,
+  browserName,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  const kepler = m.files.findIndex((f) => f[F.path] === KEPLER);
+  const [component] = must(
+    m.components[must(m.files[kepler], KEPLER)[F.component]],
+    `component of ${KEPLER}`,
+  );
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  const list = listView(page);
+  const back = page.getByRole("button", { name: /^Back/ });
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (webgl) {
+    await page.keyboard.press("l");
+    await expect(list.getByRole("button").first()).toBeFocused();
+    // the list over the map is the level Back closes first: the selection stays, and the focus
+    // goes back where it was before L
+    await back.click();
+    await expect(list).toBeHidden();
+    expect(await selectedId(page)).toBe(`observatory:${KEPLER}`);
+    await expect(page.locator("#detail h2")).toBeFocused();
+  } else {
+    // the list in the map's place is no level of its own: Back climbs at once
+    await expectNoWebGL(page);
+  }
+  await back.click();
+  expect(await selectedId(page)).toBe(`observatory:${component}/`);
+  if (webgl) await expect(list).toBeHidden();
+  else await expect(list).toBeVisible();
 });
 
 test("while Tests is on, the list ends with the test files by path, and a click selects one", async ({
