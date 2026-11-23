@@ -618,16 +618,19 @@ export function mountMap(
     }
   };
 
-  // The nodes drawn, and of those the ones drawn dimmed, as the reducer draws them.
+  // The nodes drawn, and of those the ones drawn dimmed, read from the reducer's own output, so
+  // that the counts are what sigma draws: a node the reducer hides is not counted, and a node it
+  // dims, the only one it draws at zIndex 0, counts once, whatever dimmed it.
   const count = () => {
     const hubs = layout.hubs.length;
     const cochange = picks.filter((c) => c.kind === "cochange").length;
     let visible = 0;
     let dimmed = 0;
     graph.forEachNode((key, node) => {
-      if (!shows(node.kind, node.index)) return;
+      const drawn = reducer(key, node);
+      if (drawn.hidden) return;
       visible++;
-      if (dims(key)) dimmed++;
+      if (drawn.zIndex === 0) dimmed++;
     });
     root.dataset.nodes = String(visible);
     root.dataset.dimmed = String(dimmed);
