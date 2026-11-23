@@ -5,8 +5,8 @@ change, and how a change gets merged.
 
 > [!NOTE]
 > **hakutaku is pre-release, with 0.1 in progress.** Nothing is installable yet: 0.1 is not on npm.
-> The engine, the store, the 13 tools and the MCP server are built and tested in this repository,
-> and the viewer is being built. The development set-up below works from a clone today. The most useful
+> The engine, the store, the 13 tools, the MCP server and the viewer are built and tested in this
+> repository. The development set-up below works from a clone today. The most useful
 > contributions are still design feedback, use cases and questions, in
 > [Discussions](https://github.com/d3vn0mi/hakutaku/discussions).
 
@@ -62,6 +62,10 @@ of the map. Chromium must draw the map. One test also turns WebGL off in both br
 machine tests that path. Locally, they leave out the generated 20,000-file repository unless you set
 `HAKUTAKU_E2E_WITH_SCALE=1`; in CI (`CI=true`) it is always built.
 
+`npm run bench:viewer`, after `npm run build`, measures the viewer's budgets on a laptop. It runs
+Chromium and Firefox headed, on the machine's own GPU, one test at a time, so it needs a desktop
+session and never runs in CI.
+
 The analysis engines are not npm dependencies. They are pinned, with integrity hashes, in
 `engines.lock.json`, and installed by `hakutaku engines install`. The oracle and hostile tests build
 with every engine, scip-python included, so install the deep ones too:
@@ -105,7 +109,7 @@ fixtures/
   scale/               a generator for a large synthetic repository
 test/                  unit, oracle, golden, hostile, MCP and end-to-end tests, and the
                        repository checks
-docs/                  the tools reference; design, viewer and security notes are planned
+docs/                  the tools reference and the viewer guide; design and security notes are planned
 ```
 
 ## Tests come with changes

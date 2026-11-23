@@ -22,8 +22,8 @@
 
 > [!IMPORTANT]
 > **Pre-release: 0.1 in progress.** Nothing is installable yet: 0.1 is not on npm. The engine, the
-> store, the 13 tools and the MCP server are built and tested in this repository, and the viewer is
-> being built. Every command and config below is **planned for 0.1**, and may change before it ships. Watch
+> store, the 13 tools, the MCP server and the viewer are built and tested in this repository. Every
+> command and config below is **planned for 0.1**, and may change before it ships. Watch
 > the repository, or join [Discussions](https://github.com/d3vn0mi/hakutaku/discussions), to follow
 > the first release.
 
@@ -218,8 +218,8 @@ The road to 0.1:
   - [x] **The reference**, [`docs/tools.md`](docs/tools.md): what each tool takes and answers, and
         how it refuses. A test checks its argument tables, error codes, label wording, examples and
         IDs against the code and the sample.
-- [ ] **Viewer** (in progress). Lenses, depth levels, search and filters, the source view,
-      accessibility and the performance budget. 16 of 17 steps done:
+- [x] **Viewer** (done 2026-11-23). Lenses, depth levels, search and filters, the source view,
+      accessibility and the performance budget, in 17 steps:
   - [x] **Viewer data.** The map, file outlines, source and history, read from a store as compact
         payloads that come out byte for byte the same on every read.
   - [x] **The viewer API.** One read-only API over the store and the tools. A file the denylist
@@ -255,7 +255,9 @@ The road to 0.1:
   - [x] **Offline and contained.** With every outside request blocked the viewer still renders
         fully, markup in names and code stays text, and every file the page loads comes under a
         policy that allows nothing.
-  - [ ] **First run and performance**, and the viewer guide.
+  - [x] **First run and performance**, and the [viewer guide](docs/viewer.md). CI checks the
+        budgets on the sample and on a generated repository of 20,000 files, and a bench mode
+        measures them on a laptop.
 - [ ] **Release.** CI, the hostile-repository suite, and an npm release with provenance. A static map of
       the sample as a live demo.
 
@@ -562,7 +564,8 @@ character except `A–Z a–z 0–9 . _ - /`. Then write any `-` that is doubled
 
 `hakutaku view` (planned for 0.1) draws a repository as a sky. The most depended-on files sit at the
 centre, the components in a ring around them, and the libraries in orbit outside. The layout is
-deterministic, with no force simulation: the same store always draws the same picture.
+deterministic, with no force simulation: the same store always draws the same picture. The
+[viewer guide](docs/viewer.md) covers it in full.
 
 **Lenses**, on the keys 1 to 3:
 
@@ -573,17 +576,18 @@ deterministic, with no force simulation: the same store always draws the same pi
 | **History** | Brightness by churn over 90 days. Select a file to see, dashed, the files that change together with it |
 | **Ownership** | Later |
 
-**Depth levels**, on the D key, from the big picture down to a line of code:
+**Depth levels**, on the D key, from the big picture down:
 
 1. **Components.** Hubs only, with aggregated import curves.
 2. **Core.** The core set, plus every entry point, every strong hotspot and each component's top file.
    Small, but no part of the repository vanishes. It is the default above 400 production files.
 3. **Files.** Every production file, with tests and libraries a toggle away. The default for smaller
    repositories.
-4. **Definitions.** Inside a file: one dot per definition, in file order. A dot shows whether other
-   files use it, and an orange ring marks a definition that no test mentions.
-5. **Source.** The file's highlighted source, from the store's redacted copy, with the selected line
-   flashed.
+
+Below a file, the details go down to a line of code. The **Inside** tab shows one dot per
+definition, in file order: a dot shows whether other files use it, and an orange ring marks a
+definition that no test mentions. The **Source** tab shows the file's highlighted source, from the
+store's redacted copy, with the selected line flashed.
 
 **Find** (F or /) searches files, definitions and libraries in one box, ranked by importance.
 **Filters** cover language, component, entry points, files in a cycle, recent changes (7, 30 or 90
@@ -600,7 +604,7 @@ signal.
 `Host` header is checked against DNS rebinding. Fonts and libraries are bundled, and a strict Content
 Security Policy keeps the page from loading anything from outside your machine.
 `hakutaku view --export map.html` writes one self-contained page, without sources unless you add
-`--with-source`. Screenshots will come from the synthetic sample once the viewer lands.
+`--with-source`. Screenshots of the synthetic sample will come with the first release.
 
 ## Languages and engines
 
