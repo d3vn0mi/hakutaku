@@ -8,6 +8,7 @@ import { BOTTOM_TOP } from "../constants.js";
 import { changesText, importersText } from "../detail/facts.js";
 import { h } from "../dom.js";
 import { byRank, type Model } from "../model.js";
+import { count } from "../words.js";
 
 // The chart's size in its own units; its width follows the element's.
 const WIDTH = 600;
@@ -53,7 +54,7 @@ export function fillRankLists(
 }
 
 // The change activity, into the page's own svg element: its namespace is the one every element
-// drawn here takes.
+// drawn here takes. Each week's commits, and the peak, count one commit in the singular.
 export function drawTimeline(svg: SVGSVGElement, history: HistoryData): void {
   const make = (
     tag: string,
@@ -86,7 +87,9 @@ export function drawTimeline(svg: SVGSVGElement, history: HistoryData): void {
       height: tall,
       rx: 1,
     });
-    bar.append(make("title", {}, `${week.commits} commits, week of ${day}`));
+    bar.append(
+      make("title", {}, `${count(week.commits, "commit")}, week of ${day}`),
+    );
     parts.push(bar);
     if (i % 4 === 0) {
       parts.push(
@@ -98,7 +101,7 @@ export function drawTimeline(svg: SVGSVGElement, history: HistoryData): void {
     make(
       "text",
       { class: "peak", x: width - 4, y: 11, "text-anchor": "end" },
-      `peak ${peak} commits/week`,
+      `peak ${count(peak, "commit")}/week`,
     ),
   );
   svg.setAttribute("viewBox", `0 0 ${width} ${HEIGHT}`);

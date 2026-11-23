@@ -123,18 +123,30 @@ test("the stat band, legend and bottom panels read from the map", async ({
   await expect(page.locator("#timeline rect title")).toHaveText(
     history.weeks.map(
       (w) =>
-        `${w.commits} commits, week of ${new Date(w.start * 1000).toISOString().slice(0, 10)}`,
+        `${count(w.commits, "commit")}, week of ${new Date(w.start * 1000).toISOString().slice(0, 10)}`,
     ),
   );
   const peak = Math.max(0, ...history.weeks.map((w) => w.commits));
   await expect(page.locator("#timeline .peak")).toHaveText(
-    `peak ${peak} commits/week`,
+    `peak ${count(peak, "commit")}/week`,
   );
 });
 
-test("the Core and Hotspots lists count one thing in the singular", async ({
+test("the Core and Hotspots lists and the change activity count one thing in the singular", async ({
   page,
 }) => {
+  // the sample's history with one commit in every week, so the peak is one commit too
+  await page.route("**/api/history", async (route) => {
+    const response = await route.fetch();
+    const history = (await response.json()) as HistoryData;
+    await route.fulfill({
+      response,
+      json: {
+        ...history,
+        weeks: history.weeks.map((w) => ({ ...w, commits: 1 })),
+      },
+    });
+  });
   // the sample's map with one importer left to the file of rank 1, and one change to the top
   // hotspot: neither moves in its list
   await page.route("**/api/map", async (route) => {
@@ -173,6 +185,13 @@ test("the Core and Hotspots lists count one thing in the singular", async ({
   );
   await expect(page.locator("#hot-list li").first().locator(".v")).toHaveText(
     "1 change",
+  );
+  await expect(page.locator("#timeline rect")).toHaveCount(26);
+  await expect(page.locator("#timeline rect title").first()).toHaveText(
+    /^1 commit, week of \d{4}-\d{2}-\d{2}$/,
+  );
+  await expect(page.locator("#timeline .peak")).toHaveText(
+    "peak 1 commit/week",
   );
 });
 
