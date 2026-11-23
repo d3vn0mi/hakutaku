@@ -11,6 +11,7 @@ import type { MapData } from "../../query/view/types.js";
 import { CORE_DEPTH_ABOVE, HOTSPOT_MARK } from "./constants.js";
 import type { Model } from "./model.js";
 import type { Depth } from "./state.js";
+import { whole } from "./words.js";
 
 // The depths, in the order D steps through them.
 export const DEPTHS: readonly Depth[] = Object.freeze([
@@ -60,7 +61,6 @@ export function nextDepth(d: Depth): Depth {
 export function coverageLine(map: MapData): string {
   const { files, ofFiles } = map.coreSet;
   if (ofFiles === 0) return "No production files on this map.";
-  const whole = (n: number) => n.toLocaleString("en-US");
   return `${whole(files)} of ${whole(ofFiles)} production files (${Math.round((100 * files) / ofFiles)}%) carry at least half of what the code depends on`;
 }
 

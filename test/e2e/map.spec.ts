@@ -132,7 +132,7 @@ test("the stat band, legend and bottom panels read from the map", async ({
   );
 });
 
-test("the Core and Hotspots lists and the change activity count one thing in the singular", async ({
+test("the stat band, the Core and Hotspots lists and the change activity count one thing in the singular", async ({
   page,
 }) => {
   // the sample's history with one commit in every week, so the peak is one commit too
@@ -177,7 +177,19 @@ test("the Core and Hotspots lists and the change activity count one thing in the
       changed[F.churn] = 1;
       return changed;
     });
-    await route.fulfill({ response, json: { ...map, imports, files } });
+    // and one of each thing the stat band counts
+    const counts = {
+      ...map.counts,
+      productionFiles: 1,
+      entryPoints: 1,
+      components: 1,
+      cycles: 1,
+      tests: 1,
+    };
+    await route.fulfill({
+      response,
+      json: { ...map, imports, files, counts },
+    });
   });
   await openViewer(page, E2E.sample);
   await expect(page.locator("#core-list li").first().locator(".v")).toHaveText(
@@ -186,6 +198,20 @@ test("the Core and Hotspots lists and the change activity count one thing in the
   await expect(page.locator("#hot-list li").first().locator(".v")).toHaveText(
     "1 change",
   );
+  await expect(page.locator("#statband button span")).toHaveText([
+    "code file",
+    "entry point",
+    "component",
+    "cycle",
+    "test",
+  ]);
+  await expect(page.locator("#statband button b")).toHaveText([
+    "1",
+    "1",
+    "1",
+    "1",
+    "1",
+  ]);
   await expect(page.locator("#timeline rect")).toHaveCount(26);
   await expect(page.locator("#timeline rect title").first()).toHaveText(
     /^1 commit, week of \d{4}-\d{2}-\d{2}$/,

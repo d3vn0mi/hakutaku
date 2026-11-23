@@ -1,4 +1,5 @@
-// The stat band over the map: the map's counts, each a button holding its number over its label.
+// The stat band over the map: the map's counts, each a button holding its number over its label,
+// which counts one thing in the singular.
 // - code files: every file again, at Files depth under Structure, with the entry points off;
 // - entry points: Structure, with the entry points marked in orange, or unmarked again; the
 //   button is pressed while they are marked;
@@ -13,6 +14,7 @@ import { coverageLine } from "../depth.js";
 import { h } from "../dom.js";
 import type { Model } from "../model.js";
 import type { Depth, Sel, StateStore } from "../state.js";
+import { noun, whole } from "../words.js";
 import { setLens } from "./lens.js";
 
 type Stat = "files" | "entries" | "components" | "cycles" | "tests";
@@ -26,11 +28,15 @@ export function mountStatband(
 ): void {
   const counts = model.map.counts;
   const stats: Array<[Stat, number, string]> = [
-    ["files", counts.productionFiles, "code files"],
-    ["entries", counts.entryPoints, "entry points"],
-    ["components", counts.components, "components"],
-    ["cycles", counts.cycles, counts.cycles === 1 ? "cycle" : "cycles"],
-    ["tests", counts.tests, "tests"],
+    [
+      "files",
+      counts.productionFiles,
+      noun(counts.productionFiles, "code file"),
+    ],
+    ["entries", counts.entryPoints, noun(counts.entryPoints, "entry point")],
+    ["components", counts.components, noun(counts.components, "component")],
+    ["cycles", counts.cycles, noun(counts.cycles, "cycle")],
+    ["tests", counts.tests, noun(counts.tests, "test")],
   ];
   const marked = () => {
     const now = state.get();
@@ -59,7 +65,7 @@ export function mountStatband(
           attrs: { type: "button", "data-stat": stat },
           on: { click: () => actions[stat]() },
         },
-        h("b", { text: n.toLocaleString("en-US") }),
+        h("b", { text: whole(n) }),
         h("span", { text: label }),
       ),
     ]),

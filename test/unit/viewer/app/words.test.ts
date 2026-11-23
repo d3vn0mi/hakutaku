@@ -1,7 +1,7 @@
 // Counting words: one thing in the singular, any other number in the plural, and whole numbers
 // grouped as en-US writes them.
 import { expect, it } from "vitest";
-import { count, whole } from "../../../../src/viewer/app/words.js";
+import { count, noun, whole } from "../../../../src/viewer/app/words.js";
 
 it("counts one thing in the singular and any other number in the plural", () => {
   expect([
@@ -27,6 +27,16 @@ it("takes the plural it is given", () => {
     count(0, "library", "libraries"),
     count(2, "library", "libraries"),
   ]).toEqual(["1 library", "0 libraries", "2 libraries"]);
+});
+
+it("gives the word alone, for a number written apart from it", () => {
+  expect([
+    noun(1, "test"),
+    noun(0, "test"),
+    noun(2, "entry point"),
+    noun(1, "library", "libraries"),
+    noun(3, "library", "libraries"),
+  ]).toEqual(["test", "tests", "entry points", "library", "libraries"]);
 });
 
 it("groups the digits of a whole number as en-US writes them", () => {
