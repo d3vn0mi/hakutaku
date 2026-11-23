@@ -163,11 +163,12 @@ Wide and Narrow widen the details, or give the room back to the map.
 ## Find, filters, the list view and the keys
 
 **Find**, on F or /, is one box over the files, the definitions, each shown with its file's name, and
-the libraries. Exact matches come first, then prefixes, then a match inside a name. Within each, the
-more important come first: a production file by how much of the code depends on it, a definition by
-the files that use it and whether it is exported, a library by the files that import it. Find lists
-the best 14. The arrows move through them, Enter or a click picks one, and Esc closes the list. A
-definition opens on its Source tab.
+the libraries. A definition whose file holds another of its name, as overloads do, also shows its
+line, in Find as in its heading and the breadcrumb, so no two read alike. Exact matches come first,
+then prefixes, then a match inside a name. Within each, the more important come first: a production
+file by how much of the code depends on it, a definition by the files that use it and whether it is
+exported, a library by the files that import it. Find lists the best 14. The arrows move through
+them, Enter or a click picks one, and Esc closes the list. A definition opens on its Source tab.
 
 **Show** turns on or off the code files, the tests, the libraries and the import curves, each with
 its count. The map draws tests at Files depth only; at Core and Components depth the Tests toggle is

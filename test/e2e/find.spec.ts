@@ -4,6 +4,7 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { NodeRef } from "../../dist/index.js";
 import { ECOSYSTEMS } from "../../dist/query/view/constants.js";
+import type { MapData } from "../../src/query/view/index.js";
 import {
   E2E,
   expectNoWebGL,
@@ -346,4 +347,59 @@ test("names that hold markup are found, listed as text, and picked", async ({
     await expect(detail).toHaveAttribute("data-node-id", formatId(ref));
   }
   await expect(page.locator("img, [onerror], [onload]")).toHaveCount(0);
+});
+
+test("two definitions of one name in one file are told apart by their line in Find, the header and the breadcrumb", async ({
+  page,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  const kepler = m.files.findIndex((f) => f[F.path] === KEPLER);
+  const own = m.defs.file.flatMap((f, d) => (f === kepler ? [d] : []));
+  expect(own.length).toBeGreaterThan(1);
+  // kepler.ts's second definition renamed after its first, as an overload is named: the same
+  // qualified name, of ordinal 2
+  const [first, second] = own;
+  const name = m.defs.name[first];
+  const lines = [m.defs.line[first], m.defs.line[second]];
+  expect(lines[0]).not.toBe(lines[1]);
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    const map = (await response.json()) as MapData;
+    map.defs.name[second] = name;
+    map.defs.ordinal[second] = 2;
+    await route.fulfill({ response, json: map });
+  });
+  const ref = (ordinal: number): NodeRef => ({
+    kind: "definition",
+    repo: m.repo,
+    path: KEPLER,
+    qualname: name,
+    ordinal,
+  });
+  const label = (i: number) => `${name} (line ${lines[i]})`;
+  await openViewer(page, E2E.sample);
+  await page.keyboard.press("f");
+  await page.keyboard.type(name);
+  const row = (i: number) =>
+    list(page).getByText(`${label(i)}${SEP}kepler.ts`, { exact: true });
+  await expect(row(0)).toHaveCount(1);
+  await expect(row(1)).toHaveCount(1);
+  // the second, picked: its heading and its crumb say its line, as its ID says its ordinal
+  await row(1).click();
+  expect(await selectedId(page)).toBe(formatId(ref(2)));
+  await expect(page.locator("#detail h2")).toHaveText(label(1));
+  await expect(page.locator("#crumbs > *").last()).toHaveText(label(1));
+  // the first, opened by its link, says its own
+  await page.evaluate(
+    (t) => {
+      location.hash = t;
+    },
+    toToken(ref(1)),
+  );
+  await expect(page.locator("#detail")).toHaveAttribute(
+    "data-node-id",
+    formatId(ref(1)),
+  );
+  await expect(page.locator("#detail h2")).toHaveText(label(0));
+  await expect(page.locator("#crumbs > *").last()).toHaveText(label(0));
 });

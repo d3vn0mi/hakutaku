@@ -6,6 +6,7 @@ import { openStore } from "../../../../src/store/index.js";
 import {
   buildModel,
   byRank,
+  defName,
   groupKey,
 } from "../../../../src/viewer/app/model.js";
 import type { Grouping } from "../../../../src/viewer/app/state.js";
@@ -128,6 +129,35 @@ it("lists each import once, however many times the store holds it", () => {
   map.imports.push(0, 1, 2, 0, 1, 1);
   const m = buildModel(map);
   expect([m.imports[0], m.importers[1]]).toEqual([[1], [0]]);
+});
+
+it("names a definition by its qualified name, and one its file holds twice by its line too", () => {
+  // the tiny map's definitions: main, Graph, Graph.add, helper at line 30, helper(2) at line
+  // 35, clamp
+  const m = tinyModel();
+  expect([0, 1, 2, 3, 4, 5].map((d) => defName(m, d))).toEqual([
+    "main",
+    "Graph",
+    "Graph.add",
+    "helper (line 30)",
+    "helper (line 35)",
+    "clamp",
+  ]);
+  // two of one name on one line are told apart by the ordinal their IDs carry
+  const map = structuredClone(m.map);
+  map.defs.line[4] = 30;
+  const same = buildModel(map);
+  expect([defName(same, 3), defName(same, 4)]).toEqual([
+    "helper (line 30)",
+    "helper(2) (line 30)",
+  ]);
+  // a name shared with a definition of another file is no overload
+  const other = structuredClone(m.map);
+  other.defs.name[0] = "clamp";
+  expect([0, 5].map((d) => defName(buildModel(other), d))).toEqual([
+    "clamp",
+    "clamp",
+  ]);
 });
 
 it("builds a 20,000-file model within 50 ms", () => {

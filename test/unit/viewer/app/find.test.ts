@@ -118,17 +118,38 @@ it("indexes every file, definition and library once, each with its kind and labe
   ]);
 });
 
-it("names each kind of definition, and breaks a tie of label by place in the map", () => {
+it("names each kind of definition, tells overloads apart by their line, and breaks a tie by place in the map", () => {
   const map = structuredClone(m.map);
   map.defs.kind[3] = DEF_KINDS.indexOf("constant");
   map.defs.kind[4] = DEF_KINDS.indexOf("type");
   const kinds = buildFindIndex(buildModel(map));
-  // helper and helper(2) share their label and their weight: the first in the map comes first
+  // helper and helper(2) share their name and their weight: each row says its line, and the
+  // first in the map comes first
   expect(kinds.search("helper")).toEqual([
-    { kind: "constant", ref: 3, label: `helper${SEP}graph.ts`, match: "exact" },
-    { kind: "type", ref: 4, label: `helper${SEP}graph.ts`, match: "exact" },
+    {
+      kind: "constant",
+      ref: 3,
+      label: `helper (line 30)${SEP}graph.ts`,
+      match: "exact",
+    },
+    {
+      kind: "type",
+      ref: 4,
+      label: `helper (line 35)${SEP}graph.ts`,
+      match: "exact",
+    },
   ]);
   expect(kinds.search("Graph")[0].kind).toBe("class");
+  // still by place in the map, not by the labels' text, which would put line 35 before line 9
+  map.defs.line[3] = 9;
+  expect(
+    buildFindIndex(buildModel(map))
+      .search("helper")
+      .map((hit) => hit.label),
+  ).toEqual([
+    `helper (line 9)${SEP}graph.ts`,
+    `helper (line 35)${SEP}graph.ts`,
+  ]);
 });
 
 it("ranks production files by pagerank, above libraries, tests and other files", () => {
@@ -147,8 +168,8 @@ it("ranks production files by pagerank, above libraries, tests and other files",
   expect(idx.search("e", 20).map((h) => h.label)).toEqual([
     "src/core/graph.ts",
     "src/core/util.ts",
-    `helper${SEP}graph.ts`,
-    `helper${SEP}graph.ts`,
+    `helper (line 30)${SEP}graph.ts`,
+    `helper (line 35)${SEP}graph.ts`,
     "node:fs",
     "npm:kleur",
     "src/core/graph.test.ts",

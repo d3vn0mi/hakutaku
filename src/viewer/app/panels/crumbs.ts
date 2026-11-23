@@ -4,24 +4,26 @@
 // element.
 import { F } from "../../../query/view/constants.js";
 import { h } from "../dom.js";
-import type { Model } from "../model.js";
+import { defName, type Model } from "../model.js";
 import { parentOf } from "../routing.js";
 import type { Grouping, Sel } from "../state.js";
 
-// What a crumb says: a file's name (its path in its title), a definition's qualified name, a
-// hub's path or key, or a library's name.
+// What a crumb says: a file's name (its path in its title), a definition's name as defName gives
+// it, a hub's path or key, or a library's name.
 function label(
   model: Model,
   sel: Exclude<Sel, null>,
 ): [text: string, title: string] {
-  const { files, defs, components, externals } = model.map;
+  const { files, components, externals } = model.map;
   switch (sel.kind) {
     case "file": {
       const path = files[sel.file][F.path];
       return [path.slice(path.lastIndexOf("/") + 1), path];
     }
-    case "definition":
-      return [defs.name[sel.def], defs.name[sel.def]];
+    case "definition": {
+      const name = defName(model, sel.def);
+      return [name, name];
+    }
     case "component":
       return [components[sel.component][0], components[sel.component][0]];
     case "group":

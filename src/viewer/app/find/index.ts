@@ -5,11 +5,15 @@
 //   <ecosystem>:<name>. The query is trimmed and lower-cased, and an empty one finds nothing.
 // - A match is exact when a key is the query, a prefix when a key starts with it, and a
 //   substring when the longer key holds it.
+// - A definition's label is its name, as defName gives it (with its line when its file holds
+//   another of that name), and its file's name.
 // - Matches rank by class, exact first, then by weight, highest first, then by label in path
-//   order, then by place in the index, so the order never depends on anything else. A production
-//   file weighs 1 + its share of the top pagerank; a test file 0.2, and any other file 0.1; a
-//   definition 0.6 + a tenth of the files that use it, ten at most, + 0.2 when it is exported; a
-//   library 0.5 + a twentieth of the files that import it, ten at most.
+//   order, then by place in the index, so the order never depends on anything else; the label
+//   is read there without a definition's line, so two of one name in one file keep the map's
+//   order, which is the order of their lines. A production file weighs 1 + its share of
+//   the top pagerank; a test file 0.2, and any other file 0.1; a definition 0.6 + a tenth of the
+//   files that use it, ten at most, + 0.2 when it is exported; a library 0.5 + a twentieth of the
+//   files that import it, ten at most.
 // - A search keeps the best few as it goes, by insertion into a list of at most max matches, and
 //   never sorts every match: one pass over 100,000 items stays within 50 ms.
 import { comparePaths } from "../../../model/order.js";
@@ -20,7 +24,7 @@ import {
   FILE_KINDS,
 } from "../../../query/view/constants.js";
 import { FIND_MAX } from "../constants.js";
-import type { Model } from "../model.js";
+import { defName, type Model } from "../model.js";
 import type { Sel, Tab } from "../state.js";
 
 export type FindKind =
@@ -58,6 +62,7 @@ export function buildFindIndex(model: Model): FindIndex {
   const kinds: FindKind[] = [];
   const refs = new Int32Array(size);
   const labels: string[] = [];
+  const orders: string[] = []; // what ties of weight are ordered by: the label, or a part of it
   const shorts: string[] = [];
   const longs: string[] = [];
   const weights = new Float64Array(size);
@@ -70,10 +75,12 @@ export function buildFindIndex(model: Model): FindIndex {
     long: string,
     short: string,
     weight: number,
+    order: string = label,
   ): void => {
     kinds.push(kind);
     refs[at] = ref;
     labels.push(label);
+    orders.push(order);
     shorts.push(short);
     longs.push(long);
     weights[at] = weight;
@@ -101,10 +108,19 @@ export function buildFindIndex(model: Model): FindIndex {
       0.6 +
       Math.min(defs.usedBy[d], 10) / 10 +
       (defs.exported[d] === 1 ? 0.2 : 0);
-    const label = `${name}${SEP}${path.slice(path.lastIndexOf("/") + 1)}`;
+    const base = path.slice(path.lastIndexOf("/") + 1);
+    const label = `${defName(model, d)}${SEP}${base}`;
     const long = name.toLowerCase();
     const short = long.slice(long.lastIndexOf(".") + 1);
-    add(DEF_KINDS[defs.kind[d]], d, label, long, short, weight);
+    add(
+      DEF_KINDS[defs.kind[d]],
+      d,
+      label,
+      long,
+      short,
+      weight,
+      `${name}${SEP}${base}`,
+    );
   });
   externals.forEach(([e, name, importers], x) => {
     const ecosystem = ECOSYSTEMS[e];
@@ -118,7 +134,7 @@ export function buildFindIndex(model: Model): FindIndex {
   const before = (ca: number, a: number, cb: number, b: number): boolean => {
     if (ca !== cb) return ca < cb;
     if (weights[a] !== weights[b]) return weights[a] > weights[b];
-    const byLabel = comparePaths(labels[a], labels[b]);
+    const byLabel = comparePaths(orders[a], orders[b]);
     return byLabel !== 0 ? byLabel < 0 : a < b;
   };
 

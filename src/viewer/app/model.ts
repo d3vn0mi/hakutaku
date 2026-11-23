@@ -1,5 +1,6 @@
 // The page's model of a map: the indexes that the map, its panels and its lenses read, built
 // once when the map arrives. No DOM here: Node tests import it.
+import { nameOf } from "../../model/ids.js";
 import { comparePaths } from "../../model/order.js";
 import { F, FILE_KINDS } from "../../query/view/constants.js";
 import type { MapData, MapFile } from "../../query/view/types.js";
@@ -178,4 +179,50 @@ export function groupKey(model: Model, file: number, g: Grouping): string {
 // name.
 export function languageName(lang: string): string {
   return LANGUAGE_NAMES.get(lang) ?? lang;
+}
+
+// A mark for each definition: 1 when its file holds another of the same qualified name, as
+// overloads, or a getter and its setter, are held; 2 when one of those also starts on its line;
+// else 0. Worked out once per model. The store gives the second of a name in a file ordinal 2,
+// the third 3, and so on, so a name shared in a file is one that some definition holds with an
+// ordinal above 1.
+const twinsOf = new WeakMap<Model, Uint8Array>();
+function twins(model: Model): Uint8Array {
+  const known = twinsOf.get(model);
+  if (known !== undefined) return known;
+  const { file, name, ordinal, line } = model.map.defs;
+  const marks = new Uint8Array(name.length);
+  const key = (d: number) => `${file[d]}\u0000${name[d]}`;
+  const shared = new Set<string>();
+  for (let d = 0; d < name.length; d++) {
+    if (ordinal[d] > 1) shared.add(key(d));
+  }
+  if (shared.size > 0) {
+    const lines = new Map<string, number[]>(); // the lines of each shared name, a line each
+    for (let d = 0; d < name.length; d++) {
+      if (!shared.has(key(d))) continue;
+      marks[d] = 1;
+      lines.set(key(d), [...(lines.get(key(d)) ?? []), line[d]]);
+    }
+    for (let d = 0; d < name.length; d++) {
+      const at = marks[d] === 1 ? lines.get(key(d)) : undefined;
+      if (at !== undefined && at.indexOf(line[d]) !== at.lastIndexOf(line[d])) {
+        marks[d] = 2;
+      }
+    }
+  }
+  twinsOf.set(model, marks);
+  return marks;
+}
+
+// A definition as the page names it on its own: its qualified name; when its file holds another
+// of that name, with its line, as "helper (line 30)"; and when one of those starts on the same
+// line too, with the ordinal its ID carries, as "helper(2) (line 30)". So no two definitions of a
+// file read alike.
+export function defName(model: Model, def: number): string {
+  const { name, ordinal, line } = model.map.defs;
+  const mark = twins(model)[def];
+  if (mark === 0) return name[def];
+  const named = mark === 2 ? nameOf(name[def], ordinal[def]) : name[def];
+  return `${named} (line ${line[def]})`;
 }

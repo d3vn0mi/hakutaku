@@ -10,7 +10,7 @@ import {
   FILE_KINDS,
 } from "../../../query/view/constants.js";
 import { h } from "../dom.js";
-import { groupKey, type Model } from "../model.js";
+import { defName, groupKey, type Model } from "../model.js";
 import { idOf, tokenOf } from "../routing.js";
 import type { Grouping, Sel } from "../state.js";
 import { subLineOf } from "./facts.js";
@@ -27,7 +27,8 @@ const HUB_KIND: Readonly<Record<Grouping, string>> = {
 };
 
 // The kind line and the title: a file and its group, a definition's kind and its file, a hub,
-// or a library and its ecosystem; then the path, the qualified name, or the name.
+// or a library and its ecosystem; then the path, the definition's name as defName gives it, or
+// the name.
 function kindAndTitle(
   model: Model,
   sel: Exclude<Sel, null>,
@@ -43,7 +44,10 @@ function kindAndTitle(
     }
     case "definition": {
       const kind = DEF_KINDS[defs.kind[sel.def]].toUpperCase();
-      return [`${kind}${SEP}${files[sel.file][F.path]}`, defs.name[sel.def]];
+      return [
+        `${kind}${SEP}${files[sel.file][F.path]}`,
+        defName(model, sel.def),
+      ];
     }
     case "component":
       return ["COMPONENT", components[sel.component][0]];
