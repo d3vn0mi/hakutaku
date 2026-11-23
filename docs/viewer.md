@@ -128,7 +128,8 @@ language.
 
 **The bottom lists:** *Core*, what the rest depends on; *Change activity*, the commits of each of the
 last 26 weeks; and *Hotspots*, depended on and changing often. Each row is a button that selects its
-file.
+file. An empty list says why: the map holds no code file, or, for Hotspots, no code file changed in
+the last 90 days, since a file the code depends on is a hotspot only when it changes too.
 
 **The details panel** names the selected node: its kind, its name, its stable ID with Copy ID and
 Copy #link, and a line with its rank and whether it is an entry point, in a cycle or a hotspot. Its

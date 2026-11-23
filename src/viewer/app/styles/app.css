@@ -1213,6 +1213,15 @@ kbd {
   list-style: none;
   counter-reset: rank;
 }
+/* An empty list is hidden, and the note after it says why. */
+.rank[hidden] {
+  display: none;
+}
+.bottom .none {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
 .rank li {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) auto;

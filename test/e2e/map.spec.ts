@@ -223,6 +223,67 @@ test("the stat band, the Core and Hotspots lists and the change activity count o
   );
 });
 
+test("an empty Core or Hotspots list says why it is empty", async ({
+  page,
+}) => {
+  // the sample holds more code files than the lists show
+  expect((await fetchMap(E2E.sample)).counts.productionFiles).toBeGreaterThan(
+    5,
+  );
+  const core = page.locator("#core-list");
+  const hot = page.locator("#hot-list");
+  const coreNote = page.locator("#core-list + .none");
+  const hotNote = page.locator("#hot-list + .none");
+  // the sample as it reads: both lists hold files, and neither says it is empty
+  await openViewer(page, E2E.sample);
+  await expect(core.locator("li")).toHaveCount(5);
+  await expect(hot.locator("li").first()).toBeVisible();
+  await expect(page.locator(".bottom .none")).toHaveCount(0);
+  // a repo whose code files have not changed in the last 90 days has no hotspot: a file is one
+  // only when it also changes, so Hotspots says that none changed
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    const map = (await response.json()) as MapData;
+    const files = map.files.map((f) => {
+      const still = [...f] as typeof f;
+      still[F.churn] = 0;
+      still[F.hotspot] = 0;
+      return still;
+    });
+    await route.fulfill({ response, json: { ...map, files } });
+  });
+  await openViewer(page, E2E.sample);
+  await expect(core.locator("li")).toHaveCount(5);
+  await expect(coreNote).toHaveCount(0);
+  await expect(core).not.toHaveAttribute("hidden");
+  // the empty list is hidden, so that a screen reader meets the note, not a list of nothing
+  await expect(hot).toHaveAttribute("hidden", "");
+  await expect(hot.locator("li")).toHaveCount(0);
+  await expect(hotNote).toHaveText("No code file changed in the last 90 days.");
+  // a map that holds no code file at all: both lists say so
+  await page.unroute("**/api/map");
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    const map = (await response.json()) as MapData;
+    const files = map.files.map((f) => {
+      if (f[F.kind] !== 0) return f;
+      const test = [...f] as typeof f;
+      test[F.kind] = 1;
+      return test;
+    });
+    await route.fulfill({ response, json: { ...map, files } });
+  });
+  await openViewer(page, E2E.sample);
+  for (const [list, note] of [
+    [core, coreNote],
+    [hot, hotNote],
+  ]) {
+    await expect(list).toHaveAttribute("hidden", "");
+    await expect(list.locator("li")).toHaveCount(0);
+    await expect(note).toHaveText("No code files on this map.");
+  }
+});
+
 test("the show toggles carry their counts, and the tests stat turns Tests on", async ({
   page,
   browserName,

@@ -15,10 +15,15 @@ const WIDTH = 600;
 const HEIGHT = 100;
 const BASE = HEIGHT - 16; // the line the bars stand on
 const TALLEST = BASE - 12;
+// What an empty Core or Hotspots list says.
+const NO_CODE = "No code files on this map.";
+const NO_CHANGE = "No code file changed in the last 90 days.";
 
 // Core: the top production files by rank, each with its importers. Hotspots: the top files by
 // hotspot, each with its changes in the last 90 days; a file that never changed is none. Each
-// row's name is a button that selects its file; its count says one in the singular.
+// row's name is a button that selects its file; its count says one in the singular. A list with
+// no row is hidden, and a note after it says why: the map holds no code file, or, for Hotspots,
+// no code file changed in the last 90 days, since a file is a hotspot only when it changes too.
 export function fillRankLists(
   core: HTMLElement,
   hot: HTMLElement,
@@ -38,10 +43,17 @@ export function fillRankLists(
       }),
       h("span", { class: "v", text: value }),
     );
-  core.replaceChildren(
-    ...model.production
+  const fill = (list: HTMLElement, rows: HTMLElement[], empty: string) => {
+    list.replaceChildren(...rows);
+    list.hidden = rows.length === 0;
+    if (rows.length === 0) list.after(h("p", { class: "none", text: empty }));
+  };
+  fill(
+    core,
+    model.production
       .slice(0, BOTTOM_TOP)
       .map((f) => row(f, importersText(model, f))),
+    NO_CODE,
   );
   const hotspots = model.production
     .filter((f) => files[f][F.hotspot] > 0)
@@ -50,7 +62,11 @@ export function fillRankLists(
         files[b][F.hotspot] - files[a][F.hotspot] || byRank(model, a, b),
     )
     .slice(0, BOTTOM_TOP);
-  hot.replaceChildren(...hotspots.map((f) => row(f, changesText(model, f))));
+  fill(
+    hot,
+    hotspots.map((f) => row(f, changesText(model, f))),
+    model.production.length === 0 ? NO_CODE : NO_CHANGE,
+  );
 }
 
 // The change activity, into the page's own svg element: its namespace is the one every element
