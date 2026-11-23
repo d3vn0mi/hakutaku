@@ -2,10 +2,16 @@
 // import curves are drawn on the canvas beneath it after each of sigma's frames. The curves are
 // picked when the view state changes; a frame only redraws them.
 // - Node keys: f<file index>, h<hub index>, x<library index>.
+// - The depth says which files are drawn: every one at Files depth, the core view's at Core depth
+//   (no tests), none at Components depth, where the hubs grow, are always labelled, and are
+//   joined by the imports between their groups, added up. Hubs are drawn at every depth, and
+//   libraries while Libraries is on.
 // - The lens colours and sizes the files, and labels its top files besides the selection.
 // - A selection the map draws keeps its node and its neighbours bright and dims every other
 //   node: the files and libraries an import joins to a file or a definition's file, the files
-//   that import a library, or the files of a hub's group. Only the selection's curves are drawn.
+//   that import a library, or the files of a hub's group, with, at Components depth, the hubs an
+//   import joins to it. Only the selection's curves are drawn; at Components depth, the curves
+//   between the hubs it keeps bright.
 // - Under History, a selected file's neighbours also include the files that change together
 //   with it, each joined to it by a dashed curve. A map that does not carry co-change has them
 //   from the outline cache, fetched once per file; the map refreshes when they arrive.
@@ -21,7 +27,7 @@ import { DirectedGraph } from "graphology";
 import Sigma from "sigma";
 import type { Settings } from "sigma/settings";
 import type { NodeDisplayData } from "sigma/types";
-import { F, FILE_KINDS, FLAG_CORE } from "../../../query/view/constants.js";
+import { F, FILE_KINDS } from "../../../query/view/constants.js";
 import {
   PULL_ACROSS,
   PULL_AGGREGATE,
@@ -29,6 +35,7 @@ import {
   PULL_WITHIN,
   R,
 } from "../constants.js";
+import { coreView, fileShownAt } from "../depth.js";
 import { prefersReducedMotion } from "../dom.js";
 import { groupKey, type Model } from "../model.js";
 import { motionMs } from "../motion.js";
@@ -73,6 +80,7 @@ const FOCUS_RATIO = 0.45; // the camera ratio a focused node is shown at, or clo
 const ZOOM_FACTOR = 1.5; // one zoom step
 const BIG_HUBS = 14; // hubs as large as the 14th largest are always labelled
 const BUSY_LIBRARY = 6; // a library imported by at least this many files is always labelled
+const HUB_GROWTH = 2.2; // how much larger hubs are drawn at Components depth, where they stand alone
 
 // How each kind of import curve is stroked, in CSS pixels; drawn in this order.
 const STROKES = [
@@ -169,19 +177,28 @@ export function mountMap(
   let shapes = new Map<CurveKind, Float64Array>(); // per kind: a, control point and b, per curve
   let aggregates: Array<{ shape: Float64Array; weight: number; hot: boolean }> =
     [];
+  let joins: CurvePick[] | null = null; // the imports between hubs, added up, for the layout
+  const core = coreView(model);
 
-  const shows = (kind: NodeKind): boolean =>
-    kind === "file"
-      ? s.show.production && s.depth === "files"
-      : kind === "test"
-        ? s.show.tests && s.depth === "files"
-        : kind === "hub" || s.show.libraries;
+  // Whether a file is drawn: its depth draws it, and its toggle, Code files or Tests, is on.
   const fileShows = (f: number): boolean =>
-    model.onMap(f) && shows(files[f][F.kind] === CODE ? "file" : "test");
+    fileShownAt(model, s.depth, f) &&
+    (files[f][F.kind] === CODE ? s.show.production : s.show.tests);
+  // Whether a node is drawn: a file as fileShows says, a hub always, a library while Libraries
+  // is on.
+  const shows = (kind: NodeKind, index: number): boolean =>
+    kind === "file" || kind === "test"
+      ? fileShows(index)
+      : kind === "hub" || s.show.libraries;
+  const hubJoins = (): CurvePick[] => {
+    joins ??= aggregateCurves(model, s.group, (key) => hubIndex.get(key) ?? -1);
+    return joins;
+  };
 
   const graph = new DirectedGraph<NodeAttrs>();
   const build = () => {
     graph.clear();
+    joins = null;
     hubIndex = new Map(layout.hubs.map((hub, i) => [hub.key, i]));
     const groups = new Map<string, number>();
     groupIds = groups;
@@ -254,7 +271,7 @@ export function mountMap(
   build();
 
   const reducer = (key: string, a: NodeAttrs): Partial<NodeDisplayData> => {
-    if (!shows(a.kind)) return { ...a, hidden: true };
+    if (!shows(a.kind, a.index)) return { ...a, hidden: true };
     const out: Partial<NodeDisplayData> & NodeAttrs = {
       ...a,
       hidden: false,
@@ -269,6 +286,10 @@ export function mountMap(
         out.label = a.name;
         out.forceLabel = true;
       }
+    } else if (a.kind === "hub" && s.depth === "components") {
+      out.label = a.name;
+      out.forceLabel = true;
+      out.size = a.size * HUB_GROWTH;
     } else {
       out.label = a.name;
       out.forceLabel = always.has(key);
@@ -408,11 +429,13 @@ export function mountMap(
 
   // The nodes a selection keeps bright: its node, and the files and libraries an import joins to
   // a file (or a definition's file), with, under History, the files that change together with
-  // it; the files that import a library; or the files of a hub's group. Null, so that nothing is
-  // dimmed, when nothing is selected or its node is not drawn.
+  // it; the files that import a library; or the files of a hub's group, with, at Components
+  // depth, the hubs an import joins to it. Null, so that nothing is dimmed, when nothing is
+  // selected or its node is not drawn.
   const litBy = (sel: Sel, key: string | null): Set<string> | null => {
     if (sel === null || key === null) return null;
-    if (!shows(graph.getNodeAttribute(key, "kind"))) return null;
+    const node = graph.getNodeAttributes(key);
+    if (!shows(node.kind, node.index)) return null;
     const keep = new Set<string>([key]);
     const add = (prefix: "f" | "x", list: readonly number[]) => {
       for (const i of list) keep.add(`${prefix}${i}`);
@@ -425,16 +448,28 @@ export function mountMap(
     } else if (sel.kind === "library") {
       add("f", model.importersOfLib[sel.external]);
     } else {
-      const group = groupIds.get(layout.hubs[Number(key.slice(1))].key);
+      const hub = node.index;
+      const group = groupIds.get(layout.hubs[hub].key);
       for (let f = 0; f < n; f++) if (groupOf[f] === group) keep.add(`f${f}`);
+      if (s.depth === "components") {
+        for (const c of hubJoins()) {
+          if (c.from === hub) keep.add(`h${c.to}`);
+          else if (c.to === hub) keep.add(`h${c.from}`);
+        }
+      }
     }
     return keep;
   };
 
   const pick = (): CurvePick[] => {
     if (!s.show.curves) return [];
+    // between hubs; with a selection, only between the hubs it keeps bright
     if (s.depth === "components") {
-      return aggregateCurves(model, s.group, (key) => hubIndex.get(key) ?? -1);
+      const all = hubJoins();
+      const bright = lit;
+      return bright === null
+        ? all
+        : all.filter((c) => bright.has(`h${c.from}`) && bright.has(`h${c.to}`));
     }
     const sel = s.sel;
     // a library's curves come from the files that import it; a hub has none of its own here
@@ -458,7 +493,7 @@ export function mountMap(
         : [];
     return pickCurves(model, {
       visible: fileShows,
-      inCore: (f) => (files[f][F.flags] & FLAG_CORE) !== 0,
+      inCore: (f) => core.has(f),
       selected: file,
       riskLens: s.lens === "risk",
       cochange,
@@ -574,20 +609,19 @@ export function mountMap(
   };
 
   const count = () => {
-    const shown = (kind: NodeKind, of: number) => (shows(kind) ? of : 0);
     const hubs = layout.hubs.length;
     const cochange = picks.filter((c) => c.kind === "cochange").length;
-    const visible =
-      shown("file", model.production.length) +
-      shown("test", model.tests.length) +
-      hubs +
-      shown("lib", model.map.externals.length);
+    let visible = 0;
+    graph.forEachNode((_, node) => {
+      if (shows(node.kind, node.index)) visible++;
+    });
     let bright = visible;
     if (lit !== null) {
       bright = 0;
       for (const key of lit) {
-        if (graph.hasNode(key) && shows(graph.getNodeAttribute(key, "kind")))
-          bright++;
+        if (!graph.hasNode(key)) continue;
+        const node = graph.getNodeAttributes(key);
+        if (shows(node.kind, node.index)) bright++;
       }
     }
     root.dataset.nodes = String(visible);

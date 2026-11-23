@@ -39,6 +39,10 @@ const pressed = (page: Page, name: string | RegExp) =>
     "true",
   );
 
+// The Component grouping's button: the depth control's Components starts with the same word.
+const componentGrouping = (page: Page) =>
+  page.locator("#group").getByRole("button", { name: /^Component/ });
+
 // The value, or a failure naming what the sample lacks.
 function must<T>(value: T | undefined | null, what: string): T {
   if (value === undefined || value === null) {
@@ -212,9 +216,10 @@ test("lens and grouping are remembered across reloads", async ({ page }) => {
   await openViewer(page, page.url());
   await pressed(page, "Risk");
   await pressed(page, /^Folder/);
-  await expect(
-    page.getByRole("button", { name: /^Component/ }),
-  ).toHaveAttribute("aria-pressed", "false");
+  await expect(componentGrouping(page)).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
   await expect(page.locator("#legend")).toHaveText(LEGEND.risk);
 });
 
@@ -385,15 +390,16 @@ test("grouping by language makes one hub per language", async ({
   if (browserName === "chromium") expect(drawn).toBe(true);
   if (drawn) await expect(map).toHaveAttribute("data-hubs", String(components));
   // the grouping in use, pressed again, changes nothing
-  await page.getByRole("button", { name: /^Component/ }).click();
+  await componentGrouping(page).click();
   expect(await selectedId(page)).toBe(`observatory:${KEPLER}`);
 
   const language = page.getByRole("button", { name: /^Language/ });
   await language.click();
   await expect(language).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    page.getByRole("button", { name: /^Component/ }),
-  ).toHaveAttribute("aria-pressed", "false");
+  await expect(componentGrouping(page)).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
   // a new grouping clears the selection, and the address keeps only its session
   expect(await selectedId(page)).toBeNull();
   await expect(page.locator("#detail")).toBeHidden();
@@ -434,7 +440,7 @@ test("at Components depth the legend names the hubs of the grouping", async ({
   await expect(legend).toHaveText(
     "Each hub is a folder, sized by its code files. Curves are imports between folders; thicker means more of them.",
   );
-  await page.getByRole("button", { name: /^Component/ }).click();
+  await componentGrouping(page).click();
   await expect(legend).toHaveText(
     "Each hub is a component, sized by its code files. Curves are imports between components; thicker means more of them.",
   );

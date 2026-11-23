@@ -7,7 +7,9 @@
 //   4. moves focus to the header's heading;
 //   5. says what is selected in the live region;
 //   6. lets the map dim all but the node's neighbours, and flies the camera to it;
-//   7. turns the Tests toggle on when the node is a test file.
+//   7. turns the Tests toggle on when the node is a test file;
+//   8. switches to Files depth when the depth in use hides the file of the map it selects, its
+//      own or its definition's.
 // back(), which is Esc, climbs one level: a definition to its file, a file to its component (or
 // its group under another grouping), and anything else to no selection, with the whole map in
 // view. openToken() opens the node a link token names, and refuses a token the map does not hold.
@@ -16,6 +18,7 @@ import type { RepoId } from "../../model/types.js";
 import { F, FILE_KINDS } from "../../query/view/constants.js";
 import { announcement } from "./announce.js";
 import type { DataSource } from "./data-types.js";
+import { fileShownAt } from "./depth.js";
 import { renderHeader } from "./detail/header.js";
 import { showToast } from "./dom.js";
 import type { MapView } from "./map/render.js";
@@ -94,6 +97,14 @@ export function createSelection(ctx: AppContext): Selector {
         : -1;
     if (file >= 0 && isTest(file) && !now.show.tests) {
       patch.show = { ...now.show, tests: true };
+    }
+    // a file off the map is drawn at no depth, so it changes none
+    if (
+      file >= 0 &&
+      model.onMap(file) &&
+      !fileShownAt(model, now.depth, file)
+    ) {
+      patch.depth = "files";
     }
     state.set(patch);
     try {

@@ -8,17 +8,19 @@ import type { MapData } from "../../query/view/types.js";
 import { guardBuild } from "./build-guard.js";
 import { pickSource } from "./data.js";
 import { ApiError, type DataSource } from "./data-types.js";
+import { defaultDepth, nextDepth } from "./depth.js";
 import { prefersReducedMotion, showToast } from "./dom.js";
 import { bindKeys } from "./keys.js";
 import { mountMap } from "./map/render.js";
 import { buildModel } from "./model.js";
 import { createOutlineCache } from "./outline-cache.js";
 import { drawTimeline, fillRankLists } from "./panels/bottom.js";
+import { mountDepth } from "./panels/depth-control.js";
 import { mountGrouping } from "./panels/grouping.js";
 import { mountLegend } from "./panels/legend.js";
 import { mountLens, setLens } from "./panels/lens.js";
 import { mountShow } from "./panels/show.js";
-import { mountStatband } from "./panels/statband.js";
+import { mountCoverage, mountStatband } from "./panels/statband.js";
 import { loadPrefs, savePrefs } from "./prefs.js";
 import { createSelection, type Selector } from "./selection.js";
 import { createState, NO_FILTERS, type ViewState } from "./state.js";
@@ -29,7 +31,8 @@ const NOT_BUILT =
 const NO_WEBGL =
   "This browser cannot draw the map (no WebGL). The list view shows the same files.";
 
-// The view the page opens with: Files depth, Structure lens, grouped by component, tests hidden.
+// The view the page opens with: Structure lens, grouped by component, tests hidden. Its depth is
+// the map's default, Core above 400 production files, else Files.
 const START: ViewState = {
   lens: "structure",
   depth: "files",
@@ -90,6 +93,7 @@ function compose(map: MapData, fetched: DataSource): void {
   // the remembered lens, depth and grouping over the defaults; storage may be missing or throw
   const state = createState({
     ...START,
+    depth: defaultDepth(model),
     ...loadPrefs(() => localStorage, map.repo),
   });
   // and remembered again each time one of them changes
@@ -123,6 +127,7 @@ function compose(map: MapData, fetched: DataSource): void {
   prefersReducedMotion(); // records html[data-motion] from the start
   mountLegend(byId("legend"), state);
   mountLens(byId("lens"), state);
+  mountDepth(byId("depth"), state);
   mountShow(byId("show"), model, state);
   // the map's clicks select through the selection, which needs the map: it is made right after
   let selector: Selector | null = null;
@@ -145,6 +150,7 @@ function compose(map: MapData, fetched: DataSource): void {
   });
   selector = selection;
   mountStatband(byId("statband"), model, state, (sel) => selection.select(sel));
+  mountCoverage(byId("coverage"), map, state);
   // another grouping lays the map out again, and clears the selection, whose groups it changes
   mountGrouping(byId("group"), state, (group) => {
     state.set({ group });
@@ -156,6 +162,7 @@ function compose(map: MapData, fetched: DataSource): void {
   bindKeys({
     back: () => selection.back(),
     lens: (lens) => setLens(state, lens),
+    depth: () => state.set({ depth: nextDepth(state.get().depth) }),
   });
   byId("back-btn").addEventListener("click", () => selection.back());
   addEventListener("hashchange", () =>
