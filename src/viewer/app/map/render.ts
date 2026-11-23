@@ -13,13 +13,14 @@
 //   import joins to it. Only the selection's curves are drawn; at Components depth, the curves
 //   between the hubs it keeps bright.
 // - The filters dim the files they leave out, as well, and move or hide nothing: no node, no
-//   hub, no library and no curve. The selection's own node never dims.
+//   hub, no library and no curve. The selection's own node never dims. A curve dims when a file
+//   at either end of it is drawn dimmed: whatever it marks, it is drawn in the faintest ink.
 // - Under History, a selected file's neighbours also include the files that change together
 //   with it, each joined to it by a dashed curve. A map that does not carry co-change has them
 //   from the outline cache, fetched once per file; the map refreshes when they arrive.
 // - After each refresh, #map carries data-nodes (the visible nodes), data-dimmed (the visible
-//   nodes drawn dimmed), data-hubs, data-curves (the import curves drawn) and data-cochange (the
-//   co-change curves drawn).
+//   nodes drawn dimmed), data-hubs, data-curves (the import curves drawn), data-cochange (the
+//   co-change curves drawn) and data-curves-dimmed (the curves of either kind drawn dimmed).
 // - A pointer over a node marks #map with the class "pointing".
 // - After the first frame, the page records the performance mark hakutaku:first-map and sets
 //   html[data-ready] to "map".
@@ -91,14 +92,17 @@ const BIG_HUBS = 14; // hubs as large as the 14th largest are always labelled
 const BUSY_LIBRARY = 6; // a library imported by at least this many files is always labelled
 const HUB_GROWTH = 2.2; // how much larger hubs are drawn at Components depth, where they stand alone
 
-// How each kind of import curve is stroked, in CSS pixels; drawn in this order.
+// How each kind of import curve is stroked, in CSS pixels; drawn in this order, the dimmed ones,
+// of any kind, first and beneath the rest.
+type Stroke = CurveKind | "dimmed";
 const STROKES = [
+  ["dimmed", 0.6, CURVE_INK.dimmed, []],
   ["base", 0.6, CURVE_INK.base, []],
   ["selected", 1.1, CURVE_INK.selected, []],
   ["cycle", 1.6, CURVE_INK.cycle, []],
   ["cochange", 1.2, CURVE_INK.cochange, [4, 4]],
 ] as const satisfies ReadonlyArray<
-  readonly [CurveKind, number, string, readonly number[]]
+  readonly [Stroke, number, string, readonly number[]]
 >;
 
 // Whether this browser gives a canvas a WebGL context, asked the way sigma asks for one. A
@@ -183,7 +187,7 @@ export function mountMap(
   let selected: string | null = null; // the selection's node
   let lit: Set<string> | null = null; // the nodes a drawn selection keeps bright
   let picks: CurvePick[] = [];
-  let shapes = new Map<CurveKind, Float64Array>(); // per kind: a, control point and b, per curve
+  let shapes = new Map<Stroke, Float64Array>(); // per stroke: a, control point and b, per curve
   let aggregates: Array<{ shape: Float64Array; weight: number; hot: boolean }> =
     [];
   let joins: CurvePick[] | null = null; // the imports between hubs, added up, for the layout
@@ -516,9 +520,10 @@ export function mountMap(
     }).filter((c) => c.to < n || s.show.libraries);
   };
 
-  // Each curve's start, control point and end, in graph units.
+  // Each curve's start, control point and end, in graph units, under the stroke it is drawn with:
+  // its kind's, or the dimmed one when a file at either end is drawn dimmed.
   const shape = () => {
-    const per = new Map<CurveKind, number[]>();
+    const per = new Map<Stroke, number[]>();
     aggregates = [];
     const hotHub = selected?.startsWith("h") ? Number(selected.slice(1)) : -1;
     for (const c of picks) {
@@ -549,8 +554,11 @@ export function mountMap(
           : !library && groupOf[c.from] === groupOf[c.to]
             ? PULL_WITHIN
             : PULL_ACROSS;
-      const list = per.get(c.kind) ?? [];
-      per.set(c.kind, list);
+      const dimmed =
+        dims(`f${c.from}`) || dims(library ? `x${c.to - n}` : `f${c.to}`);
+      const stroke: Stroke = dimmed ? "dimmed" : c.kind;
+      const list = per.get(stroke) ?? [];
+      per.set(stroke, list);
       list.push(ax, ay, ...controlPoint(ax, ay, bx, by, pull), bx, by);
     }
     shapes = new Map(
@@ -596,14 +604,14 @@ export function mountMap(
       ctx.setLineDash([...dash]);
       ctx.stroke();
     };
-    STROKES.forEach(([kind, width, color, dash], i) => {
+    for (const [kind, width, color, dash] of STROKES) {
       const g = shapes.get(kind);
       if (g !== undefined) {
         ctx.beginPath();
         trace(g);
         stroke(width, color, dash);
       }
-      if (i === 0) {
+      if (kind === "base") {
         // between hubs: thicker for more imports, and orange when one end is selected
         for (const a of aggregates) {
           ctx.beginPath();
@@ -612,7 +620,7 @@ export function mountMap(
           stroke(width, a.hot ? CURVE_INK.hubsSelected : CURVE_INK.hubs, []);
         }
       }
-    });
+    }
     if (first) {
       first = false;
       performance.mark("hakutaku:first-map");
@@ -639,6 +647,8 @@ export function mountMap(
     root.dataset.hubs = String(hubs);
     root.dataset.curves = String(picks.length - cochange);
     root.dataset.cochange = String(cochange);
+    // read from what drawCurves strokes: six numbers a curve
+    root.dataset.curvesDimmed = String((shapes.get("dimmed")?.length ?? 0) / 6);
   };
 
   // The files the filters leave out, by node key, so that no hub or library is ever among them;

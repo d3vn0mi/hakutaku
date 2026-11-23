@@ -1,9 +1,10 @@
-// Filters and the list view end to end, on the sample: a filter dims the files it leaves out, as
-// well as what a selection dims and never the selected node, and moves and hides nothing; each
-// filter keeps the files it names, on the map and in the list view; L lists the files, ranked,
-// under the filters, and Enter or a click selects one; over the map, L, Esc and the Back button
-// close the list, while in a browser that cannot draw the map the list stays in its place; the
-// list shows 200 files at a time; and names that hold markup are listed as text.
+// Filters and the list view end to end, on the sample: a filter dims the files it leaves out, and
+// the curves to them, as well as what a selection dims and never the selected node or its curves,
+// and moves and hides nothing; each filter keeps the files it names, on the map and in the list
+// view; L lists the files, ranked, under the filters, and Enter or a click selects one; over the
+// map, L, Esc and the Back button close the list, while in a browser that cannot draw the map the
+// list stays in its place; the list shows 200 files at a time; and names that hold markup are
+// listed as text.
 import { expect, test } from "@playwright/test";
 import type { MapData, MapFile } from "../../src/query/view/index.js";
 import {
@@ -62,6 +63,23 @@ function testsOf(m: MapData): number[] {
     .sort(byPath(m));
 }
 
+// The import curves a view draws while nothing is selected: one per pair of files an import joins,
+// both ends shown, in the order of the pair's first import.
+function curvesOf(
+  m: MapData,
+  shown: (f: number) => boolean,
+): Array<[from: number, to: number]> {
+  const seen = new Set<string>();
+  const out: Array<[number, number]> = [];
+  for (let i = 0; i < m.imports.length; i += 3) {
+    const [a, b] = [m.imports[i], m.imports[i + 1]];
+    if (!shown(a) || !shown(b) || seen.has(`${a} ${b}`)) continue;
+    seen.add(`${a} ${b}`);
+    out.push([a, b]);
+  }
+  return out;
+}
+
 // What the list view says of a file: its path, rank and importers, or that it is a test.
 function labelOf(m: MapData, f: number): string {
   const file = m.files[f];
@@ -74,13 +92,28 @@ function labelOf(m: MapData, f: number): string {
   return `${file[F.path]}, rank ${file[F.rank]}, ${n} importer${n === 1 ? "" : "s"}`;
 }
 
-test("a filter dims and moves nothing", async ({ page, browserName }) => {
+test("a filter dims and moves nothing, and dims the curves of what it leaves out", async ({
+  page,
+  browserName,
+}) => {
   const m = await fetchMap(E2E.sample);
   const inCycle = m.files.filter(
     (f) => f[F.kind] === CODE && f[F.cycle] !== 0,
   ).length;
   expect(inCycle).toBeGreaterThan(0);
   expect(inCycle).toBeLessThan(m.counts.productionFiles);
+  // a curve dims when a file at either end is left out: the sample has curves with one end out of
+  // the cycle, curves with both, and curves with neither
+  const cycled = (f: number) => m.files[f][F.cycle] !== 0;
+  const out = ([a, b]: [number, number]) => !cycled(a) || !cycled(b);
+  const code = curvesOf(m, (f) => m.files[f][F.kind] === CODE);
+  expect(code.some(([a, b]) => cycled(a) !== cycled(b))).toBe(true);
+  expect(code.some(([a, b]) => !cycled(a) && !cycled(b))).toBe(true);
+  expect(code.some(([a, b]) => cycled(a) && cycled(b))).toBe(true);
+  const withTests = curvesOf(
+    m,
+    (f) => m.files[f][F.kind] === CODE || TESTS.has(m.files[f][F.kind]),
+  );
   await openViewer(page, E2E.sample);
   const webgl = await hasWebGL(page);
   if (browserName === "chromium") expect(webgl).toBe(true);
@@ -94,7 +127,8 @@ test("a filter dims and moves nothing", async ({ page, browserName }) => {
   }
   const map = page.locator("#map");
   const nodes = await map.getAttribute("data-nodes");
-  const curves = await map.getAttribute("data-curves");
+  await expect(map).toHaveAttribute("data-curves", String(code.length));
+  await expect(map).toHaveAttribute("data-curves-dimmed", "0");
   await page.getByLabel("Files in a cycle").check();
   // only the production files outside a cycle dim: no hub, no library, and no node hides
   await expect(map).toHaveAttribute(
@@ -102,8 +136,13 @@ test("a filter dims and moves nothing", async ({ page, browserName }) => {
     String(m.counts.productionFiles - inCycle),
   );
   await expect(map).toHaveAttribute("data-nodes", nodes ?? "");
-  await expect(map).toHaveAttribute("data-curves", curves ?? "");
-  // shown, the test files outside a cycle dim too
+  // every curve is still drawn, and those to a file left out dim with it
+  await expect(map).toHaveAttribute("data-curves", String(code.length));
+  await expect(map).toHaveAttribute(
+    "data-curves-dimmed",
+    String(code.filter(out).length),
+  );
+  // shown, the test files outside a cycle dim too, and their curves with them
   const testsOut = testsOf(m).filter((f) => m.files[f][F.cycle] === 0).length;
   expect(testsOut).toBeGreaterThan(0);
   await page.getByRole("checkbox", { name: /^Tests/ }).check();
@@ -111,9 +150,15 @@ test("a filter dims and moves nothing", async ({ page, browserName }) => {
     "data-dimmed",
     String(m.counts.productionFiles - inCycle + testsOut),
   );
+  await expect(map).toHaveAttribute("data-curves", String(withTests.length));
+  await expect(map).toHaveAttribute(
+    "data-curves-dimmed",
+    String(withTests.filter(out).length),
+  );
   await page.getByRole("checkbox", { name: /^Tests/ }).uncheck();
   await page.getByLabel("Files in a cycle").uncheck();
   await expect(map).toHaveAttribute("data-dimmed", "0");
+  await expect(map).toHaveAttribute("data-curves-dimmed", "0");
   await expect(map).toHaveAttribute("data-nodes", nodes ?? "");
 });
 
@@ -172,17 +217,34 @@ test("a filter dims along with a selection, and never the selected node", async 
     expect(await selectedId(page)).toBe(id);
     return;
   }
+  // the selection's curves: each import between it and a code file, and one to each library
+  const own = curvesOf(m, code).filter(([a, b]) => a === file || b === file);
+  const toOut = own.filter(([a, b]) => !cycled(a === file ? b : a));
+  expect(toOut.length).toBeGreaterThan(0);
+  expect(toOut.length).toBeLessThan(own.length);
   const map = page.locator("#map");
   await expect(map).toHaveAttribute(
     "data-dimmed",
     String(shown - 1 - near(file).length - libraries.size),
   );
+  await expect(map).toHaveAttribute(
+    "data-curves",
+    String(own.length + libraries.size),
+  );
+  await expect(map).toHaveAttribute("data-curves-dimmed", "0");
   // the filter dims the neighbours outside the cycle too; the file itself, outside it, stays lit
   await page.getByLabel("Files in a cycle").check();
   await expect(map).toHaveAttribute(
     "data-dimmed",
     String(shown - 1 - near(file).filter(cycled).length - libraries.size),
   );
+  // and with them the curves to them; the selection's end never dims, so its curves to the files
+  // in the cycle, and to its libraries, stay bright
+  await expect(map).toHaveAttribute(
+    "data-curves",
+    String(own.length + libraries.size),
+  );
+  await expect(map).toHaveAttribute("data-curves-dimmed", String(toOut.length));
   // with nothing selected, the filter alone dims
   await page
     .locator("#crumbs")
@@ -192,6 +254,12 @@ test("a filter dims along with a selection, and never the selected node", async 
   await expect(map).toHaveAttribute(
     "data-dimmed",
     String(m.counts.productionFiles - kept(m, (f) => f[F.cycle] !== 0).length),
+  );
+  await expect(map).toHaveAttribute(
+    "data-curves-dimmed",
+    String(
+      curvesOf(m, code).filter(([a, b]) => !cycled(a) || !cycled(b)).length,
+    ),
   );
 });
 

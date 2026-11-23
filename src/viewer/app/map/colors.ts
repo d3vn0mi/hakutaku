@@ -40,7 +40,8 @@ function rgba(hex: string, alpha: number): string {
 // curves that mark something reach 3:1 on the ground: an import in a cycle, a pair of files that
 // change together, the selection's imports, and the imports between hubs that touch the selected
 // hub. Every other import is the map's faint texture: all imports at once, and the imports
-// between hubs, thicker for more.
+// between hubs, thicker for more. A curve to a file the filters dim is dimmed with it, fainter
+// than any other, whatever it marks.
 export const CURVE_INK = Object.freeze({
   base: rgba(INK.hi, 0.055),
   selected: rgba(INK.hi, 0.55),
@@ -48,6 +49,7 @@ export const CURVE_INK = Object.freeze({
   cochange: rgba(INK.accent, 0.85),
   hubs: rgba(INK.hi, 0.16),
   hubsSelected: rgba(INK.accent, 0.8),
+  dimmed: rgba(INK.hi, 0.03),
 } as const);
 
 // How to read the map under each lens, and with entry points on.

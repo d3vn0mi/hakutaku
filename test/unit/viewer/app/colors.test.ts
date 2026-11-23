@@ -397,6 +397,17 @@ describe("the map's inks", () => {
     }
   });
 
+  it("draw a curve to a file the filters dim fainter than any other curve, as the file is dimmed", () => {
+    const ground = token("ground") ?? "";
+    const dimmed = contrast(over(ground, CURVE_INK.dimmed), ground);
+    for (const [kind, css] of Object.entries(CURVE_INK)) {
+      if (kind === "dimmed") continue;
+      expect(dimmed, kind).toBeLessThan(contrast(over(ground, css), ground));
+    }
+    // and no brighter than the dimmed dot it ends at
+    expect(dimmed).toBeLessThanOrEqual(contrast(INK.dim, ground));
+  });
+
   it("are the only colours the map draws in: its renderer names none of its own", () => {
     const render = readFileSync(
       fileURLToPath(

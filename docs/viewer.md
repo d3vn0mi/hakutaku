@@ -178,8 +178,8 @@ its count. The map draws tests at Files depth only; at Core and Components depth
 off, and says so, unless the list view is open.
 
 **Filters**, in the left panel: language, component, entry points only, files in a cycle, changed in
-the last 7, 30 or 90 days, and a hotspot above a threshold you set. A filter dims what it leaves out
-and moves nothing, so the picture stays the one you learnt.
+the last 7, 30 or 90 days, and a hotspot above a threshold you set. A filter dims what it leaves out,
+and every curve to it, and moves nothing, so the picture stays the one you learnt.
 
 **The list view**, on L, gives the same files as a ranked list, under the filters: the production
 files by rank, then, with Tests on, the tests by path, 200 at a time. Each row is a button that
