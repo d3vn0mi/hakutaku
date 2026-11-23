@@ -5,8 +5,8 @@
 import type { DataSource, ToolReply } from "./data-types.js";
 
 // A tool's answer names its build in a builtCommit of its own; an error, a list of repos or a
-// text that is not JSON names none.
-function toolCommit(reply: ToolReply): unknown {
+// text that is not JSON names none. The Agent tab reads it too, to draw nothing of another build.
+export function toolCommit(reply: ToolReply): unknown {
   try {
     const answer: unknown = JSON.parse(reply.text);
     return typeof answer === "object" && answer !== null

@@ -8,13 +8,15 @@
 // - A node's rows and dots select through the selection, with the tab they open: a row the
 //   Overview, a definition its source, widened, and an entry point its manifest's source at the
 //   line, which the Source tab is given.
-// - Every pane reads outlines from the page's one outline cache, and the Source tab asks the
-//   page's data source for the file's source each time it opens.
+// - Every pane reads outlines from the page's one outline cache, and the Source and Agent tabs
+//   ask the page's data source for the file's source, or for the tool's answer, each time they
+//   open.
 import type { DataSource } from "../data-types.js";
 import { h } from "../dom.js";
 import type { Model } from "../model.js";
 import type { OutlineCache } from "../outline-cache.js";
 import type { Sel, StateStore, Tab } from "../state.js";
+import { agentPane } from "./agent.js";
 import { componentOverview } from "./component.js";
 import { tabsFor } from "./facts.js";
 import { insidePane } from "./inside.js";
@@ -69,7 +71,7 @@ export function createTabs(deps: {
   };
 
   // What a tab shows for a node, and for the Source tab the line the selection names. The Agent
-  // tab is drawn by its own module.
+  // tab is drawn by its own module, for every kind of node that has it.
   const paneOf = (
     sel: Exclude<Sel, null>,
     line: number | null,
@@ -101,6 +103,7 @@ export function createTabs(deps: {
     ) {
       return sources.pane(sel, line);
     }
+    if (tab === "agent") return agentPane(model, deps.source, sel);
     return [];
   };
 
