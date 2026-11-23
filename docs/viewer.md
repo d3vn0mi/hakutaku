@@ -397,10 +397,13 @@ Find takes 50 ms or less over 100,000 items, and no step blocks the page for mor
 
 **How they are checked.** Two spec files, `test/e2e/first-run.spec.ts` and
 `test/e2e/performance.spec.ts`, measure the budgets in Chromium and Firefox. CI runs them on every
-push, with the bounds a shared runner can keep: a runner has no GPU, so its frame rate and its memory
-say nothing about a laptop's, and CI checks only what does not depend on the display. The bench runs
-the same files on the laptop, with the budgets themselves as bounds, and adds the frame rate and the
-memory:
+push, with the bounds a shared runner can keep: a runner has no GPU, so both browsers run headless
+there, Chromium drawing WebGL in software (SwiftShader), and CI checks only what does not depend on
+the display. The bench runs the same files on the laptop, with the budgets themselves as bounds,
+and adds the frame rate and the memory. It runs Chromium and Firefox headed, in windows on the
+laptop's own display and GPU, with no software renderer forced, one test at a time; each browser
+must draw the map with WebGL, and the memory is read in Chromium only. So it needs a desktop
+session, never a CI runner:
 
 ```sh
 npm run build
