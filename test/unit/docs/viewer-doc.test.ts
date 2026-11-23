@@ -437,7 +437,10 @@ const LIMITS: ReadonlyArray<[section: string, words: string]> = [
     `Its answers stop above ${num(INLINE_OUTLINES_UP_TO)} production files`,
   ],
   ["Reading the map", `Labels name the lens's top ${num(LABEL_TOP)} files`],
-  ["Reading the map", `every hotspot above ${num(HOTSPOT_MARK)}`],
+  [
+    "Reading the map",
+    `every hotspot above ${num(HOTSPOT_MARK)}, and each component's top file`,
+  ],
   [
     "Reading the map",
     `Core is the default above ${num(CORE_DEPTH_ABOVE)} production files.`,
