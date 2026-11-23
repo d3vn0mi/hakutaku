@@ -52,13 +52,6 @@ export function buildStaticBundle(
   // One build for the whole page: every answer is read from the store the map comes from, with
   // the freshness the map gives, however often the repo is rebuilt while the page is written.
   const freshness = host.freshness(repo);
-  const pinned: Host = {
-    repos: (c) => host.repos(c),
-    open: (c, r) => (r === repo ? store : host.open(c, r)),
-    freshness: (r) => (r === repo ? freshness : host.freshness(r)),
-    snippets: (r) => host.snippets(r),
-    maxResultChars: host.maxResultChars,
-  };
   const full = mapData(store, {
     stale: freshness.stale,
     snippets: host.snippets(repo),
@@ -67,6 +60,16 @@ export function buildStaticBundle(
   const sources =
     opts.withSource && full.sources ? sourcesOf(store, full) : null;
   const map: MapData = { ...full, sources: sources !== null };
+  // A page without sources holds no line of them anywhere: its answers are asked with snippets
+  // off, as a host that shows no source answers them.
+  const pinned: Host = {
+    repos: (c) => host.repos(c),
+    open: (c, r) => (r === repo ? store : host.open(c, r)),
+    freshness: (r) => (r === repo ? freshness : host.freshness(r)),
+    snippets: (r) =>
+      r === repo && sources === null ? false : host.snippets(r),
+    maxResultChars: host.maxResultChars,
+  };
   const answers =
     map.counts.productionFiles > (opts.agentUpTo ?? INLINE_OUTLINES_UP_TO)
       ? null

@@ -316,6 +316,56 @@ it("stores the tools' own answers, and none above the limit", () => {
   ).toEqual(b.agent);
 });
 
+// Every string a parsed answer holds under a key named text: the source line a location carries
+// when snippets are on.
+function lineTexts(value: unknown): string[] {
+  if (Array.isArray(value)) return value.flatMap(lineTexts);
+  if (typeof value !== "object" || value === null) return [];
+  return Object.entries(value).flatMap(([key, v]) =>
+    key === "text" && typeof v === "string" ? [v] : lineTexts(v),
+  );
+}
+
+const answerLines = (b: StaticBundle): string[] =>
+  Object.values(b.agent ?? {}).flatMap((a) => lineTexts(JSON.parse(a.text)));
+
+it("asks every answer with source lines off without --with-source, though the host shows them", async () => {
+  // what each tool call's host says of snippets for the repo, as the tools read it
+  const seen: boolean[] = [];
+  const TOOLS = "../../../src/tools/index.js";
+  vi.resetModules();
+  vi.doMock(TOOLS, async (importOriginal) => {
+    const real =
+      await importOriginal<typeof import("../../../src/tools/index.js")>();
+    const runTool: typeof real.runTool = (host, ...rest) => {
+      seen.push(host.snippets("tiny"));
+      return real.runTool(host, ...rest);
+    };
+    return { ...real, runTool };
+  });
+  try {
+    const page = await import("../../../src/viewer/export-page.js");
+    // the store holds sources and the host's snippets are on
+    const host = tinyHost(tinyStore(), { snippets: true });
+    const without = page.buildStaticBundle(host, undefined, "tiny", {
+      withSource: false,
+    });
+    expect(Object.keys(without.agent ?? {})).toHaveLength(15);
+    expect(seen).toEqual(Array(15).fill(false));
+    // and no answer holds a line of source
+    expect(answerLines(without)).toEqual([]);
+    // with the sources in the page, the answers are asked as the host shows them
+    seen.length = 0;
+    const withSources = page.buildStaticBundle(host, undefined, "tiny", {
+      withSource: true,
+    });
+    expect(withSources.sources).not.toBeNull();
+    expect(seen).toEqual(Array(15).fill(true));
+  } finally {
+    vi.doUnmock(TOOLS);
+  }
+});
+
 it("answers every component, file, definition and library, each with its tool and the node's ID", () => {
   const host = tinyHost(tinyStore());
   const b = buildStaticBundle(host, undefined, "tiny", { withSource: false });
@@ -490,6 +540,42 @@ it("repository text cannot close the data block", async () => {
   const id = formatId({ kind: "file", repo: "tiny", path });
   expect(b.agent?.[id]?.ok).toBe(true);
   expect(b.agent?.[id]?.text).toContain(JSON.stringify(path).slice(1, -1));
+});
+
+it("a comment that holds a script tag, or a line separator, in a name or a source line stays in the data block", async () => {
+  // U+2028 ends a line in JavaScript source, though not in JSON
+  const separator = String.fromCodePoint(0x2028);
+  const path = `src/<!-- <script>${separator}</script>.ts`;
+  const text = `const a = "<!-- <script>"; // ${separator} </SCRIPT> -->\n`;
+  const base = oneFileContent("tiny", path);
+  const content: StoreContent = {
+    ...base,
+    files: base.files.map((f) => ({
+      ...f,
+      has_source: 1,
+      bytes: new TextEncoder().encode(text).length,
+    })),
+    sources: [{ file_id: 1, text }],
+  };
+  const file = join(tmp(), "m.html");
+  await exportStaticPage({
+    host: tinyHost(miniStore(content)),
+    ctx: undefined,
+    repo: "tiny",
+    file,
+    withSource: true,
+  });
+  const html = readFileSync(file, "utf8");
+  expect(html.match(/<\/script>/gi)).toHaveLength(2);
+  // the app's own text names a script tag in a pattern; outside it, only the page's two open
+  expect(
+    html.replace(inner(html, /<script>/), "").match(/<script/gi),
+  ).toHaveLength(2);
+  const block = inner(html, DATA_BLOCK);
+  expect(block).not.toMatch(/[<>&]/);
+  const b = bundleOf(html);
+  const id = formatId({ kind: "file", repo: "tiny", path });
+  expect([b.map.files[0][0], b.sources?.[id]?.text]).toEqual([path, text]);
 });
 
 it("writes the page the bundle reads back, with the data block before the one script", async () => {

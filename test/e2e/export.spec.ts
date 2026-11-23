@@ -361,6 +361,39 @@ test("without --with-source the Source tab says so", async ({ page }) => {
   await expect(agent(page).locator("pre")).toBeVisible();
 });
 
+// Every string a value holds, keys included, however deep.
+function stringsIn(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  if (typeof value !== "object" || value === null) return [];
+  return Object.entries(value).flatMap(([key, v]) => [key, ...stringsIn(v)]);
+}
+
+// The source lines of a page's sources (every file it holds one for, trimmed) that cannot be
+// mistaken for a name or a path the map holds: 25 characters or more.
+function distinctLines(b: StaticBundle): string[] {
+  const lines = Object.values(b.sources ?? {}).flatMap((s) =>
+    s.text.split("\n").map((line) => line.trim()),
+  );
+  return [...new Set(lines.filter((line) => line.length >= 25))];
+}
+
+// The lines that some string of the bundle holds.
+const linesIn = (b: StaticBundle, lines: string[]): string[] => {
+  const texts = stringsIn(b);
+  return lines.filter((line) => texts.some((t) => t.includes(line)));
+};
+
+test("a page written without --with-source holds no line of the sources, answers included", () => {
+  const lines = distinctLines(bundleOf("sample"));
+  expect(lines.length).toBeGreaterThan(100);
+  // the scan finds each line where the sources are
+  expect(linesIn(bundleOf("sample"), lines)).toEqual(lines);
+  const bare = bundleOf("sampleBare");
+  expect(Object.keys(bare.agent ?? {}).length).toBeGreaterThan(0);
+  expect(linesIn(bare, lines)).toEqual([]);
+});
+
 test("the export's Source tab shows the sources it holds, a large file as plain text, never through a worker", async ({
   page,
 }) => {
