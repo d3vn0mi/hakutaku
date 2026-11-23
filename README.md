@@ -219,7 +219,7 @@ The road to 0.1:
         how it refuses. A test checks its argument tables, error codes, label wording, examples and
         IDs against the code and the sample.
 - [ ] **Viewer** (in progress). Lenses, depth levels, search and filters, the source view,
-      accessibility and the performance budget. 4 of 17 steps done:
+      accessibility and the performance budget. 8 of 17 steps done:
   - [x] **Viewer data.** The map, file outlines, source and history, read from a store as compact
         payloads that come out byte for byte the same on every read.
   - [x] **The viewer API.** One read-only API over the store and the tools. A file the denylist
@@ -228,10 +228,15 @@ The road to 0.1:
         or style, under a strict Content Security Policy, served under any base path.
   - [x] **`hakutaku view`.** Serves the viewer on `127.0.0.1` behind a session token, and an
         end-to-end harness drives it in Chromium and Firefox.
-  - [ ] **The galaxy**, its curves and the panels around it.
-  - [ ] **Selection** by link token, and the details header.
-  - [ ] **Lenses**, entry points and grouping.
-  - [ ] **Depth levels** and the coverage line.
+  - [x] **The galaxy**, its curves and the panels around it. A fixed layout with no force
+        simulation, so the same store always draws the same picture. A browser without WebGL gets a
+        notice instead of the map.
+  - [x] **Selection** by link token, and the details header. Any node opens from its token in the
+        address bar, from the keyboard too, and each selection is read out to screen readers.
+  - [x] **Lenses**, entry points and grouping. Structure, Risk and History on the keys 1 to 3, and
+        files grouped by component, folder or language.
+  - [x] **Depth levels** and the coverage line. Components, Core and Files on the D key, with a line
+        that says how much of the repository the view shows.
   - [ ] **Find.**
   - [ ] **Filters** and the list view.
   - [ ] **The Overview and Inside tabs.**
@@ -726,15 +731,16 @@ hakutaku stands on the work of others.
   with [tree-sitter](https://github.com/tree-sitter/tree-sitter) inside.
   [TypeScript](https://github.com/microsoft/TypeScript) runs inside scip-typescript and
   dependency-cruiser.
-- **The viewer (planned):** [sigma.js](https://github.com/jacomyal/sigma.js),
-  [graphology](https://github.com/graphology/graphology),
-  [highlight.js](https://github.com/highlightjs/highlight.js) and the
-  [IBM Plex](https://github.com/IBM/plex) fonts.
+- **The viewer:** [sigma.js](https://github.com/jacomyal/sigma.js) and
+  [graphology](https://github.com/graphology/graphology), with graphology's utilities and the
+  [events](https://github.com/browserify/events) package, and the [IBM Plex](https://github.com/IBM/plex)
+  fonts. [highlight.js](https://github.com/highlightjs/highlight.js) is planned, for the source view.
 - **The MCP server:** the [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk).
 - **Algorithms:** PageRank (Brin and Page) and Tarjan's strongly connected components.
 
 The engines are installed separately, never bundled. The MCP SDK is installed with the package, as
-its one direct dependency. The repository vendors one upstream file, SCIP's schema, which
+its one direct dependency. The viewer's libraries and fonts are bundled into its page when hakutaku
+is built. The repository vendors one upstream file, SCIP's schema, which
 hakutaku's decoder is written from. [NOTICE](NOTICE) credits each upstream project as it is added.
 
 ## The name
