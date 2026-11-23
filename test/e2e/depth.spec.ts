@@ -153,6 +153,13 @@ async function openToken(page: Page, token: string): Promise<void> {
 const fileToken = (m: MapData, f: number) =>
   toToken({ kind: "file", repo: m.repo, path: m.files[f][F.path] });
 
+// The preferences the page keeps for the sample, parsed; null when it wrote none.
+async function remembered(page: Page): Promise<unknown> {
+  return JSON.parse(
+    (await page.evaluate((k) => localStorage.getItem(k), PREFS)) ?? "null",
+  );
+}
+
 test("the sample opens at Files depth, and D cycles the levels", async ({
   page,
   browserName,
@@ -498,6 +505,116 @@ test("the remembered depth is the one the map opens at", async ({
       String(nodes.Core),
     );
   }
+});
+
+test("a depth a selection switches to is not remembered, so a link leaves the depth the map opens at", async ({
+  page,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  const core = coreFiles(m);
+  const hidden = m.files.findIndex(
+    (f, i) => f[F.kind] === CODE && !core.has(i),
+  );
+  must(m.files[hidden], "production file outside the core view");
+  // what an earlier visit left, Core depth, written only into an empty storage, so that what
+  // the page writes afterwards stays
+  await page.addInitScript((key) => {
+    if (location.protocol === "http:" && localStorage.getItem(key) === null) {
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          lens: "structure",
+          depth: "core",
+          group: "component",
+        }),
+      );
+    }
+  }, PREFS);
+  // a link to a file Core hides opens at Files, and Core stays remembered
+  await openViewer(page, E2E.sample, { token: fileToken(m, hidden) });
+  expect(await selectedId(page)).toBe(`observatory:${m.files[hidden][F.path]}`);
+  await atDepth(page, "Files");
+  expect(await remembered(page)).toEqual({
+    lens: "structure",
+    depth: "core",
+    group: "component",
+  });
+  // a lens changed afterwards is remembered with Core, not with Files
+  await page.keyboard.press("2");
+  await expect(page.getByRole("button", { name: "Risk" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  expect(await remembered(page)).toEqual({
+    lens: "risk",
+    depth: "core",
+    group: "component",
+  });
+  // the page opened again without the link starts at Core, and a hash change keeps it so
+  await openViewer(page, E2E.sample);
+  await atDepth(page, "Core");
+  await openToken(page, fileToken(m, hidden));
+  await atDepth(page, "Files");
+  expect(await remembered(page)).toEqual({
+    lens: "risk",
+    depth: "core",
+    group: "component",
+  });
+});
+
+test("each depth the viewer picks is remembered, and keeps the selection it hides", async ({
+  page,
+  browserName,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  const core = coreFiles(m);
+  const hidden = m.files.findIndex(
+    (f, i) => f[F.kind] === CODE && !core.has(i),
+  );
+  must(m.files[hidden], "production file outside the core view");
+  const id = `observatory:${m.files[hidden][F.path]}`;
+  const depthSaved = async (depth: string) =>
+    expect(await remembered(page)).toEqual({
+      lens: "structure",
+      depth,
+      group: "component",
+    });
+  await openViewer(page, E2E.sample);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) await expectNoWebGL(page);
+  await page.getByRole("button", { name: /^Core/ }).click();
+  await atDepth(page, "Core");
+  await depthSaved("core");
+  // a selection switches to Files; Files on the control, pressed already, is still a pick
+  await openToken(page, fileToken(m, hidden));
+  await atDepth(page, "Files");
+  await depthSaved("core");
+  await page.getByRole("button", { name: /^Files/ }).click();
+  await depthSaved("files");
+  // D and Shift+D pick too; a depth that hides the selected file keeps it selected, and the map
+  // dims nothing around a node it does not draw
+  await page.keyboard.press("d");
+  await atDepth(page, "Components");
+  await depthSaved("components");
+  expect(await selectedId(page)).toBe(id);
+  expect(new URL(page.url()).hash).toBe(`#${fileToken(m, hidden)}`);
+  if (webgl) {
+    await expect(page.locator("#map")).toHaveAttribute("data-dimmed", "0");
+  }
+  await page.keyboard.press("Shift+D");
+  await atDepth(page, "Core");
+  await depthSaved("core");
+  expect(await selectedId(page)).toBe(id);
+  // the stat band's components and code files pick a depth, as the control does
+  await page.locator('#statband [data-stat="components"]').click();
+  await atDepth(page, "Components");
+  await depthSaved("components");
+  await page.locator('#statband [data-stat="files"]').click();
+  await atDepth(page, "Files");
+  await depthSaved("files");
+  expect(await selectedId(page)).toBe(id);
 });
 
 test("a repo above 400 production files opens at Core depth", async ({

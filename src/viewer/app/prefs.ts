@@ -1,9 +1,9 @@
-// The preferences a browser remembers per repo: the lens, the depth and the grouping. Storage can
-// be missing, throw (a private window, blocked site data, a file: page) or hold what an older
-// viewer wrote, so reading never throws and keeps only valid values, and writing never throws.
-// No DOM here: Node tests import it.
+// The preferences a browser remembers per repo: the lens, the depth and the grouping the viewer
+// picks. Storage can be missing, throw (a private window, blocked site data, a file: page) or
+// hold what an older viewer wrote, so reading never throws and keeps only valid values, and
+// writing never throws. No DOM here: Node tests import it.
 import type { RepoId } from "../../model/types.js";
-import type { Depth, Grouping, Lens } from "./state.js";
+import type { Depth, Grouping, Lens, StateStore } from "./state.js";
 
 export interface KeyValue {
   getItem(key: string): string | null;
@@ -79,4 +79,31 @@ export function savePrefs(
   } catch {
     // nothing to keep them in: the next visit starts from the defaults
   }
+}
+
+// Remembers the preferences each time the viewer picks one, from the first change on. Only the
+// viewer changes the lens and the grouping, so each of their changes is kept. The depth also
+// changes when a selection switches to Files to show a file the depth in use hides: that depth
+// is used, never kept, so one link cannot change the depth a repo opens at. A depth the viewer
+// picks comes through pickDepth, and is kept even when it is already the depth in use.
+export function rememberPrefs(
+  state: StateStore,
+  storage: () => KeyValue,
+  repo: RepoId,
+): { pickDepth(depth: Depth): void } {
+  let picked = state.get().depth;
+  const save = (): void => {
+    const { lens, group } = state.get();
+    savePrefs(storage, repo, { lens, depth: picked, group });
+  };
+  state.subscribe((now, before) => {
+    if (now.lens !== before.lens || now.group !== before.group) save();
+  });
+  return {
+    pickDepth(depth) {
+      picked = depth;
+      state.set({ depth });
+      save();
+    },
+  };
 }

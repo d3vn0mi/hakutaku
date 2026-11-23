@@ -21,7 +21,7 @@ import { mountLegend } from "./panels/legend.js";
 import { mountLens, setLens } from "./panels/lens.js";
 import { mountShow } from "./panels/show.js";
 import { mountCoverage, mountStatband } from "./panels/statband.js";
-import { loadPrefs, savePrefs } from "./prefs.js";
+import { loadPrefs, rememberPrefs } from "./prefs.js";
 import { createSelection, type Selector } from "./selection.js";
 import { createState, NO_FILTERS, type ViewState } from "./state.js";
 
@@ -96,17 +96,8 @@ function compose(map: MapData, fetched: DataSource): void {
     depth: defaultDepth(model),
     ...loadPrefs(() => localStorage, map.repo),
   });
-  // and remembered again each time one of them changes
-  state.subscribe((now, before) => {
-    if (
-      now.lens !== before.lens ||
-      now.depth !== before.depth ||
-      now.group !== before.group
-    ) {
-      const { lens, depth, group } = now;
-      savePrefs(() => localStorage, map.repo, { lens, depth, group });
-    }
-  });
+  // and remembered again each time the viewer picks one; a depth a selection switches to is not
+  const prefs = rememberPrefs(state, () => localStorage, map.repo);
   // every later answer is checked against the build this map came from
   const source = guardBuild(fetched, map.builtCommit, (commit) =>
     showToast(`The map was rebuilt at ${commit}. Reload to see it.`, {
@@ -127,7 +118,7 @@ function compose(map: MapData, fetched: DataSource): void {
   prefersReducedMotion(); // records html[data-motion] from the start
   mountLegend(byId("legend"), state);
   mountLens(byId("lens"), state);
-  mountDepth(byId("depth"), state, byId("announce"));
+  mountDepth(byId("depth"), state, byId("announce"), prefs.pickDepth);
   mountShow(byId("show"), model, state);
   // the map's clicks select through the selection, which needs the map: it is made right after
   let selector: Selector | null = null;
@@ -149,7 +140,13 @@ function compose(map: MapData, fetched: DataSource): void {
     source,
   });
   selector = selection;
-  mountStatband(byId("statband"), model, state, (sel) => selection.select(sel));
+  mountStatband(
+    byId("statband"),
+    model,
+    state,
+    (sel) => selection.select(sel),
+    prefs.pickDepth,
+  );
   mountCoverage(byId("coverage"), map, state);
   // another grouping lays the map out again, and clears the selection, whose groups it changes
   mountGrouping(byId("group"), state, (group) => {
@@ -162,7 +159,7 @@ function compose(map: MapData, fetched: DataSource): void {
   bindKeys({
     back: () => selection.back(),
     lens: (lens) => setLens(state, lens),
-    depth: () => state.set({ depth: nextDepth(state.get().depth) }),
+    depth: () => prefs.pickDepth(nextDepth(state.get().depth)),
   });
   byId("back-btn").addEventListener("click", () => selection.back());
   addEventListener("hashchange", () =>
