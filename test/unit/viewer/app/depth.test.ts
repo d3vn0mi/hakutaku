@@ -66,6 +66,14 @@ describe("coreView", () => {
     expect(sorted(coreView(buildModel(map)))).toEqual([...upTo(20), 180]);
   });
 
+  it("on a map whose one component holds every file, is the core set and that component's top file", () => {
+    const map = syntheticMap(30);
+    for (const file of map.files) file[F.component] = 0;
+    map.files[0][F.flags] &= ~FLAG_CORE; // the top file, out of the core set
+    expect(sorted(coreView(buildModel(map)))).toEqual([0, 1, 2]);
+    expect(coverageLine(map)).toBe(`3 of 30 production files (10%) ${TAIL}`);
+  });
+
   it("is empty on a map with no production files, and worked out once per model", () => {
     expect(coreView(buildModel(syntheticMap(0, { tests: 3 }))).size).toBe(0);
     const m = tinyModel();
