@@ -2,7 +2,7 @@
 // and library with the sample's import curves, the panels around it read from the same map, and
 // the zoom controls are named buttons. A browser that cannot draw the map shows the list view in
 // its place, with the same files, and no zoom.
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import type { HistoryData, MapData } from "../../src/query/view/index.js";
 import {
   E2E,
@@ -355,7 +355,7 @@ test("the tests stat says why no test shows where the map draws none", async ({
     await expect(listView(page).getByRole("button")).toHaveCount(
       m.counts.productionFiles + m.counts.tests,
     );
-    await expect(toast).toBeHidden();
+    await expectNoToast(toast);
     return;
   }
   // at Components and Core depth the map draws no test: the stat turns Tests on, which the list
@@ -386,8 +386,16 @@ test("the tests stat says why no test shows where the map draws none", async ({
         m.counts.libraries,
     ),
   );
-  await expect(toast).toBeHidden();
+  await expectNoToast(toast);
 });
+
+// That no toast has shown on this page: a toast hides by itself after a few seconds but keeps its
+// text, so a check that waits for it to be hidden would pass once one had come and gone; its text
+// is read instead, at once, and it is hidden.
+async function expectNoToast(toast: Locator): Promise<void> {
+  expect(await toast.textContent()).toBe("");
+  expect(await toast.isHidden()).toBe(true);
+}
 
 test("the zoom controls are named buttons, shown only with the map", async ({
   page,
