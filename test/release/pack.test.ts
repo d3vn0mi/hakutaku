@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { scanText } from "../../scripts/release/scan.mjs";
+import { defaultEnginesDir } from "../../src/engines/index.js";
 import { comparePaths } from "../../src/model/index.js";
 
 const REQUIRED = [
@@ -275,3 +276,23 @@ it("package.json keeps its fixed fields: name, licence, author, type, bin, files
   expect(pkg.os).toEqual(["linux", "darwin"]);
   expect(pkg.version).toMatch(/^\d+\.\d+\.\d+$/);
 });
+
+// The package as a user installs it: packed, installed into an empty project under the system
+// temporary directory, and run from there with no src/, no fixtures/ and no devDependencies, on
+// the engines installed already. It maps the sample at quick detail and answers one question.
+it("the packed package maps the sample and answers from outside the repo", () => {
+  const r = spawnSync(
+    process.execPath,
+    [
+      "scripts/release/smoke.mjs",
+      "--from-pack",
+      "--engines-dir",
+      defaultEnginesDir(),
+    ],
+    { encoding: "utf8", timeout: 900_000 },
+  );
+  expect(r.status, r.stdout + r.stderr).toBe(0);
+  expect(r.stdout.trimEnd().split("\n").at(-1)).toMatch(
+    /^smoke: ok \(from-pack, quick, \d+ ms\)$/,
+  );
+}, 900_000);

@@ -102,7 +102,8 @@ jobs:
         run: npx playwright install --with-deps chromium firefox && npm run test:e2e
       # What npm pack would ship, from its dry run: every path on the allowlist, the files the
       # package needs and the whole viewer bundle; and every packed text file scanned for
-      # home-directory paths and secrets.
+      # home-directory paths and secrets. Then the package itself, installed into an empty project
+      # outside the repository, maps the sample and answers one query, on the engines above.
       - name: pack allowlist
         run: npm run check:pack
       - name: secret scan
@@ -145,3 +146,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: node dist/cli/main.js --version
+      # The package as a user installs it: packed, installed into an empty project outside the
+      # repository and run from there. Its map --yes installs the engines into the smoke's own
+      # directory and builds the sample at quick detail with no sandbox; then one query answers.
+      - name: smoke from the packed package
+        run: node scripts/release/smoke.mjs --from-pack
