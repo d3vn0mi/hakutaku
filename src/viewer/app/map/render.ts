@@ -24,6 +24,9 @@
 // - A pointer over a node marks #map with the class "pointing".
 // - After the first frame, the page records the performance mark hakutaku:first-map and sets
 //   html[data-ready] to "map".
+// - For the end-to-end tests only, which cannot read a canvas, window.__hakutakuMap reads sigma's
+//   own state (MapProbe). Nothing in the app reads it. It is defined once sigma draws the map, so
+//   a page that cannot draw the map has none.
 // graphology's declarations read as CommonJS, where its default export is the module itself, so
 // the graph class comes by name.
 import { DirectedGraph } from "graphology";
@@ -67,6 +70,22 @@ export interface MapView {
   focus(sel: Sel, fly: boolean): void; // brings the selected node to the middle
   fit(): void; // shows the whole map
   zoom(step: 1 | -1): void; // zooms in one step, or out
+}
+
+// The test-only hook, window.__hakutakuMap: what sigma itself holds, each answer a copy, for the
+// end-to-end tests alone. The camera's state; a node by its key as sigma last processed it, its
+// centre and size in CSS pixels within #sigma, its label and whether that label is forced, or
+// null when sigma does not draw it; and the keys of the nodes whose labels the last frame drew.
+export interface MapProbe {
+  camera(): { x: number; y: number; ratio: number; angle: number };
+  node(key: string): {
+    x: number;
+    y: number;
+    size: number;
+    label: string;
+    forceLabel: boolean;
+  } | null;
+  labels(): string[];
 }
 
 type NodeKind = "file" | "test" | "hub" | "lib";
@@ -360,6 +379,31 @@ export function mountMap(
   renderer.setCustomBBox({
     x: [-CAMERA_BOX, CAMERA_BOX],
     y: [-CAMERA_BOX, CAMERA_BOX],
+  });
+  // test-only: see MapProbe
+  const probe: MapProbe = {
+    camera: () => renderer.getCamera().getState(),
+    node: (key) => {
+      const d = renderer.getNodeDisplayData(key);
+      if (d === undefined || d.hidden) return null;
+      const at = renderer.framedGraphToViewport(d);
+      return {
+        x: at.x,
+        y: at.y,
+        size: renderer.scaleSize(d.size),
+        label: d.label ?? "",
+        forceLabel: d.forceLabel,
+      };
+    },
+    // sigma also lists a node its label grid picked whose label is empty, which draws nothing
+    labels: () =>
+      [...renderer.getNodeDisplayedLabels()].filter(
+        (key) => (renderer.getNodeDisplayData(key)?.label ?? "") !== "",
+      ),
+  };
+  Object.defineProperty(window, "__hakutakuMap", {
+    value: Object.freeze(probe),
+    configurable: true,
   });
 
   // The selection's node, if the map draws one.

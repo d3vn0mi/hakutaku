@@ -14,12 +14,15 @@ import {
 } from "../../dist/query/view/constants.js";
 import type { MapData } from "../../src/query/view/index.js";
 import {
+  drawnNodes,
   E2E,
   expectNoWebGL,
   F,
   fetchMap,
   formatId,
+  hasMapProbe,
   hasWebGL,
+  mapCamera,
   mapDrawn,
   openViewer,
   query,
@@ -34,6 +37,10 @@ const KEPLER = "web/src/orbits/kepler.ts";
 const AT_KEPLER = "web~src~orbits~kepler.ts";
 const ON_MAP = new Set([0, 1, 2]); // code, test and test-support files are drawn
 const HOTSPOT_MARK = 0.35;
+// how much larger the hubs are drawn at Components depth, and the most curves drawn in a frame,
+// as the map holds them
+const HUB_GROWTH = 2.2;
+const CURVE_BUDGET = 15_000;
 const PREFS = "hakutaku:view:observatory";
 const TAIL = "carry at least half of what the code depends on";
 const COMPONENTS_LEGEND =
@@ -476,6 +483,55 @@ test("at Components depth a selected hub keeps the hubs an import joins to it br
   }
 });
 
+test("at Components depth every hub is drawn larger, and labelled with its name", async ({
+  page,
+  browserName,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  const { hubs } = levelsOf(m);
+  expect(hubs).toBeGreaterThan(1);
+  await openViewer(page, E2E.sample);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    // no map, so no hub is drawn, and no hook reads the map
+    await expectNoWebGL(page);
+    expect(await hasMapProbe(page)).toBe(false);
+    return;
+  }
+  await atDepth(page, "Files");
+  const keys = Array.from({ length: hubs }, (_, i) => `h${i}`);
+  const camera = await mapCamera(page);
+  const atFiles = (await drawnNodes(page, keys)).nodes.map((n, i) =>
+    must(n, `hub ${keys[i]} drawn at Files depth`),
+  );
+  await depthButton(page, "Components").click();
+  await atDepth(page, "Components");
+  // as sigma draws them: each hub HUB_GROWTH times its size at Files depth, its name the label it
+  // forces, and every hub's label drawn
+  const hubsNow = async () => {
+    const { nodes, labels } = await drawnNodes(page, keys);
+    return {
+      growth: nodes.map((n, i) =>
+        n === null ? null : Number((n.size / atFiles[i].size).toFixed(6)),
+      ),
+      forced: nodes.map((n) => n?.forceLabel === true),
+      labels: nodes.map((n) => n?.label ?? null),
+      drawn: keys.filter((key) => labels.includes(key)),
+    };
+  };
+  await expect.poll(hubsNow).toEqual({
+    growth: keys.map(() => HUB_GROWTH),
+    forced: keys.map(() => true),
+    labels: atFiles.map((n) => n.label),
+    drawn: keys,
+  });
+  expect(atFiles.every((n) => n.label !== "")).toBe(true);
+  // the camera has not moved: the hubs themselves are larger
+  expect(await mapCamera(page)).toEqual(camera);
+});
+
 test("the remembered depth is the one the map opens at", async ({
   page,
   browserName,
@@ -691,4 +747,83 @@ test("a repo above 400 production files opens at Core depth", async ({
       String(coreFiles(m).size + hubs + m.counts.libraries),
     );
   }
+});
+
+// The map with a hundred code files outside its core view, each importing a file of its core set,
+// made entry points, so that they join the core view. In the 20,000-file repo as generated, every
+// curve between two files of the core view joins two files of the core set, so a map that kept
+// the core set's curves alone would draw the very same ones.
+function withEntries(m: MapData): MapData {
+  const core = coreFiles(m);
+  const inSet = (f: number) => (m.files[f][F.flags] & FLAG_CORE) !== 0;
+  const made = new Set<number>();
+  for (let i = 0; i < m.imports.length && made.size < 100; i += 3) {
+    const [a, b] = [m.imports[i], m.imports[i + 1]];
+    if (m.files[a][F.kind] === CODE && !core.has(a) && inSet(b)) made.add(a);
+  }
+  expect(made.size).toBe(100);
+  const files = m.files.map((f, i) => {
+    if (!made.has(i)) return f;
+    const entry = [...f] as typeof f;
+    entry[F.flags] |= FLAG_ENTRY;
+    return entry;
+  });
+  return { ...m, files };
+}
+
+test("over the curve budget, Files depth draws only the curves whose ends are both in the core view", async ({
+  page,
+  browserName,
+}) => {
+  // The global setup builds the 20,000-file repo when CI is set or HAKUTAKU_E2E_WITH_SCALE=1.
+  // Without either the test is skipped; with one, the repo must be there.
+  const built =
+    Boolean(process.env.CI) || process.env.HAKUTAKU_E2E_WITH_SCALE === "1";
+  test.skip(
+    !built,
+    "the 20,000-file repo is built only when CI is set or HAKUTAKU_E2E_WITH_SCALE=1",
+  );
+  test.setTimeout(180_000);
+  const scale = must(E2E.scale, "20,000-file repo served by the global setup");
+  const m = withEntries(await fetchMap(scale));
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      json: withEntries((await response.json()) as MapData),
+    });
+  });
+  const { core, hubs, libs } = levelsOf(m);
+  const code = (f: number) => m.files[f][F.kind] === CODE;
+  const all = pairsWithin(m, code);
+  const kept = pairsWithin(m, (f) => core.has(f));
+  const ofCoreSet = pairsWithin(
+    m,
+    (f) => code(f) && (m.files[f][F.flags] & FLAG_CORE) !== 0,
+  );
+  // the code files' curves are over the budget; those of the core view fit it, and are more than
+  // the core set's alone, so the count says which rule kept them
+  expect(all).toBeGreaterThan(CURVE_BUDGET);
+  expect(kept).toBeLessThan(CURVE_BUDGET);
+  expect(kept).toBeGreaterThan(ofCoreSet);
+  await openViewer(page, scale);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    await expectNoWebGL(page);
+    return;
+  }
+  const map = page.locator("#map");
+  // Core depth draws the core view's files, and every curve between them
+  await atDepth(page, "Core");
+  await expect(map).toHaveAttribute("data-curves", String(kept));
+  // Files depth draws every code file, and of their curves only those same ones
+  await depthButton(page, "Files").click();
+  await atDepth(page, "Files");
+  await expect(map).toHaveAttribute(
+    "data-nodes",
+    String(m.counts.productionFiles + hubs + libs),
+  );
+  await expect(map).toHaveAttribute("data-curves", String(kept));
 });

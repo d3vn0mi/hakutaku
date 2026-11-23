@@ -7,10 +7,12 @@
 import { expect, type Page, test } from "@playwright/test";
 import type { MapData } from "../../src/query/view/index.js";
 import {
+  drawnNodes,
   E2E,
   expectNoWebGL,
   F,
   fetchMap,
+  hasMapProbe,
   hasWebGL,
   listView,
   mapDrawn,
@@ -474,4 +476,107 @@ test("at Components depth the legend names the hubs of the grouping", async ({
   await expect(legend).toHaveText(
     "Each hub is a component, sized by its code files. Curves are imports between components; thicker means more of them.",
   );
+});
+
+const LABEL_TOP = 8; // the files a lens labels, as the map holds it
+
+// The production files each lens labels, worked out from the map alone, as node keys, sorted:
+// under Structure the top 8 by rank; under Risk and History the top 8 by hotspot and by churn,
+// rank breaking ties, and none whose value is 0.
+function lensLabels(
+  m: MapData,
+): Record<"risk" | "history" | "structure", string[]> {
+  const production = m.files
+    .map((_, i) => i)
+    .filter((i) => m.files[i][F.kind] === CODE)
+    .sort((a, b) => m.files[a][F.rank] - m.files[b][F.rank]);
+  const top = (files: number[]) =>
+    files
+      .slice(0, LABEL_TOP)
+      .map((f) => `f${f}`)
+      .sort();
+  const by = (at: typeof F.hotspot | typeof F.churn) =>
+    top(
+      production
+        .filter((f) => m.files[f][at] > 0)
+        .sort((a, b) => m.files[b][at] - m.files[a][at]),
+    );
+  return {
+    risk: by(F.hotspot),
+    history: by(F.churn),
+    structure: top(production),
+  };
+}
+
+// The map with its three code files of the lowest rank and no hotspot made the ones that changed
+// most. In the sample as mapped, the files that changed are also its hotspots, so Risk and
+// History would label the same eight files and could not be told apart.
+function churned(m: MapData): MapData {
+  const quiet = m.files
+    .map((_, i) => i)
+    .filter((i) => m.files[i][F.kind] === CODE && m.files[i][F.hotspot] === 0)
+    .sort((a, b) => m.files[b][F.rank] - m.files[a][F.rank])
+    .slice(0, 3);
+  expect(quiet).toHaveLength(3);
+  const most = Math.max(...m.files.map((f) => f[F.churn]));
+  const files = m.files.map((f, i) => {
+    if (!quiet.includes(i)) return f;
+    const changed = [...f] as typeof f;
+    changed[F.churn] = most + 1;
+    return changed;
+  });
+  return { ...m, files };
+}
+
+test("each lens labels its own top files", async ({ page, browserName }) => {
+  const m = churned(await fetchMap(E2E.sample));
+  const expected = lensLabels(m);
+  // each lens has files to label, and no two lenses label the same ones
+  for (const keys of Object.values(expected)) {
+    expect(keys.length).toBeGreaterThan(0);
+  }
+  expect(new Set(Object.values(expected).map((k) => k.join(" "))).size).toBe(3);
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      json: churned((await response.json()) as MapData),
+    });
+  });
+  await openViewer(page, E2E.sample);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    // no map, so no label is drawn, and no hook reads the map
+    await expectNoWebGL(page);
+    expect(await hasMapProbe(page)).toBe(false);
+    return;
+  }
+  const production = m.files.flatMap((f, i) =>
+    f[F.kind] === CODE ? [`f${i}`] : [],
+  );
+  // the files whose labels the map forces, as sigma holds them, and those the last frame drew
+  const labelled = async () => {
+    const { nodes, labels } = await drawnNodes(page, production);
+    return {
+      forced: production
+        .filter(
+          (_, i) => nodes[i]?.forceLabel === true && nodes[i]?.label !== "",
+        )
+        .sort(),
+      drawn: labels.filter((key) => key.startsWith("f")).sort(),
+    };
+  };
+  for (const [key, lens, name] of [
+    ["2", "risk", "Risk"],
+    ["3", "history", "History"],
+    ["1", "structure", "Structure"],
+  ] as const) {
+    await page.keyboard.press(key);
+    await pressed(page, name);
+    await expect
+      .poll(labelled)
+      .toEqual({ forced: expected[lens], drawn: expected[lens] });
+  }
 });

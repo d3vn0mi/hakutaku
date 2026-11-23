@@ -368,3 +368,64 @@ function originOf(url: string): string | null {
 export function selectedId(page: Page): Promise<string | null> {
   return page.locator("#detail").getAttribute("data-node-id");
 }
+
+// What the map's test-only hook gives (MapProbe, in src/viewer/app/map/render.ts), read from
+// sigma's own state: its camera, and a node as sigma last processed it. The page defines the hook
+// only when it draws the map.
+export interface Camera {
+  x: number;
+  y: number;
+  ratio: number;
+  angle: number;
+}
+export interface DrawnNode {
+  x: number; // its centre, in the page's CSS pixels, where the mouse would point at it
+  y: number;
+  size: number; // its radius as drawn, in CSS pixels
+  label: string;
+  forceLabel: boolean;
+}
+type Probe = {
+  camera(): Camera;
+  node(key: string): DrawnNode | null;
+  labels(): string[];
+};
+
+// Whether the page has the map's test hook.
+export function hasMapProbe(page: Page): Promise<boolean> {
+  return page.evaluate(() => "__hakutakuMap" in window);
+}
+
+// Where the map's camera stands.
+export function mapCamera(page: Page): Promise<Camera> {
+  return page.evaluate(() => {
+    const probe = (window as unknown as { __hakutakuMap?: Probe })
+      .__hakutakuMap;
+    if (probe === undefined) throw new Error("the page has no map hook");
+    return probe.camera();
+  });
+}
+
+// The nodes of those keys as the map draws them now, each null when it is not drawn, and the keys
+// of the nodes whose labels its last frame drew.
+export function drawnNodes(
+  page: Page,
+  keys: readonly string[],
+): Promise<{ nodes: Array<DrawnNode | null>; labels: string[] }> {
+  return page.evaluate((ks) => {
+    const probe = (window as unknown as { __hakutakuMap?: Probe })
+      .__hakutakuMap;
+    if (probe === undefined) throw new Error("the page has no map hook");
+    const box = document.getElementById("sigma")?.getBoundingClientRect();
+    if (box === undefined) throw new Error("the page has no #sigma");
+    return {
+      nodes: ks.map((k) => {
+        const node = probe.node(k);
+        return node === null
+          ? null
+          : { ...node, x: box.left + node.x, y: box.top + node.y };
+      }),
+      labels: probe.labels(),
+    };
+  }, keys);
+}

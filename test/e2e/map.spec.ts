@@ -1,18 +1,25 @@
 // The galaxy on the sample, end to end: at Files depth the map draws every production file, hub
-// and library with the sample's import curves, the panels around it read from the same map, and
-// the zoom controls are named buttons. A browser that cannot draw the map shows the list view in
-// its place, with the same files, and no zoom.
-import { expect, type Locator, test } from "@playwright/test";
+// and library with the sample's import curves, the panels around it read from the same map, the
+// zoom controls are named buttons that move the camera, and a pointer over a node shows its name.
+// A browser that cannot draw the map shows the list view in its place, with the same files, and
+// no zoom.
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import type { HistoryData, MapData } from "../../src/query/view/index.js";
 import {
+  type Camera,
+  drawnNodes,
   E2E,
+  ECOSYSTEMS,
   expectNoWebGL,
   F,
   fetchMap,
+  hasMapProbe,
   hasWebGL,
   listView,
+  mapCamera,
   mapDrawn,
   openViewer,
+  toToken,
 } from "./helpers.js";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
@@ -412,4 +419,228 @@ test("the zoom controls are named buttons, shown only with the map", async ({
     if (webgl) await expect(button).toBeVisible();
     else await expect(button).toBeHidden();
   }
+});
+
+// The production files of a map, by rank.
+const byRank = (m: MapData): number[] =>
+  m.files
+    .map((_, i) => i)
+    .filter((i) => m.files[i][F.kind] === 0)
+    .sort((a, b) => m.files[a][F.rank] - m.files[b][F.rank]);
+
+// The value, or a failure naming what is missing.
+function must<T>(value: T | undefined | null, what: string): T {
+  if (value === undefined || value === null) {
+    throw new Error(`there is no ${what}`);
+  }
+  return value;
+}
+
+// The camera that shows the whole map, as the page opens it; and one step of the zoom, and the
+// closest a selection's flight comes, as render.ts holds them.
+const FIT: Camera = { x: 0.5, y: 0.5, ratio: 1, angle: 0 };
+const ZOOM_STEP = 1.5;
+const FOCUS_RATIO = 0.45;
+
+// How far from the middle of the map's area a node is drawn, in CSS pixels.
+async function fromMiddle(page: Page, key: string): Promise<number> {
+  const box = must(await page.locator("#sigma").boundingBox(), "map area");
+  const [node] = (await drawnNodes(page, [key])).nodes;
+  const at = must(node, `drawn node ${key}`);
+  return Math.hypot(
+    at.x - (box.x + box.width / 2),
+    at.y - (box.y + box.height / 2),
+  );
+}
+
+test("the zoom and fit buttons move the camera, and the map with it", async ({
+  page,
+  browserName,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  const [ecosystem, name] = must(m.externals[0], "library");
+  await openViewer(page, E2E.sample);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    // nothing is drawn, so there is no camera to move, nor a hook to read one
+    await expectNoWebGL(page);
+    expect(await hasMapProbe(page)).toBe(false);
+    return;
+  }
+  const button = (label: string) => page.getByRole("button", { name: label });
+  const ratio = async () => (await mapCamera(page)).ratio;
+  // the first library, on the outer ring, drawn far from the middle
+  expect(await mapCamera(page)).toEqual(FIT);
+  const far = await fromMiddle(page, "x0");
+  expect(far).toBeGreaterThan(50);
+  // each step is animated, and ends one step closer or further, the map drawn larger or smaller
+  // about the same middle
+  await button("Zoom in").click();
+  await expect.poll(ratio).toBeCloseTo(1 / ZOOM_STEP, 9);
+  expect(await fromMiddle(page, "x0")).toBeCloseTo(far * ZOOM_STEP, 0);
+  await button("Zoom out").click();
+  await expect.poll(ratio).toBeCloseTo(1, 9);
+  expect(await fromMiddle(page, "x0")).toBeCloseTo(far, 0);
+  await button("Zoom out").click();
+  await expect.poll(ratio).toBeCloseTo(ZOOM_STEP, 9);
+  expect(await fromMiddle(page, "x0")).toBeCloseTo(far / ZOOM_STEP, 0);
+  expect(await mapCamera(page)).toMatchObject({ x: 0.5, y: 0.5, angle: 0 });
+  // a selection flies to its node and comes closer; Fit shows the whole map again
+  await page.evaluate(
+    (t) => {
+      location.hash = t;
+    },
+    toToken({
+      kind: "external",
+      repo: m.repo,
+      ecosystem: ECOSYSTEMS[ecosystem],
+      name,
+    }),
+  );
+  await expect.poll(ratio).toBeCloseTo(FOCUS_RATIO, 9);
+  await expect.poll(() => fromMiddle(page, "x0")).toBeLessThan(1);
+  await button("Fit the map").click();
+  await expect.poll(() => mapCamera(page)).toEqual(FIT);
+  // under reduced motion each move is made at once, by the time the click is done
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await button("Zoom in").click();
+  expect(await ratio()).toBeCloseTo(1 / ZOOM_STEP, 9);
+  await button("Fit the map").click();
+  expect(await mapCamera(page)).toEqual(FIT);
+});
+
+// Records, in every document the page opens from now on, the text each canvas is given to draw.
+// A canvas cleared from its corner starts its list again, so each list holds what the canvas
+// shows now. The function returned reads the texts of the canvases of a class, in drawing order.
+async function watchCanvasText(
+  page: Page,
+): Promise<(canvas: string) => Promise<string[]>> {
+  await page.addInitScript(() => {
+    const shown = new Map<HTMLCanvasElement, string[]>();
+    Object.defineProperty(window, "__hakutakuCanvasText", { value: shown });
+    const proto = CanvasRenderingContext2D.prototype;
+    const fillText = proto.fillText;
+    const clearRect = proto.clearRect;
+    proto.fillText = function (
+      this: CanvasRenderingContext2D,
+      ...args: Parameters<CanvasRenderingContext2D["fillText"]>
+    ) {
+      const texts = shown.get(this.canvas) ?? [];
+      shown.set(this.canvas, texts);
+      texts.push(String(args[0]));
+      fillText.apply(this, args);
+    };
+    proto.clearRect = function (
+      this: CanvasRenderingContext2D,
+      ...args: Parameters<CanvasRenderingContext2D["clearRect"]>
+    ) {
+      if (args[0] <= 0 && args[1] <= 0) shown.set(this.canvas, []);
+      clearRect.apply(this, args);
+    };
+  });
+  return (canvas) =>
+    page.evaluate(
+      (cls) =>
+        [
+          ...(
+            window as unknown as {
+              __hakutakuCanvasText: Map<HTMLCanvasElement, string[]>;
+            }
+          ).__hakutakuCanvasText,
+        ]
+          .filter(([c]) => c.classList.contains(cls))
+          .flatMap(([, texts]) => texts),
+      canvas,
+    );
+}
+
+test("a pointer over a node tags it with its name, and over no node shows no tag", async ({
+  page,
+  browserName,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  const drawnText = await watchCanvasText(page);
+  await openViewer(page, E2E.sample);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    // nothing is drawn, so nothing can be pointed at, and no hook reads the map
+    await expectNoWebGL(page);
+    expect(await hasMapProbe(page)).toBe(false);
+    return;
+  }
+  // every node the map draws, with the name its tag must say: a file by its file name, a library
+  // by its own; hubs, which the tests do not point at, only so that nothing is overlooked
+  const base = (path: string) => path.slice(path.lastIndexOf("/") + 1);
+  const named = [
+    ...byRank(m).map((f) => ({ key: `f${f}`, name: base(m.files[f][F.path]) })),
+    ...m.externals.map(([, lib], e) => ({ key: `x${e}`, name: lib })),
+  ];
+  const hubs = Number(await page.locator("#map").getAttribute("data-hubs"));
+  const keys = [
+    ...named.map((n) => n.key),
+    ...Array.from({ length: hubs }, (_, i) => `h${i}`),
+  ];
+  const { nodes } = await drawnNodes(page, keys);
+  const drawn = nodes.filter((n) => n !== null);
+  expect(drawn).toHaveLength(
+    Number(await page.locator("#map").getAttribute("data-nodes")),
+  );
+  // whether the map's own area is what the page shows at a point, not a panel over it
+  const onMap = (points: Array<[number, number]>) =>
+    page.evaluate(
+      (ps) =>
+        ps.map(([x, y]) => {
+          const top = document.elementFromPoint(x, y);
+          return top !== null && top.closest("#sigma") !== null;
+        }),
+      points,
+    );
+  const open = await onMap(
+    nodes.map((n): [number, number] => (n === null ? [-1, -1] : [n.x, n.y])),
+  );
+  // a node that no other node's disc reaches, in the open: a pointer at its middle is over it
+  // alone
+  const alone = (i: number): boolean => {
+    const n = nodes[i];
+    return (
+      n !== null &&
+      open[i] === true &&
+      drawn.every(
+        (o) => o === n || Math.hypot(o.x - n.x, o.y - n.y) > o.size + 2,
+      )
+    );
+  };
+  // a file the map does not label, so that only its tag can name it, and a library
+  const file = named.findIndex(
+    (n, i) => n.key.startsWith("f") && nodes[i]?.label === "" && alone(i),
+  );
+  const library = named.findIndex((n, i) => n.key.startsWith("x") && alone(i));
+  const map = page.locator("#map");
+  for (const i of [file, library]) {
+    const at = must(nodes[i], "unlabelled file and library alone on the map");
+    await page.mouse.move(at.x, at.y);
+    await expect(map).toHaveClass(/\bpointing\b/);
+    await expect.poll(() => drawnText("sigma-hovers")).toEqual([named[i].name]);
+  }
+  // and over a point of the map's area that no node is near, no tag
+  const box = must(await page.locator("#sigma").boundingBox(), "map area");
+  const grid: Array<[number, number]> = [];
+  for (let x = box.x + 20; x < box.x + box.width - 20; x += 40) {
+    for (let y = box.y + 20; y < box.y + box.height - 20; y += 40) {
+      if (drawn.every((o) => Math.hypot(o.x - x, o.y - y) > o.size + 12)) {
+        grid.push([x, y]);
+      }
+    }
+  }
+  const empty = must(
+    grid[(await onMap(grid)).indexOf(true)],
+    "point of the map's area far from every node",
+  );
+  await page.mouse.move(...empty);
+  await expect(map).not.toHaveClass(/\bpointing\b/);
+  await expect.poll(() => drawnText("sigma-hovers")).toEqual([]);
 });
