@@ -119,6 +119,31 @@ async function watchChunks(page: Page): Promise<() => Promise<number[]>> {
     ]);
 }
 
+// Once a large file is complete, and two frames later, the lines the browser has laid out are the
+// ones near the view: what the code box has room for, and the rest of their chunk. A chunk near
+// the view is laid out whole in one frame, and a chunk far from it not at all (content-visibility),
+// so that frame grows with the chunk: one of 500 lines made it long enough to block a slow
+// runner's page. No more than 100 lines may be laid out, and no fewer than the box shows.
+async function expectLaidOutNearView(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) =>
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => setTimeout(done, 0)),
+        ),
+      ),
+  );
+  const view = await page.evaluate(() => ({
+    room: Math.ceil((document.querySelector(".code")?.clientHeight ?? 0) / 18),
+    laid: [...document.querySelectorAll(".code .line")].filter((line) =>
+      line.checkVisibility({ contentVisibilityAuto: true }),
+    ).length,
+  }));
+  expect(view.room).toBeGreaterThan(20);
+  expect(view.laid).toBeGreaterThanOrEqual(view.room);
+  expect(view.laid).toBeLessThanOrEqual(100);
+}
+
 // The numbers in the gutter and the lines in the code, counted at once, without waiting.
 function renderedLines(
   page: Page,
@@ -399,9 +424,10 @@ test("a 6,000-line file renders fully without blocking the page", async ({
       ),
     ),
   ).toEqual([true, false]);
-  // highlighted in the worker, and appended a chunk of 500 lines per task
+  await expectLaidOutNearView(page);
+  // highlighted in the worker, and appended a chunk of 100 lines per task
   expect(started).toEqual([WORKER_SCRIPT]);
-  expect(await chunks()).toEqual(Array.from({ length: 12 }, () => 1));
+  expect(await chunks()).toEqual(Array.from({ length: 60 }, () => 1));
   await expect(note(page)).toHaveText("6,000 lines");
   await expect(page.locator(".code .line")).toHaveCount(6000);
   expect(
@@ -436,7 +462,8 @@ test("without a worker, a large file renders as plain text in the same chunks, a
   expect(
     await page.locator(".code .line").nth(3999).textContent(),
   ).toHaveLength(5000);
-  expect(await chunks()).toEqual(Array.from({ length: 12 }, () => 1));
+  expect(await chunks()).toEqual(Array.from({ length: 60 }, () => 1));
+  await expectLaidOutNearView(page);
   await expectMarkupAsText(page, dialogs);
   // a worker that failed is not asked again: the next opening renders plain text at once
   await tab(page, "Overview").click();
@@ -877,10 +904,10 @@ test("opening the Source tab again stops what the last opening was still drawing
   expect(await renderedLines(page)).toEqual({ numbers: 6000, lines: 6000 });
   // The worker answers in order, so the first opening's chunks all came before the second's
   // last: none of them reached the page, or the code it had left. One chunk of the first, then
-  // the twelve of the second.
+  // the sixty of the second.
   expect(
     await page.evaluate(() => [
       ...(window as unknown as { __appends: boolean[] }).__appends,
     ]),
-  ).toEqual(Array.from({ length: 13 }, () => true));
+  ).toEqual(Array.from({ length: 61 }, () => true));
 });

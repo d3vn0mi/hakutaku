@@ -401,8 +401,8 @@ Find takes 50 ms or less over 100,000 items, and no step blocks the page for mor
 - labels go through a grid, and the layout is computed, never simulated;
 - Find keeps the best matches in one pass, and never sorts every match;
 - a file over 2,500 lines or 16,384 characters is highlighted in a worker, never on the page, and
-  added at most 500 lines and 65,536 characters at a time, one chunk per task; lines far out of view
-  are not laid out.
+  added at most 100 lines and 65,536 characters at a time, one chunk per task; a chunk is laid out
+  only once it comes near the view, and then whole.
 
 **How they are checked.** Two spec files, `test/e2e/first-run.spec.ts` and
 `test/e2e/performance.spec.ts`, measure the budgets in Chromium and Firefox. CI runs them on every

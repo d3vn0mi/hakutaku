@@ -130,11 +130,12 @@ it("highlights a file on the page only while it is small in lines and in charact
   expect(highlightedOffPage("")).toBe(false);
 });
 
-it("cuts lines into chunks of at most 500 lines and 65,536 characters, a whole line at least", () => {
-  expect([SOURCE_CHUNK_LINES, SOURCE_CHUNK_CHARS]).toEqual([500, 65_536]);
+it("cuts lines into chunks of at most 100 lines and 65,536 characters, a whole line at least", () => {
+  expect([SOURCE_CHUNK_LINES, SOURCE_CHUNK_CHARS]).toEqual([100, 65_536]);
   const short = Array.from({ length: 1200 }, () => "a".repeat(20));
-  expect(chunkEnd(short, 0, 1200)).toBe(500);
-  expect(chunkEnd(short, 1000, 1200)).toBe(1200);
+  expect(chunkEnd(short, 0, 1200)).toBe(100);
+  expect(chunkEnd(short, 100, 1200)).toBe(200);
+  expect(chunkEnd(short, 1150, 1200)).toBe(1200);
   // the total stops it before a line it could not hold
   const wide = Array.from({ length: 300 }, () => "b".repeat(1000));
   expect(chunkEnd(wide, 0, 300)).toBe(65);
