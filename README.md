@@ -596,9 +596,9 @@ picture stays learnable. Each selection writes its link token into the address b
 has four tabs: Overview, Inside, Source, and Agent, which holds the exact JSON an agent gets for the
 node.
 
-**Built to be used from the keyboard and by everyone.** Esc goes back one level. A list view (L)
-gives screen readers the map's content. Text contrast meets WCAG AA, and colour is never the only
-signal.
+**Built to be used from the keyboard and by everyone.** Esc, or the Back button, goes back one level,
+closing an open list first. A list view (L) gives screen readers the map's content. Text contrast
+meets WCAG AA, and colour is never the only signal.
 
 **Local by design.** The viewer binds to `127.0.0.1`, every API call needs the session token, and the
 `Host` header is checked against DNS rebinding. Fonts and libraries are bundled, and a strict Content

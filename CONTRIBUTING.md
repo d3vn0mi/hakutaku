@@ -58,8 +58,10 @@ uses sudo).
 
 The end-to-end tests never skip a browser. Where a browser cannot create a WebGL context, as headless
 Firefox cannot on some Linux machines, they check the viewer's no-WebGL path in that browser instead
-of the map. Chromium must draw the map. One test also turns WebGL off in both browsers, so every
-machine tests that path. Locally, they leave out the generated 20,000-file repository unless you set
+of the map. Chromium must draw the map. What a canvas cannot show (the camera, where a node is drawn,
+the labels drawn), the tests read through `window.__hakutakuMap`, a read-only hook the page defines for
+them when it draws the map. One test also turns WebGL off in both browsers, so every machine tests that
+path. Locally, they leave out the generated 20,000-file repository unless you set
 `HAKUTAKU_E2E_WITH_SCALE=1`; in CI (`CI=true`) it is always built.
 
 `npm run bench:viewer`, after `npm run build`, measures the viewer's budgets on a laptop. It runs
