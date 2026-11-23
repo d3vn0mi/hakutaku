@@ -1,57 +1,93 @@
 // hakutaku view, run from dist/ as a person runs it, so run `npm run build` first: it serves one
-// registered repo until it is interrupted, printing one link; a usage error exits 2, and a repo
-// with no store exits 1, naming hakutaku map.
+// registered repo until it is interrupted, printing one link, or with --export writes the map as
+// one page and prints the page's path; a usage error exits 2, and a repo with no store exits 1,
+// naming hakutaku map.
 import { type ChildProcess, spawn, spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Readable } from "node:stream";
+import { fileURLToPath } from "node:url";
 import { afterAll, expect, it } from "vitest";
-import { tinyStore } from "../viewer/tiny-store.js";
+import { miniStore } from "../../helpers/mini-store.js";
+import { tinyContent, tinyStore } from "../viewer/tiny-store.js";
 
 // A usage error answers at once; a command that serves instead is stopped after this long, and
 // then fails its test rather than hanging it.
 const SPAWN_TIMEOUT_MS = 30_000;
+const MAIN = fileURLToPath(
+  new URL("../../../dist/cli/main.js", import.meta.url),
+);
+const SOURCES_OFF =
+  "hakutaku view: sources are off for this repo; the page holds none\n";
 
 let root: string | undefined;
 afterAll(() => {
   if (root !== undefined) rmSync(root, { recursive: true, force: true });
 });
 
-// Temporary XDG directories, made once for the file: the registry names tiny and nostore, each
-// with a source directory that exists, and only tiny has a store, the viewer's tiny store.
+// The tiny store under another repo id, with or without its sources.
+function storeOf(id: string, opts: { noSource?: boolean } = {}): string {
+  const content = tinyContent(opts);
+  return miniStore({
+    ...content,
+    meta: content.meta.map((meta) => ({ ...meta, repo_id: id })),
+  });
+}
+
+// Temporary XDG directories, made once for the file: the registry names nosnippets, nosource,
+// nostore and tiny, each with a source directory that exists. tiny has the viewer's tiny store;
+// nosnippets has it too, under its own id and with snippets off; nosource has it built without
+// sources; nostore has no store.
 function env(): NodeJS.ProcessEnv {
   if (root === undefined) {
     root = mkdtempSync(join(tmpdir(), "hakutaku-view-"));
     const data = join(root, "data");
-    const entry = (id: string) => ({
+    const entry = (
+      id: string,
+      opts: { snippets?: boolean; noSource?: boolean } = {},
+    ) => ({
       id,
       source: join(root ?? "", "checkouts", id),
       ref: "HEAD",
       detail: "standard",
-      noSource: false,
-      snippets: true,
+      noSource: opts.noSource ?? false,
+      snippets: opts.snippets ?? true,
       profile: join(root ?? "", "profiles", `${id}.json`),
     });
-    for (const id of ["nostore", "tiny"]) {
+    for (const id of ["nosnippets", "nosource", "nostore", "tiny"]) {
       mkdirSync(join(root, "checkouts", id), { recursive: true });
     }
-    mkdirSync(join(data, "hakutaku", "stores", "tiny"), { recursive: true });
+    const stores: Array<[string, string]> = [
+      ["nosnippets", storeOf("nosnippets")],
+      ["nosource", storeOf("nosource", { noSource: true })],
+      ["tiny", tinyStore()],
+    ];
+    for (const [id, store] of stores) {
+      mkdirSync(join(data, "hakutaku", "stores", id), { recursive: true });
+      copyFileSync(store, join(data, "hakutaku", "stores", id, "store.sqlite"));
+    }
     writeFileSync(
       join(data, "hakutaku", "registry.json"),
-      `${JSON.stringify({ version: 1, repos: [entry("nostore"), entry("tiny")] })}\n`,
-    );
-    copyFileSync(
-      tinyStore(),
-      join(data, "hakutaku", "stores", "tiny", "store.sqlite"),
+      `${JSON.stringify({
+        version: 1,
+        repos: [
+          entry("nosnippets", { snippets: false }),
+          entry("nosource", { noSource: true }),
+          entry("nostore"),
+          entry("tiny"),
+        ],
+      })}\n`,
     );
   }
   return {
@@ -60,6 +96,35 @@ function env(): NodeJS.ProcessEnv {
     XDG_CONFIG_HOME: join(root, "config"),
     XDG_CACHE_HOME: join(root, "cache"),
   };
+}
+
+// A fresh directory for the pages a test writes, under the file's temporary root.
+function outDir(): string {
+  env();
+  return realpathSync(mkdtempSync(join(root ?? tmpdir(), "out-")));
+}
+
+// What the page at file holds in its data block.
+function pageData(file: string): {
+  map: { repo: string; sources: boolean };
+  sources: Record<string, unknown> | null;
+  agent: Record<string, unknown> | null;
+} {
+  const html = readFileSync(file, "utf8");
+  const m = html.match(
+    /<script type="application\/json" id="hakutaku-data">([^<]*)<\/script>/,
+  );
+  if (m === null) throw new Error(`no data block in ${file}`);
+  return JSON.parse(m[1]);
+}
+
+// hakutaku view with args, run in cwd when given, its stderr holding only hakutaku's own lines.
+function view(args: string[], cwd?: string) {
+  return spawnSync(
+    process.execPath,
+    ["--disable-warning=ExperimentalWarning", MAIN, "view", ...args],
+    { env: env(), encoding: "utf8", timeout: SPAWN_TIMEOUT_MS, cwd },
+  );
 }
 
 // Everything the stream carries, and its first line once a line feed has arrived.
@@ -179,6 +244,7 @@ it.each([
   [["ghost"]],
   [["tiny", "--with-source"]],
   [["tiny", "--open", "--export", "x.html"]],
+  [["tiny", "--export", ""]],
   [["tiny", "--bogus"]],
 ])("usage error %j exits 2", (args) => {
   expect(
@@ -205,6 +271,7 @@ it("says what is wrong with each usage error, and prints nothing on stdout", () 
       ["tiny", "--open", "--export", "x.html"],
       `hakutaku view: pass --open or --export, not both\n${USAGE}`,
     ],
+    [["tiny", "--export", ""], `hakutaku view: --export is empty\n${USAGE}`],
   ];
   // Node 22 warns on stderr that node:sqlite is experimental; only hakutaku's own lines count here
   const view = (args: string[]) =>
@@ -246,4 +313,119 @@ it("a repo with no store exits 1 and names hakutaku map", () => {
     `hakutaku view: nostore is not built (not built yet); run: hakutaku map ${join(root ?? "", "checkouts", "nostore")}\n`,
   );
   expect(r.stdout.toString()).toBe("");
+});
+
+it("--export writes the page and prints its path", () => {
+  const out = join(outDir(), "map.html");
+  const r = spawnSync(
+    process.execPath,
+    ["dist/cli/main.js", "view", "tiny", "--export", out],
+    { env: env(), timeout: SPAWN_TIMEOUT_MS },
+  );
+  expect([r.status, r.stdout.toString().trim(), existsSync(out)]).toEqual([
+    0,
+    out,
+    true,
+  ]);
+  expect(r.stdout.toString()).toBe(`${out}\n`);
+  // the page holds tiny's map and the tools' answers, and no source
+  const page = pageData(out);
+  expect([page.map.repo, page.map.sources, page.sources]).toEqual([
+    "tiny",
+    false,
+    null,
+  ]);
+  expect(Object.keys(page.agent ?? {})).toHaveLength(15);
+});
+
+it("--with-source puts the repo's sources in the page", () => {
+  const out = join(outDir(), "map.html");
+  const r = view(["tiny", "--export", out, "--with-source"]);
+  expect([r.status, r.stdout, r.stderr]).toEqual([0, `${out}\n`, ""]);
+  const page = pageData(out);
+  expect([page.map.sources, Object.keys(page.sources ?? {})]).toEqual([
+    true,
+    [
+      "tiny:package.json",
+      "tiny:src/cli/main.ts",
+      "tiny:src/core/graph.test.ts",
+      "tiny:src/core/graph.ts",
+      "tiny:src/core/util.ts",
+    ],
+  ]);
+});
+
+it("--with-source warns when the repo's sources are off", () => {
+  const r = spawnSync(
+    process.execPath,
+    [
+      "dist/cli/main.js",
+      "view",
+      "nosnippets",
+      "--export",
+      join(outDir(), "m.html"),
+      "--with-source",
+    ],
+    { env: env(), timeout: SPAWN_TIMEOUT_MS },
+  );
+  expect([r.status, r.stderr.toString()]).toEqual([
+    0,
+    expect.stringContaining(
+      "sources are off for this repo; the page holds none",
+    ),
+  ]);
+  // snippets off, or a store built without sources: the page is written, and holds none
+  for (const id of ["nosnippets", "nosource"]) {
+    const out = join(outDir(), "m.html");
+    const warned = view([id, "--export", out, "--with-source"]);
+    expect([warned.status, warned.stdout, warned.stderr], id).toEqual([
+      0,
+      `${out}\n`,
+      SOURCES_OFF,
+    ]);
+    const page = pageData(out);
+    expect([page.map.repo, page.map.sources, page.sources], id).toEqual([
+      id,
+      false,
+      null,
+    ]);
+    // without --with-source nothing is missing, so nothing is said
+    const quiet = view([id, "--export", out]);
+    expect([quiet.status, quiet.stderr], id).toEqual([0, ""]);
+  }
+});
+
+it("--export prints the page's absolute path for a relative one", () => {
+  const dir = outDir();
+  const r = view(["tiny", "--export", "rel.html"], dir);
+  expect([r.status, r.stdout, r.stderr]).toEqual([
+    0,
+    `${join(dir, "rel.html")}\n`,
+    "",
+  ]);
+  expect(readdirSync(dir)).toEqual(["rel.html"]);
+});
+
+it("--export of a repo with no store exits 1, names hakutaku map and writes nothing", () => {
+  const dir = outDir();
+  const r = view(["nostore", "--export", join(dir, "m.html")]);
+  expect([r.status, r.stdout, r.stderr]).toEqual([
+    1,
+    "",
+    `hakutaku view: nostore is not built (not built yet); run: hakutaku map ${join(root ?? "", "checkouts", "nostore")}\n`,
+  ]);
+  expect(readdirSync(dir)).toEqual([]);
+});
+
+it("--export to a place it cannot write exits 1 and leaves nothing behind", () => {
+  const dir = outDir();
+  const r = view(["tiny", "--export", join(dir, "missing", "m.html")]);
+  expect([r.status, r.stdout]).toEqual([1, ""]);
+  expect(r.stderr).toMatch(/^hakutaku: .*ENOENT/);
+  // a directory where the page should go: the temporary page is written, then removed
+  mkdirSync(join(dir, "m.html"));
+  const taken = view(["tiny", "--export", join(dir, "m.html")]);
+  expect([taken.status, taken.stdout]).toEqual([1, ""]);
+  expect(readdirSync(dir)).toEqual(["m.html"]);
+  expect(readdirSync(join(dir, "m.html"))).toEqual([]);
 });

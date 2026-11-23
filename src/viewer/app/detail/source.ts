@@ -7,6 +7,8 @@
 // - The page has one highlighting worker, made when a file over WORKER_HIGHLIGHT_ABOVE lines
 //   first needs it. Once it fails, or when this page cannot make one, every later large file is
 //   rendered without it.
+// - An exported page has no worker, by design: it holds no worker script and its CSP allows none,
+//   so it never tries to make one, and renders every large file without it.
 // - Opening the tab again stops whatever the last opening was still drawing.
 import { F, FLAG_SOURCE } from "../../../query/view/constants.js";
 import { WORKER_HIGHLIGHT_ABOVE } from "../constants.js";
@@ -38,8 +40,9 @@ const srcnote = (text: string) => h("p", { class: "srcnote", text });
 
 export function createSourceView(model: Model, source: DataSource): SourceView {
   let drawing: { cancel(): void } | null = null;
-  // undefined: not made yet; null: this page has none
-  let worker: Worker | null | undefined;
+  // undefined: not made yet; null: this page has none, as an exported page never has
+  let worker: Worker | null | undefined =
+    source.kind === "embedded" ? null : undefined;
 
   const highlighter = (): Worker | null => {
     if (worker !== undefined) return worker;

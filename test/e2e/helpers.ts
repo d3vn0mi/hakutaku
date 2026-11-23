@@ -30,13 +30,15 @@ function setting(name: string): string {
 }
 
 // The link of each served repo: the sample at standard and at quick detail, the hostile
-// markup-names case, the big-file sample, and the 20,000-file repo when it was built.
+// markup-names case, the big-file sample, and the 20,000-file repo when it was built; and the
+// temporary root the setup made, which a spec may write its own files into.
 export const E2E: {
   readonly sample: string;
   readonly sampleQuick: string;
   readonly markup: string;
   readonly bigfile: string;
   readonly scale: string | null;
+  readonly root: string;
 } = {
   get sample() {
     return setting("HAKUTAKU_E2E_SAMPLE");
@@ -52,6 +54,9 @@ export const E2E: {
   },
   get scale() {
     return process.env.HAKUTAKU_E2E_SCALE || null;
+  },
+  get root() {
+    return setting("HAKUTAKU_E2E_ROOT");
   },
 };
 

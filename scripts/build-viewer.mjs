@@ -7,7 +7,9 @@
 // - page.html, the page template, copied as it is;
 // - manifest.json, which lists every asset with its type, size and hash, and every bundled
 //   package with its version and licence.
-// Any esbuild warning fails the build, as an error does.
+// Any esbuild warning fails the build, as an error does, and so does a bundle that cannot go
+// inline in one self-contained page, as an export puts it: a script or styles whose text would end
+// its element early, or keep its end tag from ending it.
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
@@ -186,3 +188,11 @@ writeFileSync(
   join(OUT, "manifest.json"),
   `${JSON.stringify(sortedKeys({ page: "page.html", assets, bundled }), null, 2)}\n`,
 );
+
+// 6. The self-contained page, built once from the bundle just written with the inliner tsc has
+// just built: it throws for a bundle that does not match its manifest, or whose script or styles
+// cannot go inline as they are.
+const { inlineViewerHtml } = await import(
+  new URL("../dist/viewer/inline.js", import.meta.url).href
+);
+inlineViewerHtml(null);

@@ -1,5 +1,6 @@
-// The page's data over HTTP: the viewer's API at the address the page names, with the session
-// from the page's own address when it carries one.
+// The page's data: over HTTP, the viewer's API at the address the page names, with the session
+// from the page's own address when it carries one; or, in an exported page, the data block the
+// page holds (embedded.ts).
 import type { Id } from "../../model/types.js";
 import type {
   HistoryData,
@@ -10,8 +11,13 @@ import type {
 import type { ToolError } from "../../tools/errors.js";
 import type { ToolName } from "../../tools/types.js";
 import { ApiError, type DataSource, type ToolReply } from "./data-types.js";
+import { embeddedSource, parseEmbedded } from "./embedded.js";
+
+export { embeddedSource } from "./embedded.js";
 
 const SESSION_HEADER = "x-hakutaku-session";
+// The data block an exported page holds, right before its script.
+const DATA_BLOCK = 'script#hakutaku-data[type="application/json"]';
 
 // The error an answer's body carries, when it is the API's { "error": ToolError }.
 function errorIn(text: string): ToolError | null {
@@ -97,10 +103,15 @@ export function httpSource(apiBase: URL, session: string | null): DataSource {
   };
 }
 
-// The data source this page names: the API address in its hakutaku-api meta tag, resolved
-// against the page's origin (api/ under the document's base when there is none), and the
-// session from its own address's s parameter.
+// The data source this page names: the data block it holds, when it is an exported page; else the
+// API address in its hakutaku-api meta tag, resolved against the page's origin (api/ under the
+// document's base when there is none), and the session from its own address's s parameter.
+// Throws an ApiError when the data block is not a page's map.
 export function pickSource(doc: Document, loc: Location): DataSource {
+  const block = doc.querySelector(DATA_BLOCK);
+  if (block !== null) {
+    return embeddedSource(parseEmbedded(block.textContent ?? ""));
+  }
   const api = doc
     .querySelector('meta[name="hakutaku-api"]')
     ?.getAttribute("content");

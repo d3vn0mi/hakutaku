@@ -3,8 +3,13 @@
 // at a free port, until the process is interrupted (SIGINT or SIGTERM). The one stdout line is
 // the link, which carries the session the API asks for; --open also opens it in the platform's
 // browser. The repo's store is opened on every request, so a rebuild is served as soon as it is
-// swapped in. Exit codes: 0 once the server has closed, 1 failed (the message on stderr), as when
-// the repo has no usable store, 2 a usage error.
+// swapped in.
+// With --export it serves nothing: it writes the map as one self-contained page, which requests
+// nothing, holding the repo's redacted sources with --with-source when the repo shows them, and
+// prints the page's absolute path as its one stdout line.
+// Exit codes: 0 once the server has closed or the page is written, 1 failed (the message on
+// stderr), as when the repo has no usable store or the page cannot be written, 2 a usage error.
+import { resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { REPO_ID_RE } from "../../model/index.js";
 import {
@@ -14,6 +19,8 @@ import {
   UnknownRepoError,
 } from "../../registry/index.js";
 import { openStore } from "../../store/index.js";
+import type { Host } from "../../tools/index.js";
+import { exportStaticPage } from "../../viewer/export-page.js";
 import { startViewerServer } from "../../viewer/server.js";
 import { printable } from "../table.js";
 import type { CliIO, Command } from "./index.js";
@@ -62,12 +69,12 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   if (values.open === true && exporting) {
     return usageError(io, "pass --open or --export, not both");
   }
+  if (values.export === "") return usageError(io, "--export is empty");
   const entry = findEntry(id);
   if (entry === null) {
     io.stderr(`hakutaku view: unknown repo: ${id}\n`);
     return 2;
   }
-  if (exporting) return usageError(io, "--export is not available yet");
 
   const store = openStore(storePathFor(id));
   if ("code" in store) {
@@ -76,6 +83,7 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     );
     return 1;
   }
+  const noSource = store.meta.noSource;
   store.close();
   let host: ReturnType<typeof registryHost>;
   try {
@@ -84,6 +92,13 @@ async function run(argv: string[], io: CliIO): Promise<number> {
     if (!(error instanceof UnknownRepoError)) throw error;
     io.stderr(`hakutaku view: ${printable(error.message)}\n`);
     return 2;
+  }
+  if (values.export !== undefined) {
+    return exportPage(io, host, id, {
+      file: values.export,
+      withSource: values["with-source"] === true,
+      sourcesOff: noSource || !host.snippets(id),
+    });
   }
   // Listening for the signals before the link is printed: whoever reads the link may stop the
   // server at once.
@@ -102,6 +117,32 @@ async function run(argv: string[], io: CliIO): Promise<number> {
   io.stdout(`${server.url}\n`);
   await stop.signalled;
   await server.close();
+  return 0;
+}
+
+// The page at file, resolved against the working directory; its path on stdout once it is in
+// place. --with-source on a repo whose sources are off, by its store or its snippets setting, is
+// said on stderr, and the page is written without them.
+async function exportPage(
+  io: CliIO,
+  host: Host,
+  id: string,
+  opts: { file: string; withSource: boolean; sourcesOff: boolean },
+): Promise<number> {
+  if (opts.withSource && opts.sourcesOff) {
+    io.stderr(
+      "hakutaku view: sources are off for this repo; the page holds none\n",
+    );
+  }
+  const file = resolve(opts.file);
+  await exportStaticPage({
+    host,
+    ctx: null,
+    repo: id,
+    file,
+    withSource: opts.withSource,
+  });
+  io.stdout(`${printable(file)}\n`);
   return 0;
 }
 
