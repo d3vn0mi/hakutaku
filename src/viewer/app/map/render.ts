@@ -2,9 +2,13 @@
 // import curves are drawn on the canvas beneath it after each of sigma's frames. The curves are
 // picked when the view state changes; a frame only redraws them.
 // - Node keys: f<file index>, h<hub index>, x<library index>.
+// - A selection the map draws keeps its node and its neighbours bright and dims every other
+//   node: the files and libraries an import joins to a file or a definition's file, the files
+//   that import a library, or the files of a hub's group. Only the selection's curves are drawn.
 // - After each refresh, #map carries data-nodes (the visible nodes), data-dimmed (the visible
-//   nodes drawn dimmed; this map dims none), data-hubs, data-curves (the import curves drawn)
-//   and data-cochange (the co-change curves drawn).
+//   nodes drawn dimmed), data-hubs, data-curves (the import curves drawn) and data-cochange (the
+//   co-change curves drawn).
+// - A pointer over a node marks #map with the class "pointing".
 // - After the first frame, the page records the performance mark hakutaku:first-map and sets
 //   html[data-ready] to "map".
 // graphology's declarations read as CommonJS, where its default export is the module itself, so
@@ -24,6 +28,7 @@ import {
 } from "../constants.js";
 import { prefersReducedMotion } from "../dom.js";
 import { groupKey, type Model } from "../model.js";
+import { motionMs } from "../motion.js";
 import type { Sel, StateStore, ViewState } from "../state.js";
 import { fileColor, fileSize, INK } from "./colors.js";
 import {
@@ -148,10 +153,12 @@ export function mountMap(
   let s: ViewState = state.get();
   let layout: GalaxyLayout = galaxyLayout(model, s.group);
   let hubIndex = new Map<string, number>(); // a hub's index by its key
+  let groupIds = new Map<string, number>(); // a group's number by its key
   let groupOf = new Int32Array(n); // each file's group, by number; -1 off the map
   let always = new Set<string>(); // hubs and libraries always labelled
   let labelled = new Set<string>(); // files labelled for the lens
   let selected: string | null = null; // the selection's node
+  let lit: Set<string> | null = null; // the nodes a drawn selection keeps bright
   let picks: CurvePick[] = [];
   let shapes = new Map<CurveKind, Float64Array>(); // per kind: a, control point and b, per curve
   let aggregates: Array<{ shape: Float64Array; weight: number; hot: boolean }> =
@@ -171,6 +178,7 @@ export function mountMap(
     graph.clear();
     hubIndex = new Map(layout.hubs.map((hub, i) => [hub.key, i]));
     const groups = new Map<string, number>();
+    groupIds = groups;
     groupOf = new Int32Array(n).fill(-1);
     for (const f of [...model.production, ...model.tests]) {
       const key = groupKey(model, f, s.group);
@@ -267,6 +275,13 @@ export function mountMap(
         label: a.name,
         forceLabel: true,
       });
+    } else if (lit !== null && !lit.has(key)) {
+      Object.assign(out, {
+        zIndex: 0,
+        color: INK.dim,
+        label: "",
+        forceLabel: false,
+      });
     }
     return out;
   };
@@ -334,12 +349,48 @@ export function mountMap(
       : { kind: "group", key: hubKey };
   };
 
+  // The nodes a selection keeps bright: its node, and the files and libraries an import joins to
+  // a file (or a definition's file), the files that import a library, or the files of a hub's
+  // group. Null, so that nothing is dimmed, when nothing is selected or its node is not drawn.
+  const litBy = (sel: Sel, key: string | null): Set<string> | null => {
+    if (sel === null || key === null) return null;
+    if (!shows(graph.getNodeAttribute(key, "kind"))) return null;
+    const keep = new Set<string>([key]);
+    const add = (prefix: "f" | "x", list: readonly number[]) => {
+      for (const i of list) keep.add(`${prefix}${i}`);
+    };
+    if (sel.kind === "file" || sel.kind === "definition") {
+      add("f", model.importers[sel.file]);
+      add("f", model.imports[sel.file]);
+      add("x", model.libsOf[sel.file]);
+    } else if (sel.kind === "library") {
+      add("f", model.importersOfLib[sel.external]);
+    } else {
+      const group = groupIds.get(layout.hubs[Number(key.slice(1))].key);
+      for (let f = 0; f < n; f++) if (groupOf[f] === group) keep.add(`f${f}`);
+    }
+    return keep;
+  };
+
   const pick = (): CurvePick[] => {
     if (!s.show.curves) return [];
     if (s.depth === "components") {
       return aggregateCurves(model, s.group, (key) => hubIndex.get(key) ?? -1);
     }
     const sel = s.sel;
+    // a library's curves come from the files that import it; a hub has none of its own here
+    if (sel?.kind === "library") {
+      if (!s.show.libraries) return [];
+      return model.importersOfLib[sel.external].filter(fileShows).map(
+        (f): CurvePick => ({
+          from: f,
+          to: n + sel.external,
+          kind: "selected",
+          weight: 1,
+        }),
+      );
+    }
+    if (sel?.kind === "component" || sel?.kind === "group") return [];
     return pickCurves(model, {
       visible: fileShows,
       inCore: (f) => (files[f][F.flags] & FLAG_CORE) !== 0,
@@ -463,13 +514,21 @@ export function mountMap(
     const shown = (kind: NodeKind, of: number) => (shows(kind) ? of : 0);
     const hubs = layout.hubs.length;
     const cochange = picks.filter((c) => c.kind === "cochange").length;
-    root.dataset.nodes = String(
+    const visible =
       shown("file", model.production.length) +
-        shown("test", model.tests.length) +
-        hubs +
-        shown("lib", model.map.externals.length),
-    );
-    root.dataset.dimmed = "0";
+      shown("test", model.tests.length) +
+      hubs +
+      shown("lib", model.map.externals.length);
+    let bright = visible;
+    if (lit !== null) {
+      bright = 0;
+      for (const key of lit) {
+        if (graph.hasNode(key) && shows(graph.getNodeAttribute(key, "kind")))
+          bright++;
+      }
+    }
+    root.dataset.nodes = String(visible);
+    root.dataset.dimmed = String(visible - bright);
     root.dataset.hubs = String(hubs);
     root.dataset.curves = String(picks.length - cochange);
     root.dataset.cochange = String(cochange);
@@ -478,6 +537,7 @@ export function mountMap(
   const refresh = () => {
     s = state.get();
     selected = nodeOf(s.sel);
+    lit = litBy(s.sel, selected);
     labelled = new Set(
       model.production.slice(0, LABEL_TOP).map((f) => `f${f}`),
     );
@@ -496,6 +556,8 @@ export function mountMap(
   renderer.on("afterRender", drawCurves);
   renderer.on("clickNode", ({ node }) => on.node(selOf(node)));
   renderer.on("clickStage", () => on.stage());
+  renderer.on("enterNode", () => root.classList.add("pointing"));
+  renderer.on("leaveNode", () => root.classList.remove("pointing"));
   state.subscribe((now, before) => {
     if (now.group !== before.group) relayout();
     else refresh();
@@ -510,8 +572,8 @@ export function mountMap(
     target: { x?: number; y?: number; ratio: number; angle?: number },
     ms: number,
   ) => {
-    if (ms > 0 && !prefersReducedMotion())
-      void camera.animate(target, { duration: ms });
+    const duration = motionMs(ms, prefersReducedMotion());
+    if (duration > 0) void camera.animate(target, { duration });
     else camera.setState(target);
   };
   return {

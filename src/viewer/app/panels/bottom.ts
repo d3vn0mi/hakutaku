@@ -14,28 +14,32 @@ const HEIGHT = 100;
 const BASE = HEIGHT - 16; // the line the bars stand on
 const TALLEST = BASE - 12;
 
-const row = (path: string, value: string) =>
-  h(
-    "li",
-    {},
-    h("span", { class: "name", text: path, attrs: { title: path } }),
-    h("span", { class: "v", text: value }),
-  );
-
 // Core: the top production files by rank, each with its importers. Hotspots: the top files by
-// hotspot, each with its changes in the last 90 days; a file that never changed is none.
+// hotspot, each with its changes in the last 90 days; a file that never changed is none. Each
+// row's name is a button that selects its file.
 export function fillRankLists(
   core: HTMLElement,
   hot: HTMLElement,
   model: Model,
+  pick: (file: number) => void,
 ): void {
   const files = model.map.files;
+  const row = (f: number, value: string) =>
+    h(
+      "li",
+      {},
+      h("button", {
+        class: "name",
+        text: files[f][F.path],
+        attrs: { type: "button", title: files[f][F.path] },
+        on: { click: () => pick(f) },
+      }),
+      h("span", { class: "v", text: value }),
+    );
   core.replaceChildren(
     ...model.production
       .slice(0, BOTTOM_TOP)
-      .map((f) =>
-        row(files[f][F.path], `${model.importers[f].length} importers`),
-      ),
+      .map((f) => row(f, `${model.importers[f].length} importers`)),
   );
   const hotspots = model.production
     .filter((f) => files[f][F.hotspot] > 0)
@@ -45,9 +49,7 @@ export function fillRankLists(
     )
     .slice(0, BOTTOM_TOP);
   hot.replaceChildren(
-    ...hotspots.map((f) =>
-      row(files[f][F.path], `${files[f][F.churn]} changes`),
-    ),
+    ...hotspots.map((f) => row(f, `${files[f][F.churn]} changes`)),
   );
 }
 

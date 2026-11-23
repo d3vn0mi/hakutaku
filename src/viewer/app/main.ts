@@ -1,18 +1,23 @@
 // The page's start: read the map from the page's data source, name the repo and its build in the
 // title and the brand, then build the model and lay out the panels and the map around one view
-// state. html[data-ready] says how far it got: "loading", then "data" once the map has arrived,
-// then "map" once the map is drawn, or "nomap" when this browser cannot draw it; or "error" with
-// #fatal saying why.
+// state, and open the node the address's link token names. html[data-ready] says how far it got:
+// "loading", then "data" once the map has arrived, then "map" once the map is drawn, or "nomap"
+// when this browser cannot draw it; or "error" with #fatal saying why.
 import "./styles/app.css";
 import type { MapData } from "../../query/view/types.js";
+import { guardBuild } from "./build-guard.js";
 import { pickSource } from "./data.js";
 import { ApiError, type DataSource } from "./data-types.js";
+import { prefersReducedMotion, showToast } from "./dom.js";
+import { bindKeys } from "./keys.js";
 import { mountMap } from "./map/render.js";
 import { buildModel } from "./model.js";
 import { drawTimeline, fillRankLists } from "./panels/bottom.js";
 import { mountLegend } from "./panels/legend.js";
 import { mountShow } from "./panels/show.js";
 import { mountStatband } from "./panels/statband.js";
+import { loadPrefs } from "./prefs.js";
+import { createSelection, type Selector } from "./selection.js";
 import { createState, NO_FILTERS, type ViewState } from "./state.js";
 
 const SEP = " \u00b7 ";
@@ -73,34 +78,66 @@ function brandOf(map: MapData): string {
   return `${map.repo}${SEP}${map.builtCommit}${freshness}`;
 }
 
-// The model, the view state, the panels and the map. The panels never wait for the map, so they
-// work in a browser that cannot draw it, and the change activity fills in when it arrives.
-function compose(map: MapData, source: DataSource): void {
+// The model, the view state, the panels, the map and the selection. The panels and the
+// selection never wait for the map, so they work in a browser that cannot draw it, and the
+// change activity fills in when it arrives. The address's token is opened in the same task that
+// draws the map's first frame, so a page that says it is ready already shows that node.
+function compose(map: MapData, fetched: DataSource): void {
   const model = buildModel(map);
-  const state = createState(START);
+  // the remembered lens, depth and grouping over the defaults; storage may be missing or throw
+  const state = createState({
+    ...START,
+    ...loadPrefs(() => localStorage, map.repo),
+  });
+  // every later answer is checked against the build this map came from
+  const source = guardBuild(fetched, map.builtCommit, (commit) =>
+    showToast(`The map was rebuilt at ${commit}. Reload to see it.`, {
+      action: { label: "Reload", run: () => location.reload() },
+    }),
+  );
+  prefersReducedMotion(); // records html[data-motion] from the start
   mountLegend(byId("legend"));
   mountStatband(byId("statband"), model, state);
   mountShow(byId("show"), model, state);
-  fillRankLists(byId("core-list"), byId("hot-list"), model);
+  // the map's clicks select through the selection, which needs the map: it is made right after
+  let selector: Selector | null = null;
+  const view = mountMap(byId("map"), model, state, {
+    node: (sel) => selector?.select(sel),
+    stage: () => selector?.select(null),
+  });
+  const selection = createSelection({
+    repo: map.repo,
+    model,
+    state,
+    map: view,
+    source,
+  });
+  selector = selection;
+  fillRankLists(byId("core-list"), byId("hot-list"), model, (file) =>
+    selection.select({ kind: "file", file }),
+  );
+  bindKeys({ back: () => selection.back() });
+  byId("back-btn").addEventListener("click", () => selection.back());
+  addEventListener("hashchange", () =>
+    selection.openToken(location.hash.slice(1)),
+  );
   source.history().then(
     (history) => drawTimeline(byId<SVGSVGElement>("timeline"), history),
     (e) =>
       console.error("hakutaku: the change activity could not be loaded", e),
   );
-  const view = mountMap(byId("map"), model, state, {
-    node: (sel) => state.set({ sel }),
-    stage: () => state.set({ sel: null }),
-  });
   if (view === null) {
     const notice = byId<HTMLElement>("map-notice");
     notice.textContent = NO_WEBGL;
     notice.hidden = false;
+    selection.openToken(location.hash.slice(1));
     setReady("nomap");
     return;
   }
   byId("zoom-in").addEventListener("click", () => view.zoom(1));
   byId("zoom-out").addEventListener("click", () => view.zoom(-1));
   byId("zoom-fit").addEventListener("click", () => view.fit());
+  selection.openToken(location.hash.slice(1));
 }
 
 async function start(): Promise<void> {

@@ -131,6 +131,32 @@ h3 {
   font-size: 12.5px;
   color: var(--muted);
 }
+/* Each level above the selection is a button; the selection, or Map when nothing is selected,
+   is where you are. */
+.crumbs button,
+.crumbs .here {
+  max-width: 26ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.crumbs button {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 3px;
+}
+.crumbs button:hover {
+  color: var(--ink);
+}
+.crumbs [aria-current] {
+  color: var(--accent);
+  text-decoration: none;
+}
 .brand {
   font-family: var(--font-mono);
   font-size: 15px;
@@ -210,8 +236,11 @@ h3 {
   line-height: 1.7;
   color: var(--muted);
 }
+.keys p {
+  margin: 0;
+}
 .keys kbd {
-  margin: 0 4px 0 0;
+  margin: 0;
 }
 .toggles {
   display: flex;
@@ -257,6 +286,9 @@ h3 {
 }
 #sigma {
   z-index: 1;
+}
+.map.pointing #sigma {
+  cursor: pointer;
 }
 .legend {
   position: absolute;
@@ -374,9 +406,11 @@ h3 {
   left: 10px;
   bottom: 46px;
 }
+/* The toast sits above the list view and the no-WebGL notice, which a browser without WebGL
+   shows in the same place. */
 .toast {
   position: absolute;
-  z-index: 3;
+  z-index: 6;
   left: 50%;
   top: 14px;
   transform: translateX(-50%);
@@ -385,6 +419,15 @@ h3 {
   border-radius: 5px;
   padding: 7px 12px;
   font-size: 13px;
+}
+.toast button {
+  margin-left: 6px;
+  background: var(--panel);
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  padding: 1px 8px;
+  cursor: pointer;
+  color: var(--ink);
 }
 .list-view {
   position: absolute;
@@ -420,6 +463,49 @@ h3 {
 }
 .app.wide .right {
   width: min(64vw, 1000px);
+}
+/* The details header: the kind line, the name, and the stable ID with its copy buttons. */
+.right .kind {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.right h2 {
+  margin: 6px 0 4px;
+  font-size: 21px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.idline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.idline code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.idline button {
+  flex: none;
+  background: none;
+  border: 1px solid var(--line-2);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.idline button:hover {
+  color: var(--ink);
+  border-color: var(--muted);
 }
 
 /* The bottom lists: Core, the change activity and Hotspots. */
@@ -478,6 +564,16 @@ h3 {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--ink-2);
+}
+.rank button.name {
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+.rank button.name:hover {
+  color: var(--ink);
 }
 .rank .v {
   font-family: var(--font-mono);

@@ -1,6 +1,6 @@
 // Building the page's elements safely: text goes in through textContent and attributes through
 // setAttribute, never markup from a string, and never a style attribute or an inline handler.
-// Node tests never import this module.
+// Also the toast, and the reduced-motion wish. Node tests never import this module.
 
 export function h<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -27,6 +27,51 @@ export function h<K extends keyof HTMLElementTagNameMap>(
   }
   el.append(...children);
   return el;
+}
+
+export interface ToastAction {
+  label: string;
+  run(): void;
+}
+
+const TOAST_MS = 4000;
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+let notice: { text: string; action: ToastAction } | null = null;
+
+// The toast over the map, in #toast, as text. A message shows for ms milliseconds, then the toast
+// hides and keeps its text. A notice that carries an action, such as a rebuild's Reload, stays,
+// and comes back after any message shown over it.
+export function showToast(
+  text: string,
+  opts: { action?: ToastAction; ms?: number } = {},
+): void {
+  const toast = document.getElementById("toast");
+  if (toast === null) return;
+  const show = (message: string, action?: ToastAction) => {
+    toast.replaceChildren(message);
+    if (action !== undefined) {
+      toast.append(
+        " ",
+        h("button", {
+          text: action.label,
+          attrs: { type: "button" },
+          on: { click: () => action.run() },
+        }),
+      );
+    }
+    toast.hidden = false;
+  };
+  clearTimeout(toastTimer);
+  if (opts.action !== undefined) {
+    notice = { text, action: opts.action };
+    show(text, opts.action);
+    return;
+  }
+  show(text);
+  toastTimer = setTimeout(() => {
+    if (notice === null) toast.hidden = true;
+    else show(notice.text, notice.action);
+  }, opts.ms ?? TOAST_MS);
 }
 
 // Whether the viewer asks for reduced motion, which it also records as html[data-motion]:
