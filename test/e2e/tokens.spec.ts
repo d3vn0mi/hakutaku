@@ -7,9 +7,11 @@ import type { MapData } from "../../src/query/view/index.js";
 import {
   allNodes,
   E2E,
+  expectNoWebGL,
   F,
   fetchMap,
   formatId,
+  hasWebGL,
   mapDrawn,
   openViewer,
   selectedId,
@@ -367,9 +369,13 @@ test("a selection dims all but its node and its neighbours, and draws only its c
 }) => {
   const m = await fetchMap(E2E.sample);
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
-  if (!drawn) return;
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    await expectNoWebGL(page);
+    return;
+  }
   const { kepler, component } = keplerIn(m);
   const code = (f: number) => m.files[f][F.kind] === 0;
   const hubs = m.components.filter((c) => c[1] > 0).length;

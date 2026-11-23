@@ -1,31 +1,19 @@
 // The galaxy on the sample, end to end: at Files depth the map draws every production file, hub
 // and library with the sample's import curves, the panels around it read from the same map, and
 // the zoom controls are named buttons.
-import { expect, type Page, test } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import type { HistoryData } from "../../src/query/view/index.js";
-import { E2E, F, fetchMap, mapDrawn, openViewer } from "./helpers.js";
+import {
+  E2E,
+  expectNoWebGL,
+  F,
+  fetchMap,
+  hasWebGL,
+  mapDrawn,
+  openViewer,
+} from "./helpers.js";
 
-const NO_WEBGL =
-  "This browser cannot draw the map (no WebGL). The list view shows the same files.";
 const fmt = (n: number) => n.toLocaleString("en-US");
-
-// Whether a page in this browser gets a WebGL context, asked as the map asks for one: WebGL 2,
-// else WebGL, else its experimental name, each on a fresh canvas. A context made here is
-// released at once.
-const hasWebGL = (page: Page): Promise<boolean> =>
-  page.evaluate(() =>
-    ["webgl2", "webgl", "experimental-webgl"].some((kind) => {
-      try {
-        const gl = document
-          .createElement("canvas")
-          .getContext(kind) as WebGLRenderingContext | null;
-        gl?.getExtension("WEBGL_lose_context")?.loseContext();
-        return gl !== null;
-      } catch {
-        return false;
-      }
-    }),
-  );
 
 // GET history from the server of a link, with the link's session.
 async function fetchHistory(url: string): Promise<HistoryData> {
@@ -47,14 +35,11 @@ test("draws the sample's production files, hubs and libraries at Files depth", a
   // all, as headless Firefox can be, must say so in place of the map.
   const webgl = await hasWebGL(page);
   if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
   if (!webgl) {
-    await expect(page.locator("html")).toHaveAttribute("data-ready", "nomap");
-    await expect(page.locator("#map-notice")).toBeVisible();
-    await expect(page.locator("#map-notice")).toHaveText(NO_WEBGL);
-    await expect(page.locator("#sigma canvas")).toHaveCount(0);
+    await expectNoWebGL(page);
     return;
   }
-  expect(await mapDrawn(page)).toBe(true);
   await expect(page.locator("#map-notice")).toBeHidden();
   const hubs = m.components.filter((c) => c[1] > 0).length; // a hub per component that holds production files
   const map = page.locator("#map");
@@ -151,9 +136,13 @@ test("the show toggles carry their counts, and the tests stat turns Tests on", a
   await expect(tests).not.toBeChecked();
   await page.locator('#statband [data-stat="tests"]').click();
   await expect(tests).toBeChecked();
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
-  if (!drawn) return;
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    await expectNoWebGL(page);
+    return;
+  }
   const hubs = m.components.filter((c) => c[1] > 0).length;
   const others = hubs + m.counts.libraries;
   const nodes = page.locator("#map");

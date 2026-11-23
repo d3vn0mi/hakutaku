@@ -157,6 +157,39 @@ export async function mapDrawn(page: Page): Promise<boolean> {
   return (await page.locator("html").getAttribute("data-ready")) === "map";
 }
 
+// What the page says in place of the map when this browser cannot draw it.
+export const NO_WEBGL =
+  "This browser cannot draw the map (no WebGL). The list view shows the same files.";
+
+// Whether a page in this browser gets a WebGL context, asked as the map asks for one: WebGL 2,
+// else WebGL, else its experimental name, each on a fresh canvas. A context made here is
+// released at once. A spec branches on this, never on what the page drew: with WebGL the map
+// must be drawn, and without it the page must say why it draws none (expectNoWebGL).
+export function hasWebGL(page: Page): Promise<boolean> {
+  return page.evaluate(() =>
+    ["webgl2", "webgl", "experimental-webgl"].some((kind) => {
+      try {
+        const gl = document
+          .createElement("canvas")
+          .getContext(kind) as WebGLRenderingContext | null;
+        gl?.getExtension("WEBGL_lose_context")?.loseContext();
+        return gl !== null;
+      } catch {
+        return false;
+      }
+    }),
+  );
+}
+
+// The page of a browser that cannot draw the map: it says so in place of the map, and holds no
+// canvas of the map's.
+export async function expectNoWebGL(page: Page): Promise<void> {
+  await expect(page.locator("html")).toHaveAttribute("data-ready", "nomap");
+  await expect(page.locator("#map-notice")).toBeVisible();
+  await expect(page.locator("#map-notice")).toHaveText(NO_WEBGL);
+  await expect(page.locator("#sigma canvas")).toHaveCount(0);
+}
+
 // Collects the directive of each Content-Security-Policy violation of every document the page
 // opens from now on; the function returned reads the current document's.
 export async function watchCsp(page: Page): Promise<() => Promise<string[]>> {

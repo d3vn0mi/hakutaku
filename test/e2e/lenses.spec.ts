@@ -8,8 +8,10 @@ import { expect, type Page, test } from "@playwright/test";
 import type { MapData } from "../../src/query/view/index.js";
 import {
   E2E,
+  expectNoWebGL,
   F,
   fetchMap,
+  hasWebGL,
   mapDrawn,
   openViewer,
   selectedId,
@@ -236,9 +238,11 @@ test("History draws the selection's co-change partners, dashed", async ({
   expect(visible).toBeGreaterThan(0);
   expect(onMap).toBeGreaterThan(visible); // kepler.test.ts among them
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
-  if (!drawn) {
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    await expectNoWebGL(page);
     // a browser that cannot draw the map still switches lens, with its legend
     await page.keyboard.press("3");
     await pressed(page, "History");
@@ -322,9 +326,11 @@ test("History fetches a file's partners once when the map does not carry them", 
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
   await page.keyboard.press("3");
   await pressed(page, "History");
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
-  if (!drawn) {
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    await expectNoWebGL(page);
     // without a map, nothing asks for co-change
     expect(asked).toEqual([]);
     return;
@@ -361,9 +367,13 @@ test("an outline from another build draws nothing and says the map was rebuilt",
     });
   });
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
-  if (!drawn) return;
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    await expectNoWebGL(page);
+    return;
+  }
   await page.keyboard.press("3");
   await expect(page.locator("#toast")).toContainText(
     "The map was rebuilt at 0123456789ab. Reload to see it.",
@@ -386,9 +396,11 @@ test("grouping by language makes one hub per language", async ({
   expect(langs.size).not.toBe(components);
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
   const map = page.locator("#map");
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
-  if (drawn) await expect(map).toHaveAttribute("data-hubs", String(components));
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (webgl) await expect(map).toHaveAttribute("data-hubs", String(components));
+  else await expectNoWebGL(page);
   // the grouping in use, pressed again, changes nothing
   await componentGrouping(page).click();
   expect(await selectedId(page)).toBe(`observatory:${KEPLER}`);
@@ -406,7 +418,7 @@ test("grouping by language makes one hub per language", async ({
   await expect(page).toHaveURL(
     (u) => u.hash === "" && u.searchParams.get("s") !== null,
   );
-  if (!drawn) return;
+  if (!webgl) return;
   await expect(map).toHaveAttribute("data-hubs", String(langs.size));
   await expect(map).toHaveAttribute("data-dimmed", "0");
   await page.getByRole("button", { name: /^Folder/ }).click();

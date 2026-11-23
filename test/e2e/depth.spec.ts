@@ -15,9 +15,11 @@ import {
 import type { MapData } from "../../src/query/view/index.js";
 import {
   E2E,
+  expectNoWebGL,
   F,
   fetchMap,
   formatId,
+  hasWebGL,
   mapDrawn,
   openViewer,
   query,
@@ -167,15 +169,17 @@ test("the sample opens at Files depth, and D cycles the levels", async ({
     "true",
   );
   await atDepth(page, "Files");
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) await expectNoWebGL(page);
   const map = page.locator("#map");
   for (const level of ["Components", "Core", "Files"] as const) {
     await page.keyboard.press("d");
     await atDepth(page, level);
     // the key moves no focus, so the live region says where it went
     await expect(page.locator("#announce")).toHaveText(SAID[level]);
-    if (!drawn) continue;
+    if (!webgl) continue;
     await expect(map).toHaveAttribute("data-nodes", String(nodes[level]));
     await expect(map).toHaveAttribute("data-curves", String(curves[level]));
     await expect(map).toHaveAttribute("data-hubs", String(hubs));
@@ -205,13 +209,15 @@ test("Core and Components depth hide the tests, whatever the Tests toggle says",
   const { hubs, libs, nodes } = levelsOf(m);
   expect(m.counts.tests).toBeGreaterThan(0);
   await openViewer(page, E2E.sample);
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) await expectNoWebGL(page);
   await page.getByRole("checkbox", { name: /^Tests/ }).check();
   await page.getByRole("button", { name: /^Core/ }).click();
   await atDepth(page, "Core");
   await expect(page.getByRole("checkbox", { name: /^Tests/ })).toBeChecked();
-  if (!drawn) return;
+  if (!webgl) return;
   const map = page.locator("#map");
   await expect(map).toHaveAttribute("data-nodes", String(nodes.Core));
   await depthButton(page, "Components").click();
@@ -335,8 +341,10 @@ test("a selection switches depth only when the depth hides its file", async ({
   const tests = page.getByRole("checkbox", { name: /^Tests/ });
   const detail = page.locator("#detail");
   await openViewer(page, E2E.sample);
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) await expectNoWebGL(page);
 
   // at Core depth: a core file and a file off the map change nothing; a test switches to Files
   await page.getByRole("button", { name: /^Core/ }).click();
@@ -346,7 +354,7 @@ test("a selection switches depth only when the depth hides its file", async ({
     `observatory:${m.files[shown][F.path]}`,
   );
   await atDepth(page, "Core");
-  if (drawn) {
+  if (webgl) {
     // the file keeps bright its neighbours that Core draws, and its libraries; the rest dims
     const libraries = new Set<number>();
     for (let i = 0; i < m.libImports.length; i += 2) {
@@ -408,8 +416,10 @@ test("at Components depth a selected hub keeps the hubs an import joins to it br
     path: `${m.components[hub][0]}/`,
   };
   await openViewer(page, E2E.sample);
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) await expectNoWebGL(page);
   await depthButton(page, "Components").click();
   await openToken(page, toToken(ref));
   await expect(page.locator("#detail")).toHaveAttribute(
@@ -417,7 +427,7 @@ test("at Components depth a selected hub keeps the hubs an import joins to it br
     formatId(ref),
   );
   await atDepth(page, "Components");
-  if (!drawn) return;
+  if (!webgl) return;
   const map = page.locator("#map");
   // every other hub dims, and every library, which no hub keeps bright
   await expect(map).toHaveAttribute(
@@ -478,9 +488,11 @@ test("the remembered depth is the one the map opens at", async ({
   await atDepth(page, "Core");
   await expect(page.locator("#coverage")).toBeVisible();
   await expect(page.locator("#coverage")).toContainText(TAIL);
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
-  if (drawn) {
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) await expectNoWebGL(page);
+  if (webgl) {
     await expect(page.locator("#map")).toHaveAttribute(
       "data-nodes",
       String(nodes.Core),
@@ -514,9 +526,11 @@ test("a repo above 400 production files opens at Core depth", async ({
   await expect(page.locator("#coverage")).toHaveText(
     `${whole(files)} of ${whole(ofFiles)} production files (${Math.round((100 * files) / ofFiles)}%) ${TAIL}`,
   );
-  const drawn = await mapDrawn(page);
-  if (browserName === "chromium") expect(drawn).toBe(true);
-  if (drawn) {
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) await expectNoWebGL(page);
+  if (webgl) {
     const hubs = m.components.filter((c) => c[1] > 0).length;
     await expect(page.locator("#map")).toHaveAttribute(
       "data-nodes",
