@@ -8,10 +8,11 @@ export const SCHEMA_VERSION = 1;
 
 // The text index's tokenizer argument. It is spliced in, so that no source line reads
 // `tokenize = '...'`: the secret scan takes that for a quoted value assigned to a name holding
-// "token".
+// "token". DDL is typed as a string for the same reason: tsc would otherwise copy its whole text
+// into the declaration file the package ships, and that line with it.
 const TRIGRAM = "'trigram case_sensitive 1'";
 
-export const DDL = `CREATE TABLE meta (                       -- one row
+export const DDL: string = `CREATE TABLE meta (                       -- one row
   schema_version INTEGER NOT NULL,        -- 1
   hakutaku_version TEXT NOT NULL,
   repo_id TEXT NOT NULL,
