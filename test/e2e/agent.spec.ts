@@ -101,6 +101,38 @@ function cases(m: MapData): Case[] {
   ];
 }
 
+// Records, in every document the page opens from now on, the path of each answer whose body the
+// page has read, once the page has done all it does with it. The page reads a reply's text and
+// hands it on through promise reactions alone, so a task queued when the text arrives runs after
+// every one of them. The function returned waits until the answer at that path has been read so.
+async function watchAnswersRead(
+  page: Page,
+): Promise<(path: string) => Promise<void>> {
+  await page.addInitScript(() => {
+    const read: string[] = [];
+    Object.defineProperty(window, "__hakutakuAnswersRead", { value: read });
+    const text = Response.prototype.text;
+    Response.prototype.text = function (this: Response) {
+      const body = text.call(this);
+      const path = new URL(this.url).pathname;
+      const after = () => {
+        setTimeout(() => read.push(path), 0);
+      };
+      body.then(after, after);
+      return body;
+    };
+  });
+  return async (path) => {
+    await page.waitForFunction(
+      (p) =>
+        (
+          window as unknown as { __hakutakuAnswersRead: string[] }
+        ).__hakutakuAnswersRead.includes(p),
+      path,
+    );
+  };
+}
+
 // Every tool the page asks for from now on, by name, in order.
 function toolRequests(page: Page): string[] {
   const asked: string[] = [];
@@ -295,6 +327,7 @@ test("an answer that arrives after the viewer has moved on is not drawn", async 
     await held;
     await route.continue();
   });
+  const answerRead = await watchAnswersRead(page);
   await openViewer(page, E2E.sample, { token: AT_KEPLER });
   await tab(page, "Agent").click();
   await expect(agent(page).locator(".note")).toHaveText(LOADING);
@@ -306,15 +339,9 @@ test("an answer that arrives after the viewer has moved on is not drawn", async 
   await expect(agent(page).locator(".call")).toHaveText(written(component));
   const answer = query(component.tool, m.repo, component.args);
   expect(await agent(page).locator("pre").textContent()).toBe(answer);
-  const finished = page.waitForEvent("requestfinished", (r) =>
-    r.url().endsWith(`${TOOL_PATH}code_explain`),
-  );
   release();
-  await finished;
-  // a moment for the page to take the late answer, which it must not draw
-  await page.evaluate(
-    () => new Promise<void>((resolve) => setTimeout(resolve, 200)),
-  );
+  // the page has read kepler.ts's late answer and done all it does with it, which must not draw
+  await answerRead(`${TOOL_PATH}code_explain`);
   await expect(agent(page).locator("pre")).toHaveCount(1);
   expect(await agent(page).locator("pre").textContent()).toBe(answer);
   await expect(agent(page).locator(".call")).toHaveText(written(component));
