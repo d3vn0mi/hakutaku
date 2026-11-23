@@ -219,7 +219,7 @@ The road to 0.1:
         how it refuses. A test checks its argument tables, error codes, label wording, examples and
         IDs against the code and the sample.
 - [ ] **Viewer** (in progress). Lenses, depth levels, search and filters, the source view,
-      accessibility and the performance budget. 12 of 17 steps done:
+      accessibility and the performance budget. 16 of 17 steps done:
   - [x] **Viewer data.** The map, file outlines, source and history, read from a store as compact
         payloads that come out byte for byte the same on every read.
   - [x] **The viewer API.** One read-only API over the store and the tools. A file the denylist
@@ -244,10 +244,17 @@ The road to 0.1:
         definitions, one dot each.
   - [x] **The Source tab.** The store's redacted copy of a file, highlighted, with the selected
         definition flashed and the call sites marked.
-  - [ ] **The Agent tab.**
-  - [ ] **The static export.**
-  - [ ] **Accessibility.**
-  - [ ] **Offline and contained.**
+  - [x] **The Agent tab.** The exact call an agent would make for a node, and the tool's own answer
+        to it.
+  - [x] **The static export.** `--export` writes one self-contained page that requests nothing,
+        under a CSP that names its one script and style by hash, without sources unless
+        `--with-source` is given.
+  - [x] **Accessibility.** An axe scan of every panel in every state with no serious finding, a
+        keyboard-only walk, a visible focus ring, reduced motion, and the list view and a live region
+        for screen readers.
+  - [x] **Offline and contained.** With every outside request blocked the viewer still renders
+        fully, markup in names and code stays text, and every file the page loads comes under a
+        policy that allows nothing.
   - [ ] **First run and performance**, and the viewer guide.
 - [ ] **Release.** CI, the hostile-repository suite, and an npm release with provenance. A static map of
       the sample as a live demo.
