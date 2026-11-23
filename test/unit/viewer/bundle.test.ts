@@ -1,8 +1,21 @@
 // The built viewer bundle in dist/viewer, as `npm run build` writes it: its manifest lists every
 // asset with its size and hash and every bundled package with its licence, and the whole app fits
-// in one self-contained page of at most 2 MiB.
+// in one self-contained page of at most 2 MiB. The build script, run before tsc, says so plainly.
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import { inlineViewerHtml } from "../../../src/viewer/inline.js";
@@ -174,4 +187,37 @@ it("puts the data block before the script, and refuses one that could end it", (
   expect(() => inlineViewerHtml('{"a":"</script><script>x()"}')).toThrow(
     TypeError,
   );
+});
+
+it("the build script, run before tsc has written the inliner it needs, says so and removes nothing", () => {
+  // a copy of the script, which finds esbuild through a link to the repo's node_modules, in a
+  // directory whose dist holds an earlier bundle and nothing of tsc's
+  const dir = mkdtempSync(join(tmpdir(), "hakutaku-build-viewer-"));
+  try {
+    mkdirSync(join(dir, "scripts"));
+    copyFileSync(
+      join(ROOT, "scripts", "build-viewer.mjs"),
+      join(dir, "scripts", "build-viewer.mjs"),
+    );
+    symlinkSync(join(ROOT, "node_modules"), join(dir, "node_modules"), "dir");
+    const earlier = join(dir, "dist", "viewer", "assets");
+    mkdirSync(earlier, { recursive: true });
+    writeFileSync(join(earlier, "app.js"), "earlier\n");
+    const r = spawnSync(
+      process.execPath,
+      [join(dir, "scripts", "build-viewer.mjs")],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+    expect([r.status, r.stdout, r.stderr]).toEqual([
+      1,
+      "",
+      "build-viewer: dist/viewer/inline.js is missing; run tsc -p tsconfig.build.json first, as npm run build does\n",
+    ]);
+    expect(readdirSync(join(dir, "dist", "viewer"))).toEqual(["assets"]);
+    expect(readdirSync(earlier)).toEqual(["app.js"]);
+    expect(readFileSync(join(earlier, "app.js"), "utf8")).toBe("earlier\n");
+  } finally {
+    unlinkSync(join(dir, "node_modules"));
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

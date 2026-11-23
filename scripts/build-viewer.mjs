@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -69,6 +70,16 @@ const TYPES = {
   ".css": "text/css; charset=utf-8",
   ".woff2": "font/woff2",
 };
+
+// 0. The self-contained page (step 6) is built with the inliner tsc writes, so tsc runs first, as
+// npm run build has it; without the inliner, this fails before anything is removed or written.
+const INLINER = new URL("../dist/viewer/inline.js", import.meta.url);
+if (!existsSync(INLINER)) {
+  process.stderr.write(
+    "build-viewer: dist/viewer/inline.js is missing; run tsc -p tsconfig.build.json first, as npm run build does\n",
+  );
+  process.exit(1);
+}
 
 // 1. The last bundle goes; tsc's output stays.
 rmSync(ASSETS, { recursive: true, force: true });
@@ -192,7 +203,5 @@ writeFileSync(
 // 6. The self-contained page, built once from the bundle just written with the inliner tsc has
 // just built: it throws for a bundle that does not match its manifest, or whose script or styles
 // cannot go inline as they are.
-const { inlineViewerHtml } = await import(
-  new URL("../dist/viewer/inline.js", import.meta.url).href
-);
+const { inlineViewerHtml } = await import(INLINER.href);
 inlineViewerHtml(null);
