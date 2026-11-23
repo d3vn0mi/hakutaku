@@ -646,6 +646,57 @@ test("above the inline limit, an outline Inside fetched lists the files that cha
   expect(asked).toEqual([`observatory:${KEPLER}`]);
 });
 
+test("above the inline limit, an outline still loading when its pane is left is drawn at once when the pane comes back", async ({
+  page,
+}) => {
+  const a: Explained = explain(`observatory:${KEPLER}`);
+  const m = await fetchMap(E2E.sample);
+  const [component] = must(
+    m.components[m.files[fileOf(m, KEPLER)][F.component]],
+    `component of ${KEPLER}`,
+  );
+  const errors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(message.text());
+  });
+  const asked = await aboveTheInlineLimit(page);
+  const dots = page.locator("#pane .dots button");
+  // left for another tab, and back while the outline still loads: the one request serves both
+  let release = await holdOutlines(page);
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await tab(page, "Inside").click();
+  await expect(page.locator("#pane")).toHaveText(LOADING);
+  await tab(page, "Overview").click();
+  await tab(page, "Inside").click();
+  await expect(page.locator("#pane")).toHaveText(LOADING);
+  release();
+  await expect(dots).toHaveCount(a.definitions.total);
+  expect(asked).toEqual([`observatory:${KEPLER}`]);
+  // left for another node, on a fresh page, and back once the outline has come: the page kept it,
+  // so the Overview lists the files that change together and Inside draws its dots, asking nothing
+  release = await holdOutlines(page);
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await tab(page, "Inside").click();
+  await expect(page.locator("#pane")).toHaveText(LOADING);
+  await page.keyboard.press("Escape");
+  expect(await selectedId(page)).toBe(`observatory:${component}/`);
+  const answered = page.waitForResponse(
+    (r) => new URL(r.url()).pathname === "/api/outline",
+  );
+  release();
+  await answered;
+  await page.evaluate((t) => {
+    location.hash = t;
+  }, AT_KEPLER);
+  await expect(rowsUnder(page, COCHANGE).locator("button")).toHaveText(
+    a.changesTogetherWith.map((p) => pathOf(p.id)),
+  );
+  await tab(page, "Inside").click();
+  await expect(dots).toHaveCount(a.definitions.total);
+  expect(asked).toEqual([`observatory:${KEPLER}`, `observatory:${KEPLER}`]);
+  expect(errors).toEqual([]);
+});
+
 test("an outline from another build draws nothing and says the map was rebuilt", async ({
   page,
 }) => {
