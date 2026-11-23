@@ -130,13 +130,15 @@ it("NOTICE names every bundled package with its version and licence", () => {
   }
 });
 
-// A package's licence file, as the bundle carries it: the text as written, with any address
-// written without its scheme, so the bundle names no address a browser could be sent to.
+// A package's licence file, as the bundle carries it: the text as written, its lines ended by line
+// feeds alone, with any address written without its scheme, so the bundle names no address a
+// browser could be sent to.
 function licenceOf(name: string): string {
   const dir = `${ROOT}node_modules/${name}/`;
   const file = readdirSync(dir).find((f) => /^licen[cs]e(\.\w+)?$/i.test(f));
   if (file === undefined) throw new Error(`${name} has no licence file`);
   return readFileSync(dir + file, "utf8")
+    .replaceAll(/\r\n?/g, "\n")
     .replaceAll(/[a-z][a-z0-9+.-]*:\/\//gi, "")
     .trim();
 }
@@ -164,6 +166,28 @@ it("carries the licence of every package bundled into a script, in that script a
   // the notices open each script, as one comment a minifier keeps
   expect(app.startsWith("/*!")).toBe(true);
   expect(worker.startsWith("/*!")).toBe(true);
+});
+
+it("carries the licence of each font in the styles that embed it, and in a self-contained page", () => {
+  const fonts = manifest.bundled
+    .map((p: { name: string }) => p.name)
+    .filter((name: string) => name.startsWith("@ibm/plex-"));
+  expect(fonts).toEqual(["@ibm/plex-mono", "@ibm/plex-sans-condensed"]);
+  const css = readFileSync(`${ROOT}dist/viewer/assets/app.css`, "utf8");
+  const { html } = inlineViewerHtml(null);
+  for (const name of fonts) {
+    const licence = licenceOf(name);
+    expect(licence, name).toMatch(/SIL OPEN FONT LICENSE Version 1\.1/);
+    expect(css.includes(licence), `${name} in app.css`).toBe(true);
+    expect(html.includes(licence), `${name} in the page`).toBe(true);
+  }
+  expect(css.startsWith("/*!")).toBe(true);
+  // no carriage return: a page's parser turns one into a line feed, and the inlined text would no
+  // longer match the hash its policy names
+  for (const name of ["app.js", "hl-worker.js", "app.css"]) {
+    const text = readFileSync(`${ROOT}dist/viewer/assets/${name}`, "utf8");
+    expect(text.includes("\r"), name).toBe(false);
+  }
 });
 
 it("stays within 2 MiB as one self-contained page", () => {

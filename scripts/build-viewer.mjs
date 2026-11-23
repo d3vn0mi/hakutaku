@@ -3,7 +3,8 @@
 //   styles it imports;
 // - assets/hl-worker.js, the Source tab's highlighting worker, bundled from
 //   src/viewer/app/source/hl-worker.ts;
-// - each script opening with the licence of every package bundled into it;
+// - each script opening with the licence of every package bundled into it, and the styles with
+//   the fonts' licence;
 // - the six fonts, under the names the styles use;
 // - page.html, the page template, copied as it is;
 // - manifest.json, which lists every asset with its type, size and hash, and every bundled
@@ -128,31 +129,39 @@ if (JSON.stringify(outputs) !== JSON.stringify(expected)) {
   );
 }
 
-// 2b. Each script opens with the licence of every package bundled into it, as one /*! comment,
-// so the served scripts and every page that inlines them carry the notices those licences ask
-// every copy to keep. The text is the package's licence file as written, except that an address
-// is written without its scheme: the bundle names no address a browser could be sent to. The
-// fonts carry their own copyright and licence in their name tables, which the OFL allows.
+// 2b. Each script opens with the licence of every package bundled into it, and the styles with the
+// licence of each font package, whose fonts they name, as one /*! comment, so the served assets
+// and every page that inlines them carry the notices those licences ask every copy to keep. The
+// text is the package's licence file as written, except that an address is written without its
+// scheme: the bundle names no address a browser could be sent to.
 function licenceText(dir) {
   const file = readdirSync(join(ROOT, dir)).find((f) =>
     /^licen[cs]e(\.\w+)?$/i.test(f),
   );
   if (file === undefined) throw new Error(`${dir} has no licence file`);
+  // lines end in a line feed alone: a page's parser turns a carriage return into one, and the
+  // inlined text would no longer match the hash its policy names
   const text = readFileSync(join(ROOT, dir, file), "utf8")
+    .replaceAll(/\r\n?/g, "\n")
     .replaceAll(/[a-z][a-z0-9+.-]*:\/\//gi, "")
     .trim();
-  if (/\*\/|<\/script|<!--/i.test(text)) {
-    throw new Error(`${dir}'s licence cannot go inside a script's comment`);
+  if (/\*\/|<\/script|<\/style|<!--/i.test(text)) {
+    throw new Error(
+      `${dir}'s licence cannot go inside a comment of the bundle`,
+    );
   }
   return text;
 }
 
-for (const out of ["app.js", "hl-worker.js"]) {
-  const inputs = result.metafile.outputs[`dist/viewer/assets/${out}`].inputs;
+for (const out of ["app.js", "hl-worker.js", "app.css"]) {
+  const dirs =
+    out === "app.css"
+      ? FONT_PACKAGES.map((name) => `node_modules/${name}`)
+      : Object.keys(result.metafile.outputs[`dist/viewer/assets/${out}`].inputs)
+          .map(packageDir)
+          .filter((dir) => dir !== null);
   const packages = new Map();
-  for (const input of Object.keys(inputs)) {
-    const dir = packageDir(input);
-    if (dir === null) continue;
+  for (const dir of dirs) {
     const { name, version, license } = packageEntry(dir);
     packages.set(`${name}@${version}`, { name, version, license, dir });
   }

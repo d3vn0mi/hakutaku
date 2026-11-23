@@ -61,8 +61,8 @@ usage: hakutaku view <id> [--open] [--export <file.html> [--with-source]]
   and `view` says so.
 
 The exported page asks nothing of any server, so it opens from a file. Its script opens with the
-licence of every package bundled into it, and its fonts carry theirs in their own metadata, so the
-page holds the notices those licences ask every copy to keep. Its answers stop above 2,000
+licence of every package bundled into it, and its styles with the fonts' licence, so the page holds
+the notices those licences ask every copy to keep. Its answers stop above 2,000
 production files: the page of a larger repository holds none, and its Agent tab says "This export
 holds no agent answer for this node."
 
@@ -491,4 +491,4 @@ The viewer bundles [sigma.js](https://github.com/jacomyal/sigma.js) and
 [IBM Plex](https://github.com/IBM/plex) fonts. [NOTICE](../NOTICE) names each, with its version,
 licence and copyright line, and the tools the viewer is built and tested with. The viewer's
 scripts, served or inlined into an exported page, open with the full licence of each package
-bundled into them; the fonts carry their copyright and licence in their name tables.
+bundled into them, and its styles with the fonts' licence, the SIL Open Font License 1.1.
