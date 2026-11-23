@@ -177,7 +177,7 @@ Copyright: not stated in the licence file
 Use: runs axe-core's accessibility rules on the viewer's pages in the end-to-end tests; development only
 
 ### axe-core
-Version: 4.14.1
+Version: 4.14.0
 Licence: MPL-2.0
 Copyright: not stated in the licence file
 Use: the accessibility rules the viewer's end-to-end tests check its pages against, installed with @axe-core/playwright, which runs them in the browser; development only
