@@ -3,13 +3,15 @@
 //   1. writes the selection's token into the address with history.replaceState, as a whole
 //      address: under a <base> element a relative "#token" would drop the ?s= session;
 //   2. sets #detail[data-node-id], or data-group for a group of another grouping;
-//   3. shows the details header and the breadcrumb;
+//   3. shows the details header, the tabs and the breadcrumb: a node shows the tab asked for, or
+//      else the one in use, or its first when it has not that one;
 //   4. moves focus to the header's heading;
 //   5. says what is selected in the live region;
 //   6. lets the map dim all but the node's neighbours, and flies the camera to it;
 //   7. turns the Tests toggle on when the node is a test file;
 //   8. switches to Files depth when the depth in use hides the file of the map it selects, its
 //      own or its definition's: a depth used for this selection, never remembered (prefs.ts).
+// A selection may name a line for the Source tab to show, as an entry point's manifest row does.
 // back(), which is Esc, climbs one level: a definition to its file, a file to its component (or
 // its group under another grouping), and anything else to no selection, with the whole map in
 // view. openToken() opens the node a link token names, and refuses a token the map does not hold.
@@ -19,10 +21,13 @@ import { F, FILE_KINDS } from "../../query/view/constants.js";
 import { announcement } from "./announce.js";
 import type { DataSource } from "./data-types.js";
 import { fileShownAt } from "./depth.js";
+import { tabsFor } from "./detail/facts.js";
 import { renderHeader } from "./detail/header.js";
+import { createTabs } from "./detail/tabs.js";
 import { showToast } from "./dom.js";
 import type { MapView } from "./map/render.js";
 import type { Model } from "./model.js";
+import type { OutlineCache } from "./outline-cache.js";
 import { renderCrumbs } from "./panels/crumbs.js";
 import {
   addressFor,
@@ -39,10 +44,17 @@ export interface AppContext {
   state: StateStore;
   map: MapView | null; // null: this browser cannot draw the map
   source: DataSource;
+  outlines: OutlineCache; // the page's one outline cache, which the details read
+}
+
+export interface SelectOptions {
+  fly?: boolean; // false: the camera stays where it is
+  tab?: Tab; // the details' tab to show
+  line?: number; // the line the Source tab is to show
 }
 
 export interface Selector {
-  select(sel: Sel, opts?: { fly?: boolean; tab?: Tab }): void;
+  select(sel: Sel, opts?: SelectOptions): void;
   back(): void;
   openToken(token: string): void;
 }
@@ -87,10 +99,21 @@ export function createSelection(ctx: AppContext): Selector {
       to === null ? home() : select(to),
     );
 
-  const select = (sel: Sel, opts: { fly?: boolean; tab?: Tab } = {}): void => {
+  const tabs = createTabs({
+    model,
+    state,
+    outlines: ctx.outlines,
+    select: (sel, opts) => select(sel, opts),
+  });
+
+  const select = (sel: Sel, opts: SelectOptions = {}): void => {
     const now = state.get();
     const patch: Partial<ViewState> = { sel };
     if (opts.tab !== undefined) patch.tab = opts.tab;
+    const own = tabsFor(sel);
+    if (own.length > 0 && !own.includes(patch.tab ?? now.tab)) {
+      patch.tab = own[0];
+    }
     const file =
       sel !== null && (sel.kind === "file" || sel.kind === "definition")
         ? sel.file
@@ -129,7 +152,10 @@ export function createSelection(ctx: AppContext): Selector {
       return;
     }
     const group = state.get().group;
-    detail.replaceChildren(...renderHeader(model, sel, group, copy));
+    detail.replaceChildren(
+      ...renderHeader(model, sel, group, copy),
+      ...tabs.render(sel, opts.line ?? null),
+    );
     detail.hidden = false;
     detail.querySelector("h2")?.focus();
     live.textContent = announcement(model, sel, group);

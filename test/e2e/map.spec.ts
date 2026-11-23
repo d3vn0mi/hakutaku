@@ -3,7 +3,7 @@
 // the zoom controls are named buttons. A browser that cannot draw the map shows the list view in
 // its place, with the same files, and no zoom.
 import { expect, test } from "@playwright/test";
-import type { HistoryData } from "../../src/query/view/index.js";
+import type { HistoryData, MapData } from "../../src/query/view/index.js";
 import {
   E2E,
   expectNoWebGL,
@@ -16,6 +16,9 @@ import {
 } from "./helpers.js";
 
 const fmt = (n: number) => n.toLocaleString("en-US");
+// "1 importer", "2 importers": one in the singular, as the lists count.
+const count = (n: number, one: string) =>
+  `${fmt(n)} ${n === 1 ? one : `${one}s`}`;
 
 // GET history from the server of a link, with the link's session.
 async function fetchHistory(url: string): Promise<HistoryData> {
@@ -91,7 +94,9 @@ test("the stat band, legend and bottom panels read from the map", async ({
     if (m.imports[i + 1] === top) importers.add(m.imports[i]);
   const core = page.locator("#core-list li").first();
   await expect(core).toContainText(m.files[top][F.path]);
-  await expect(core).toContainText(`${importers.size} importers`);
+  await expect(core.locator(".v")).toHaveText(
+    count(importers.size, "importer"),
+  );
 
   const hot = m.files
     .filter((f) => f[F.kind] === 0 && f[F.hotspot] > 0)
@@ -103,8 +108,8 @@ test("the stat band, legend and bottom panels read from the map", async ({
     )[0];
   expect(hot).toBeDefined();
   await expect(page.locator("#hot-list li").first()).toContainText(hot[F.path]);
-  await expect(page.locator("#hot-list li").first()).toContainText(
-    `${hot[F.churn]} changes`,
+  await expect(page.locator("#hot-list li").first().locator(".v")).toHaveText(
+    count(hot[F.churn], "change"),
   );
 
   await expect(page.locator("#timeline rect")).toHaveCount(26);
@@ -124,6 +129,50 @@ test("the stat band, legend and bottom panels read from the map", async ({
   const peak = Math.max(0, ...history.weeks.map((w) => w.commits));
   await expect(page.locator("#timeline .peak")).toHaveText(
     `peak ${peak} commits/week`,
+  );
+});
+
+test("the Core and Hotspots lists count one thing in the singular", async ({
+  page,
+}) => {
+  // the sample's map with one importer left to the file of rank 1, and one change to the top
+  // hotspot: neither moves in its list
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    const map = (await response.json()) as MapData;
+    const top = map.files.findIndex((f) => f[F.rank] === 1);
+    const hot = map.files
+      .map((f, i) => ({ f, i }))
+      .filter(({ f }) => f[F.kind] === 0 && f[F.hotspot] > 0)
+      .sort(
+        (a, b) =>
+          b.f[F.hotspot] - a.f[F.hotspot] ||
+          a.f[F.rank] - b.f[F.rank] ||
+          (a.f[F.path] < b.f[F.path] ? -1 : 1),
+      )[0].i;
+    const imports: number[] = [];
+    let kept = false;
+    for (let i = 0; i < map.imports.length; i += 3) {
+      if (map.imports[i + 1] === top) {
+        if (kept) continue;
+        kept = true;
+      }
+      imports.push(map.imports[i], map.imports[i + 1], map.imports[i + 2]);
+    }
+    const files = map.files.map((f, i) => {
+      if (i !== hot) return f;
+      const changed = [...f] as typeof f;
+      changed[F.churn] = 1;
+      return changed;
+    });
+    await route.fulfill({ response, json: { ...map, imports, files } });
+  });
+  await openViewer(page, E2E.sample);
+  await expect(page.locator("#core-list li").first().locator(".v")).toHaveText(
+    "1 importer",
+  );
+  await expect(page.locator("#hot-list li").first().locator(".v")).toHaveText(
+    "1 change",
   );
 });
 

@@ -10,6 +10,7 @@ import { guardBuild } from "./build-guard.js";
 import { pickSource } from "./data.js";
 import { ApiError, type DataSource } from "./data-types.js";
 import { defaultDepth, nextDepth } from "./depth.js";
+import { outlineFileOf } from "./detail/facts.js";
 import { prefersReducedMotion, showToast } from "./dom.js";
 import { buildFindIndex, type FindIndex, pickOf } from "./find/index.js";
 import { mountFind } from "./find/view.js";
@@ -119,16 +120,10 @@ function compose(map: MapData, fetched: DataSource): void {
       action: { label: "Reload", run: () => location.reload() },
     }),
   );
-  // one outline per file, fetched once and shared; the selection's is never dropped
+  // one outline per file, fetched once and shared by the map and the details; the one the
+  // details show, the selected file's or definition's file's, is never dropped
   const outlines = createOutlineCache(model, source, {
-    keep: (file) => {
-      const sel = state.get().sel;
-      return (
-        sel !== null &&
-        (sel.kind === "file" || sel.kind === "definition") &&
-        sel.file === file
-      );
-    },
+    keep: (file) => outlineFileOf(state.get().sel) === file,
   });
   prefersReducedMotion(); // records html[data-motion] from the start
   mountLegend(byId("legend"), state);
@@ -154,6 +149,7 @@ function compose(map: MapData, fetched: DataSource): void {
     state,
     map: view,
     source,
+    outlines,
   });
   selector = selection;
   // the files, ranked, under the filters: over the map when L opens it, or in the map's place,

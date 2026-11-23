@@ -1,6 +1,8 @@
 // The details header: the kind of node selected and where it belongs, its name, and its stable
-// ID in <code> with buttons that copy the ID or its #link. A group of another grouping has no
-// ID, so no ID line. The heading takes focus when a node is selected.
+// ID in <code> with buttons that copy the ID or its #link; then the sub-line, which gives a
+// file's rank and marks (a definition's file's), or what a component or a library holds. A group
+// of another grouping has no ID, so no ID line, and no sub-line. The heading takes focus when a
+// node is selected.
 import {
   DEF_KINDS,
   ECOSYSTEMS,
@@ -11,6 +13,7 @@ import { h } from "../dom.js";
 import { groupKey, type Model } from "../model.js";
 import { idOf, tokenOf } from "../routing.js";
 import type { Grouping, Sel } from "../state.js";
+import { subLineOf } from "./facts.js";
 
 const SEP = " \u00b7 ";
 const TEST = FILE_KINDS.indexOf("test");
@@ -85,5 +88,7 @@ export function renderHeader(
       ),
     );
   }
+  const sub = subLineOf(model, sel);
+  if (sub !== "") header.push(h("p", { class: "sub", text: sub }));
   return header;
 }

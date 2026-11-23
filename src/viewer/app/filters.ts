@@ -9,6 +9,7 @@
 import { F, FILE_KINDS, FLAG_ENTRY } from "../../query/view/constants.js";
 import type { Model } from "./model.js";
 import type { Filters } from "./state.js";
+import { count } from "./words.js";
 
 const CODE = FILE_KINDS.indexOf("code");
 const TEST = FILE_KINDS.indexOf("test");
@@ -40,15 +41,14 @@ export function listFiles(
 }
 
 // What a row of the list view is called, read aloud as it reads on screen: a production file's
-// path, rank and importers ("src/core/graph.ts, rank 1, 3 importers"), a test file's path and
-// that it is a test, and any other file's path alone.
+// path, rank and importers ("src/core/graph.ts, rank 1, 3 importers", one in the singular), a
+// test file's path and that it is a test, and any other file's path alone.
 export function listLabel(model: Model, file: number): string {
   const x = model.map.files[file];
   const kind = x[F.kind];
   if (kind === TEST || kind === TEST_SUPPORT) return `${x[F.path]}, test`;
   if (kind !== CODE) return x[F.path];
-  const n = model.importers[file].length;
-  return `${x[F.path]}, rank ${x[F.rank]}, ${n} ${n === 1 ? "importer" : "importers"}`;
+  return `${x[F.path]}, rank ${x[F.rank]}, ${count(model.importers[file].length, "importer")}`;
 }
 
 // Each language's code files, by its place in the map's languages: what the language filter

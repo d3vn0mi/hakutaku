@@ -10,7 +10,11 @@ import { ECOSYSTEMS, F } from "../../dist/query/view/constants.js";
 import type { MapData } from "../../src/query/view/index.js";
 
 export { formatId, toToken } from "../../dist/index.js";
-export { F } from "../../dist/query/view/constants.js";
+export {
+  ECOSYSTEMS,
+  ENTRY_KINDS,
+  F,
+} from "../../dist/query/view/constants.js";
 
 const MAIN = fileURLToPath(new URL("../../dist/cli/main.js", import.meta.url));
 
@@ -183,7 +187,8 @@ export function hasWebGL(page: Page): Promise<boolean> {
 
 // The page of a browser that cannot draw the map: it says so, holds no canvas of the map's, and
 // shows the list view in the map's place, open, with the files ranked: before any filter is set,
-// the first is the file of rank 1, and nothing in the list has taken the focus.
+// the first is the file of rank 1, and nothing in the list has taken the focus. A count is
+// written as en-US writes it (1,204 importers).
 export async function expectNoWebGL(page: Page): Promise<void> {
   await expect(page.locator("html")).toHaveAttribute("data-ready", "nomap");
   await expect(page.locator("#map-notice")).toBeVisible();
@@ -192,7 +197,7 @@ export async function expectNoWebGL(page: Page): Promise<void> {
   const list = listView(page);
   await expect(list).toBeVisible();
   await expect(list.getByRole("button").first()).toHaveAccessibleName(
-    /^.+, rank 1, \d+ importers?$/,
+    /^.+, rank 1, (?:1 importer|(?!1 )\d{1,3}(?:,\d{3})* importers)$/,
   );
   expect(
     await page.evaluate(

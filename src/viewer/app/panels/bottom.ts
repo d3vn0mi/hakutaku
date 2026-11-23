@@ -5,6 +5,7 @@
 import { F } from "../../../query/view/constants.js";
 import type { HistoryData } from "../../../query/view/types.js";
 import { BOTTOM_TOP } from "../constants.js";
+import { changesText, importersText } from "../detail/facts.js";
 import { h } from "../dom.js";
 import { byRank, type Model } from "../model.js";
 
@@ -16,7 +17,7 @@ const TALLEST = BASE - 12;
 
 // Core: the top production files by rank, each with its importers. Hotspots: the top files by
 // hotspot, each with its changes in the last 90 days; a file that never changed is none. Each
-// row's name is a button that selects its file.
+// row's name is a button that selects its file; its count says one in the singular.
 export function fillRankLists(
   core: HTMLElement,
   hot: HTMLElement,
@@ -39,7 +40,7 @@ export function fillRankLists(
   core.replaceChildren(
     ...model.production
       .slice(0, BOTTOM_TOP)
-      .map((f) => row(f, `${model.importers[f].length} importers`)),
+      .map((f) => row(f, importersText(model, f))),
   );
   const hotspots = model.production
     .filter((f) => files[f][F.hotspot] > 0)
@@ -48,9 +49,7 @@ export function fillRankLists(
         files[b][F.hotspot] - files[a][F.hotspot] || byRank(model, a, b),
     )
     .slice(0, BOTTOM_TOP);
-  hot.replaceChildren(
-    ...hotspots.map((f) => row(f, `${files[f][F.churn]} changes`)),
-  );
+  hot.replaceChildren(...hotspots.map((f) => row(f, changesText(model, f))));
 }
 
 // The change activity, into the page's own svg element: its namespace is the one every element

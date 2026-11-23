@@ -12,6 +12,7 @@ import { h } from "./dom.js";
 import { listFiles, listLabel } from "./filters.js";
 import type { Model } from "./model.js";
 import type { StateStore } from "./state.js";
+import { count } from "./words.js";
 
 export interface ListView {
   key(): void; // L
@@ -25,7 +26,7 @@ export function mountListView(
   pick: (file: number) => void,
   fixed: boolean,
 ): ListView {
-  const count = h("small");
+  const total = h("small");
   const list = h("ol");
   const none = h("p", { class: "none", text: "No file passes the filters." });
   const more = h("button", {
@@ -34,7 +35,7 @@ export function mountListView(
     on: { click: () => showMore() },
   });
   root.replaceChildren(
-    h("h3", {}, document.createTextNode("Files, ranked "), count),
+    h("h3", {}, document.createTextNode("Files, ranked "), total),
     list,
     none,
     more,
@@ -70,7 +71,7 @@ export function mountListView(
     files = listFiles(model, now.filters, now.show.tests);
     shown = Math.min(LIST_PAGE, files.length);
     list.replaceChildren(...files.slice(0, shown).map(row));
-    count.textContent = `${files.length} ${files.length === 1 ? "file" : "files"}`;
+    total.textContent = count(files.length, "file");
     none.hidden = files.length > 0;
     showMoreButton();
     root.scrollTop = 0;

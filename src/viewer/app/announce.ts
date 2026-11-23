@@ -3,6 +3,7 @@
 import { ECOSYSTEMS, F, FILE_KINDS } from "../../query/view/constants.js";
 import { groupKey, type Model } from "./model.js";
 import type { Grouping, Sel } from "./state.js";
+import { count } from "./words.js";
 
 const TEST = FILE_KINDS.indexOf("test");
 const TEST_SUPPORT = FILE_KINDS.indexOf("test-support");
@@ -13,9 +14,6 @@ const GROUP_WORD: Readonly<Record<Grouping, string>> = {
   folder: "folder",
   language: "language",
 };
-
-// "1 file", "2 files".
-const count = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // A production file says its rank among the code files; a test, or a file off the map, has no
 // rank to say. Nothing selected says nothing.
