@@ -4,7 +4,7 @@ import { renameSync } from "node:fs";
 import { expect, it, vi } from "vitest";
 import { runTool } from "../../../src/tools/index.js";
 import { viewerApi } from "../../../src/viewer/api.js";
-import { SECURITY_HEADERS } from "../../../src/viewer/csp.js";
+import { BUILD_HEADER, SECURITY_HEADERS } from "../../../src/viewer/csp.js";
 import type { ViewerResponse } from "../../../src/viewer/types.js";
 import { tinyHost } from "./tiny-host.js";
 import { tinyStore } from "./tiny-store.js";
@@ -251,6 +251,45 @@ it("a swapped store answers the new build", () => {
   }
 });
 
+it("a store rebuilt at the same commit answers its own build, in every body and header", () => {
+  const path = tinyStore();
+  const host = tinyHost(path);
+  const before = get("map", {}, host);
+  const first = JSON.parse(String(before.body));
+  expect(first.build).toMatch(/^[0-9a-f]{16}$/);
+  expect(before.headers[BUILD_HEADER]).toBe(first.build);
+  // the same commit, mapped again without sources
+  renameSync(tinyStore({ noSource: true }), path);
+  const map = get("map", {}, host);
+  const next = JSON.parse(String(map.body));
+  expect([next.builtCommit, next.sources]).toEqual([first.builtCommit, false]);
+  expect(next.build).toMatch(/^[0-9a-f]{16}$/);
+  expect(next.build).not.toBe(first.build);
+  const data = [
+    map,
+    get("outline", { file: "tiny:src/core/graph.ts" }, host),
+    get("history", {}, host),
+  ];
+  for (const r of data) {
+    expect(r.status).toBe(200);
+    expect(JSON.parse(String(r.body)).build).toBe(next.build);
+  }
+  // every answer after the store is opened names its build, a tool's and a refusal's included
+  const refused = get("source", { file: "tiny:src/cli/main.ts" }, host);
+  expect([refused.status, err(refused).code]).toEqual([404, "no_source"]);
+  const later = [
+    ...data,
+    refused,
+    post("tool/code_explain", '{"target":"tiny:src/core/graph.ts"}', host),
+    post("tool/code_explain", '{"target":"tiny:src/nope.ts"}', host),
+    get("outline", {}, host),
+  ];
+  expect(later.map((r) => r.status)).toEqual([
+    200, 200, 200, 404, 200, 422, 400,
+  ]);
+  for (const r of later) expect(r.headers[BUILD_HEADER]).toBe(next.build);
+});
+
 it("an exception becomes internal, without details", () => {
   const thrown = new Error("/secret/path/store.sqlite is locked");
   const host = {
@@ -304,7 +343,7 @@ it("a tool's internal error is runTool's, and its exception goes to the same log
   }
 });
 
-it("every answer is JSON with exactly the security headers, errors and the internal one included", () => {
+it("every answer is JSON with exactly the security headers, and the build once the store is open, errors and the internal one included", () => {
   const host = tinyHost(tinyStore());
   const broken = {
     ...host,
@@ -329,12 +368,15 @@ it("every answer is JSON with exactly the security headers, errors and the inter
     expect(answers.map((r) => r.status)).toEqual([
       200, 200, 200, 422, 400, 404, 404, 405, 503, 500,
     ]);
-    for (const r of answers) {
-      expect(r.headers).toEqual({
+    // the answers made once the store is open also name its build
+    const build = JSON.parse(String(answers[0].body)).build;
+    answers.forEach((r, i) => {
+      expect(r.headers, String(i)).toEqual({
         ...SECURITY_HEADERS,
         "content-type": "application/json; charset=utf-8",
+        ...(i < 6 ? { [BUILD_HEADER]: build } : {}),
       });
-    }
+    });
   } finally {
     log.mockRestore();
   }

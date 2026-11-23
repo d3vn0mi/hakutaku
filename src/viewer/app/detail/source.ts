@@ -12,6 +12,7 @@
 //   so it never tries to make one, and renders every large file without it.
 // - Opening the tab again stops whatever the last opening was still drawing.
 import { F, FLAG_SOURCE } from "../../../query/view/constants.js";
+import { refusalOfOtherBuild, sameBuild } from "../build-guard.js";
 import { ApiError, type DataSource } from "../data-types.js";
 import { h } from "../dom.js";
 import type { Model } from "../model.js";
@@ -76,7 +77,7 @@ export function createSourceView(model: Model, source: DataSource): SourceView {
         (src) => {
           if (!holder.isConnected) return;
           // nothing from another build, or about another file
-          if (src.builtCommit !== model.map.builtCommit || src.file !== id) {
+          if (!sameBuild(src, model.map) || src.file !== id) {
             holder.replaceChildren(srcnote(FAILED));
             return;
           }
@@ -95,7 +96,11 @@ export function createSourceView(model: Model, source: DataSource): SourceView {
           });
         },
         (e) => {
-          const absent = e instanceof ApiError && e.error.code === "no_source";
+          // a refusal of another build says nothing of this map's file
+          const absent =
+            e instanceof ApiError &&
+            e.error.code === "no_source" &&
+            !refusalOfOtherBuild(e, model.map);
           if (!absent)
             console.error("hakutaku: the source could not be loaded", e);
           if (holder.isConnected) {

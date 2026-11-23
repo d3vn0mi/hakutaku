@@ -4,7 +4,7 @@ import { formatId } from "../../model/ids.js";
 import type { DefKind } from "../../model/types.js";
 import type { Store } from "../../store/index.js";
 import { readSource } from "../source.js";
-import { builtCommitOf, fileFacts, rows } from "./lookup.js";
+import { buildOf, builtCommitOf, fileFacts, rows } from "./lookup.js";
 import type { SourceData } from "./types.js";
 
 // What redaction leaves in a stored line, in the form «redacted:<rule>».
@@ -28,6 +28,7 @@ export function sourceData(store: Store, fileId: number): SourceData | null {
   if (text === null) return null;
   return {
     builtCommit: builtCommitOf(store),
+    build: buildOf(store),
     file: formatId({ kind: "file", repo, path: file.path }),
     lines: file.lines,
     text,

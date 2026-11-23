@@ -6,7 +6,7 @@
 // #fatal saying why.
 import "./styles/app.css";
 import type { MapData } from "../../query/view/types.js";
-import { guardBuild } from "./build-guard.js";
+import { guardBuild, sameBuild } from "./build-guard.js";
 import { pickSource } from "./data.js";
 import { ApiError, type DataSource } from "./data-types.js";
 import { defaultDepth, nextDepth } from "./depth.js";
@@ -115,10 +115,13 @@ function compose(map: MapData, fetched: DataSource): void {
   // and remembered again each time the viewer picks one; a depth a selection switches to is not
   const prefs = rememberPrefs(state, () => localStorage, map.repo);
   // every later answer is checked against the build this map came from
-  const source = guardBuild(fetched, map.builtCommit, (commit) =>
-    showToast(`The map was rebuilt at ${commit}. Reload to see it.`, {
-      action: { label: "Reload", run: () => location.reload() },
-    }),
+  const source = guardBuild(fetched, map, (commit) =>
+    showToast(
+      commit === null
+        ? "The map was rebuilt. Reload to see it."
+        : `The map was rebuilt at ${commit}. Reload to see it.`,
+      { action: { label: "Reload", run: () => location.reload() } },
+    ),
   );
   // one outline per file, fetched once and shared by the map and the details; the one the
   // details show, the selected file's or definition's file's, is never dropped
@@ -213,7 +216,7 @@ function compose(map: MapData, fetched: DataSource): void {
   // the change activity of another build is not drawn under this map: the notice says why
   source.history().then(
     (history) => {
-      if (history.builtCommit !== map.builtCommit) return;
+      if (!sameBuild(history, map)) return;
       drawTimeline(byId<SVGSVGElement>("timeline"), history);
     },
     (e) =>

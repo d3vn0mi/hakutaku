@@ -64,17 +64,17 @@ export function agentPane(
     h("p", { text: LINE }),
     wait,
   );
-  const { builtCommit } = model.map;
+
   source.tool(call.tool, call.args).then(
     (reply) => {
       if (wait.isConnected) {
-        wait.replaceWith(...shown(shownReply(reply, builtCommit)));
+        wait.replaceWith(...shown(shownReply(reply, model.map)));
       }
     },
     (e) => {
       console.error("hakutaku: the agent answer could not be loaded", e);
       if (wait.isConnected) {
-        wait.replaceWith(...shown(shownReply(null, builtCommit)));
+        wait.replaceWith(...shown(shownReply(null, model.map)));
       }
     },
   );

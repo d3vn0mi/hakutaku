@@ -2,7 +2,7 @@
 // fetches nothing. The map holds every outline, so none is asked of it; a source is the one the
 // page holds for that file; a tool's reply is the answer stored for exactly the call the Agent tab
 // makes, with status 200, the tool's error with 422, or status 0 when the page holds no answer for
-// that call. No DOM here: Node tests import it.
+// that call; a stored answer is of the map's build. No DOM here: Node tests import it.
 import type { ToolName } from "../../tools/types.js";
 import { type AgentCall, callText } from "../call-text.js";
 import type { StaticBundle, StoredAnswer } from "../static-bundle.js";
@@ -91,12 +91,13 @@ export function embeddedSource(bundle: StaticBundle): DataSource {
     history: () => Promise.resolve(bundle.history),
     tool: (name, args) => {
       const stored = storedFor(bundle, name, args);
+      const { build } = bundle.map;
       const reply: ToolReply =
         stored === null
-          ? { ok: false, status: 0, text: "" }
+          ? { ok: false, status: 0, text: "", build: null }
           : stored.ok
-            ? { ok: true, status: 200, text: stored.text }
-            : { ok: false, status: 422, text: stored.text };
+            ? { ok: true, status: 200, text: stored.text, build }
+            : { ok: false, status: 422, text: stored.text, build };
       return Promise.resolve(reply);
     },
   };

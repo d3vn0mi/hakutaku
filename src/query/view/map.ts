@@ -23,7 +23,7 @@ import {
   IMPORT_KINDS,
   INLINE_OUTLINES_UP_TO,
 } from "./constants.js";
-import { builtCommitOf, rows } from "./lookup.js";
+import { buildOf, builtCommitOf, rows } from "./lookup.js";
 import type { MapData, MapFile } from "./types.js";
 
 const DAY_SECONDS = 86_400;
@@ -240,6 +240,7 @@ export function mapData(
     format: 1,
     repo: meta.repoId,
     builtCommit: builtCommitOf(store),
+    build: buildOf(store),
     stale: opts.stale,
     detail: meta.detail,
     sources: !meta.noSource && opts.snippets,

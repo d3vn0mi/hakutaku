@@ -36,6 +36,9 @@ export interface MapData {
   format: 1;
   repo: RepoId;
   builtCommit: string; // the first 12 hex characters of the built commit
+  // the first 16 hex characters of the store's content hash: it changes with every rebuild that
+  // changes what the store holds, at the same commit too
+  build: string;
   stale: Stale;
   detail: Detail;
   sources: boolean; // whether the page may ask for source: the store holds it and snippets are on
@@ -95,6 +98,7 @@ export interface MapData {
 // One file's definitions, module scope left out, and the files that change together with it.
 export interface OutlineData {
   builtCommit: string;
+  build: string; // the store's build, as MapData's
   file: Id;
   defs: Array<{
     id: Id;
@@ -113,6 +117,7 @@ export interface OutlineData {
 // One file's stored text, redacted, with its definitions and the call sites in it.
 export interface SourceData {
   builtCommit: string;
+  build: string; // the store's build, as MapData's
   file: Id;
   lines: number;
   text: string;
@@ -130,5 +135,6 @@ export interface SourceData {
 // The commits of each of the 26 weeks before the built commit, oldest first.
 export interface HistoryData {
   builtCommit: string;
+  build: string; // the store's build, as MapData's
   weeks: Array<{ start: number; commits: number }>;
 }

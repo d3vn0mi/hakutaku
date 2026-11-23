@@ -14,7 +14,7 @@ export {
   INLINE_OUTLINES_UP_TO,
 } from "./constants.js";
 export { historyData } from "./history.js";
-export { fileIdOf } from "./lookup.js";
+export { buildOf, fileIdOf } from "./lookup.js";
 export { mapData } from "./map.js";
 export { outlineData } from "./outline.js";
 export { sourceData } from "./source.js";

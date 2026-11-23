@@ -2,9 +2,12 @@
 // outline, a file's source and the history, and runs the read-only tools for the page's Agent tab.
 // It checks no session and no Host header: the host authenticates the caller before it calls.
 // It is synchronous, as runTool and node:sqlite are, and never throws: an exception becomes the
-// internal error, and its details go only to the host's log.
+// internal error, and its details go only to the host's log. Every answer it makes once the repo's
+// store is open names the store's build in BUILD_HEADER, so the page can tell a rebuild at the
+// same commit from its own build, by a tool's reply and a refusal too.
 import { parseId, type RepoId } from "../model/index.js";
 import {
+  buildOf,
   fileIdOf,
   historyData,
   mapData,
@@ -22,7 +25,7 @@ import {
   type ToolError,
   toolError,
 } from "../tools/index.js";
-import { SECURITY_HEADERS } from "./csp.js";
+import { BUILD_HEADER, SECURITY_HEADERS } from "./csp.js";
 import type { ViewerRequest, ViewerResponse } from "./types.js";
 
 type Route = "map" | "outline" | "source" | "history" | "tool";
@@ -95,6 +98,23 @@ function answer(
         );
   }
 
+  return named(served(host, ctx, repo, req, route, store), buildOf(store));
+}
+
+// An answer made once the store is open, which names the store's build in BUILD_HEADER.
+function named(res: ViewerResponse, build: string): ViewerResponse {
+  return { ...res, headers: { ...res.headers, [BUILD_HEADER]: build } };
+}
+
+// The route's own answer, over the repo's open store.
+function served(
+  host: Host,
+  ctx: CallContext,
+  repo: RepoId,
+  req: ViewerRequest,
+  route: Route,
+  store: Store,
+): ViewerResponse {
   switch (route) {
     case "map":
       return data(

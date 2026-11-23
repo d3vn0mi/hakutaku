@@ -20,8 +20,10 @@ The viewer is a window onto the answers the agents get, not a second model of th
 - **The same answers.** Its Agent tab shows, for the selected node, the exact call an agent would
   make and the tool's own answer to it, as the tool's handler wrote it.
 - **One build.** A page draws the build it loaded. When the repository is rebuilt while the page is
-  open, the page's next call to its server finds the new build, and the page says "The map was
-  rebuilt at `<commit>`. Reload to see it." It never mixes two builds.
+  open, at a new commit or at the same one (another detail, without sources, another profile), the
+  page's next call to its server finds the new build, draws nothing of it, and says "The map was
+  rebuilt at `<commit>`. Reload to see it.", or "The map was rebuilt. Reload to see it." when the
+  answer that found it names no commit, as a refusal does. It never mixes two builds.
 - **Nothing from outside.** Its fonts and libraries are bundled into it. It asks nothing of any
   server but its own, and an exported page asks nothing at all.
 
@@ -304,7 +306,11 @@ The page also carries `content-type: text/html; charset=utf-8` and `content-secu
 `VIEWER_CSP` (see Security); each asset, its own type and `content-security-policy: default-src 'none'`;
 and every API answer and every error, `content-type: application/json; charset=utf-8`. An error's
 body is an object `{ "error": { "code": ..., "message": ... } }`, as the tools write their errors. No
-answer carries an access-control header.
+answer carries an access-control header. Every answer `viewerApi` makes once the repo's store is open,
+a tool's and a refusal's included, also carries `x-hakutaku-build`: the first 16 hex characters of
+the store's content hash, which the map, outline, source and history bodies also carry as `build`.
+It changes with every rebuild that changes what the store holds, at the same commit too, so the
+page can tell an answer of another build from its own.
 
 **Statuses** of `viewerApi` and `viewerStatic`:
 

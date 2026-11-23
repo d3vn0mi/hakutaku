@@ -237,6 +237,7 @@ describe("a bounded cache", () => {
         calls.push(id);
         return {
           builtCommit: "0123456789ab",
+          build: "0123456789abcdef",
           file: id,
           defs: [],
           cochange: [],

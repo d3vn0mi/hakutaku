@@ -3,7 +3,7 @@
 import { formatId } from "../../model/ids.js";
 import type { DefKind } from "../../model/types.js";
 import type { Store } from "../../store/index.js";
-import { builtCommitOf, fileFacts, rows } from "./lookup.js";
+import { buildOf, builtCommitOf, fileFacts, rows } from "./lookup.js";
 import type { OutlineData } from "./types.js";
 
 const DEFS_SQL = `SELECT d.qualname, d.ordinal, d.kind, d.start_line, d.end_line, d.exported,
@@ -19,6 +19,7 @@ export function outlineData(store: Store, fileId: number): OutlineData {
   const { path } = fileFacts(store, fileId);
   return {
     builtCommit: builtCommitOf(store),
+    build: buildOf(store),
     file: formatId({ kind: "file", repo, path }),
     defs: rows<{
       qualname: string;

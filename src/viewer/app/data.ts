@@ -10,6 +10,7 @@ import type {
 } from "../../query/view/types.js";
 import type { ToolError } from "../../tools/errors.js";
 import type { ToolName } from "../../tools/types.js";
+import { BUILD_HEADER } from "../csp.js";
 import { ApiError, type DataSource, type ToolReply } from "./data-types.js";
 import { embeddedSource, parseEmbedded } from "./embedded.js";
 
@@ -42,7 +43,8 @@ function errorIn(text: string): ToolError | null {
 
 // The API under apiBase, which ends in "/". Every call carries x-hakutaku-session when session
 // is given. A data call that brings no data rejects with an ApiError: the API's own error, or
-// for an answer without one (a host's or a proxy's), code internal with the HTTP status.
+// for an answer without one (a host's or a proxy's), code internal with the HTTP status. Each
+// refusal and each tool's reply carries the build its answer names in BUILD_HEADER.
 export function httpSource(apiBase: URL, session: string | null): DataSource {
   const headers: Record<string, string> =
     session === null ? {} : { [SESSION_HEADER]: session };
@@ -71,6 +73,7 @@ export function httpSource(apiBase: URL, session: string | null): DataSource {
       throw new ApiError(
         res.status,
         errorIn(text) ?? { code: "internal", message: `HTTP ${res.status}` },
+        res.headers.get(BUILD_HEADER),
       );
     }
     try {
@@ -98,7 +101,12 @@ export function httpSource(apiBase: URL, session: string | null): DataSource {
         headers: { ...headers, "content-type": "application/json" },
         body: JSON.stringify(args),
       });
-      return { ok: res.ok, status: res.status, text: await res.text() };
+      return {
+        ok: res.ok,
+        status: res.status,
+        text: await res.text(),
+        build: res.headers.get(BUILD_HEADER),
+      };
     },
   };
 }

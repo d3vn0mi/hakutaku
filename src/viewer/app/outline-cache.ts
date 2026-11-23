@@ -17,6 +17,7 @@ import { formatId, parseId } from "../../model/ids.js";
 import type { Id } from "../../model/types.js";
 import { F } from "../../query/view/constants.js";
 import type { OutlineData } from "../../query/view/types.js";
+import { sameBuild } from "./build-guard.js";
 import { OUTLINE_CACHE_LIMIT } from "./constants.js";
 import type { DataSource } from "./data-types.js";
 import type { Model } from "./model.js";
@@ -71,9 +72,9 @@ export function createOutlineCache(
 
   // A file's outline from the API's answer, which must be of this build and of this file.
   const fromAnswer = (file: number, id: Id, answer: OutlineData): Outline => {
-    if (answer.builtCommit !== map.builtCommit) {
+    if (!sameBuild(answer, map)) {
       throw new Error(
-        `the outline of ${id} comes from another build, ${answer.builtCommit}, not ${map.builtCommit}`,
+        `the outline of ${id} comes from another build, ${answer.builtCommit} ${answer.build}, not ${map.builtCommit} ${map.build}`,
       );
     }
     if (answer.file !== id) {

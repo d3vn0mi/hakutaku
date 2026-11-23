@@ -36,6 +36,13 @@ const row = <R>(
 export const builtCommitOf = (store: Store): string =>
   store.meta.commit.slice(0, 12);
 
+// The store's build: the first 16 hex characters of its content hash, which covers everything the
+// store holds, its meta included. It changes with every rebuild that changes the store's content,
+// at the same commit too (another detail, without sources, another profile), and two builds of
+// the same content share it.
+export const buildOf = (store: Store): string =>
+  store.run.contentHash.slice(0, 16);
+
 export interface FileFacts {
   path: string;
   lines: number;

@@ -210,6 +210,46 @@ test("the Agent tab asks each time it opens, and draws nothing of another build'
   expect(asked).toEqual(["code_explain", "code_explain", "code_explain"]);
 });
 
+test("a reply from another build of the same commit, an answer or an error, draws only the note", async ({
+  page,
+  context,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  const OTHER =
+    m.build === "fedcba9876543210" ? "0123456789abcdef" : "fedcba9876543210";
+  // a rebuild at the map's commit answers with its own build in the header: an answer whose own
+  // builtCommit is the map's, then the error a component the new profile does not make gets
+  for (const target of [
+    `${m.repo}:${KEPLER}`,
+    `${m.repo}:web/src/orbits/nowhere.ts`,
+  ]) {
+    const page2 = target.endsWith(KEPLER) ? page : await context.newPage();
+    await page2.route(`**${TOOL_PATH}code_explain`, async (route) => {
+      const response = await route.fetch({
+        postData: JSON.stringify({ repo: m.repo, target }),
+      });
+      expect(response.headers()["x-hakutaku-build"]).toBe(m.build);
+      await route.fulfill({
+        response,
+        headers: { ...response.headers(), "x-hakutaku-build": OTHER },
+      });
+    });
+    await openViewer(page2, E2E.sample, { token: AT_KEPLER });
+    await tab(page2, "Agent").click();
+    await expect(page2.locator("#toast")).toContainText(
+      target.endsWith(KEPLER)
+        ? `The map was rebuilt at ${m.builtCommit}. Reload to see it.`
+        : "The map was rebuilt. Reload to see it.",
+    );
+    await expect(agent(page2).locator(".note")).toHaveText(FAILED);
+    await expect(agent(page2).locator("pre")).toHaveCount(0);
+    await expect(agent(page2).locator(".call")).toHaveText(
+      `code_explain(${JSON.stringify({ repo: "observatory", target: `observatory:${KEPLER}` })})`,
+    );
+    if (page2 !== page) await page2.close();
+  }
+});
+
 test("the answer is shown as it came, never written again", async ({
   page,
 }) => {

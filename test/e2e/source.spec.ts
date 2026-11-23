@@ -763,6 +763,50 @@ test("the Source tab asks for the source each time it opens, and draws nothing f
   expect(asked).toEqual([KEPLER, KEPLER, KEPLER]);
 });
 
+test("a source or a refusal from another build of the same commit draws only the note, and the page says the map was rebuilt", async ({
+  page,
+  context,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  expect(m.build).toMatch(/^[0-9a-f]{16}$/);
+  const OTHER =
+    m.build === "fedcba9876543210" ? "0123456789abcdef" : "fedcba9876543210";
+  // the source of a rebuild at the map's own commit: its body names the other build
+  await page.route(/\/api\/source\?/, async (route) => {
+    const response = await route.fetch();
+    expect(response.headers()["x-hakutaku-build"]).toBe(m.build);
+    const src = (await response.json()) as SourceData;
+    await route.fulfill({ response, json: { ...src, build: OTHER } });
+  });
+  await openViewer(page, E2E.sample, { token: AT_KEPLER });
+  await tab(page, "Source").click();
+  await expect(page.locator("#toast")).toContainText(
+    `The map was rebuilt at ${m.builtCommit}. Reload to see it.`,
+  );
+  await expect(note(page)).toHaveText("The source could not be loaded.");
+  await expect(page.locator(".code")).toHaveCount(0);
+  // a rebuild without sources refuses the source; its header names the other build, so the tab
+  // does not say this map's file has none
+  const second = await context.newPage();
+  await second.route(/\/api\/source\?/, (route) =>
+    route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      headers: { "x-hakutaku-build": OTHER },
+      body: JSON.stringify({
+        error: { code: "no_source", message: "sources are not stored" },
+      }),
+    }),
+  );
+  await openViewer(second, E2E.sample, { token: AT_KEPLER });
+  await tab(second, "Source").click();
+  await expect(second.locator("#toast")).toContainText(
+    "The map was rebuilt. Reload to see it.",
+  );
+  await expect(note(second)).toHaveText("The source could not be loaded.");
+  await second.close();
+});
+
 test("a source that cannot be had, or that names another file, says so", async ({
   page,
 }) => {

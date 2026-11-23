@@ -124,6 +124,7 @@ export function syntheticMap(
     format: 1,
     repo: "synthetic",
     builtCommit: "0123456789ab",
+    build: "0123456789abcdef",
     stale: false,
     detail: "quick",
     sources: false,

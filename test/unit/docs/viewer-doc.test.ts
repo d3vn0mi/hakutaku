@@ -14,7 +14,11 @@ import {
 import type { Host } from "../../../src/tools/index.js";
 import { viewerApi } from "../../../src/viewer/api.js";
 import { LEGEND } from "../../../src/viewer/app/map/colors.js";
-import { SECURITY_HEADERS, VIEWER_CSP } from "../../../src/viewer/csp.js";
+import {
+  BUILD_HEADER,
+  SECURITY_HEADERS,
+  VIEWER_CSP,
+} from "../../../src/viewer/csp.js";
 import { inlineViewerHtml } from "../../../src/viewer/inline.js";
 import { MAX_BODY_BYTES } from "../../../src/viewer/server.js";
 import { viewerStatic } from "../../../src/viewer/static.js";
@@ -153,6 +157,9 @@ it("lists the headers every answer carries, and each policy as the viewer sends 
     `\`content-security-policy: ${asset.headers["content-security-policy"]}\``,
   );
   expect(prose).toContain(`\`content-type: ${api.headers["content-type"]}\``);
+  // and the build an API answer comes from, once the repo's store is open
+  expect(api.headers[BUILD_HEADER]).toMatch(/^[0-9a-f]{16}$/);
+  expect(prose).toContain(`\`${BUILD_HEADER}\``);
   // the policies in full: the served page's, and the export's with its two hashes named
   const security = sectionOf("Security");
   expect(security).toContain(`\`\`\`text\n${VIEWER_CSP}\n\`\`\``);

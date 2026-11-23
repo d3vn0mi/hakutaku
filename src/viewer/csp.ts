@@ -1,4 +1,5 @@
-// The served page's Content-Security-Policy, and the headers every viewer response carries.
+// The served page's Content-Security-Policy, the headers every viewer response carries, and the one
+// that names the build an API answer comes from.
 
 // The page loads its script, styles, fonts and data from its own server and nothing else, so only
 // 'self' is allowed, with data: images besides; frame-ancestors 'none' keeps any other page from
@@ -17,3 +18,7 @@ export const SECURITY_HEADERS: Readonly<Record<string, string>> = Object.freeze(
     "cross-origin-resource-policy": "same-origin",
   },
 );
+
+// The API answer's build, as MapData's build: on every answer made once the repo's store is open,
+// a tool's and a refusal's included, whose bodies cannot carry it.
+export const BUILD_HEADER = "x-hakutaku-build";

@@ -5,10 +5,11 @@
 //   for a path holding "#", ":" or "%". A group asks nothing.
 // - The call is written by callText, which an exported page shares.
 // - A reply is shown as it came. An error the tool answered is shown under a note that says so; a
-//   reply that holds no answer for the node (status 0, as an exported page may give), an answer
-//   from another build, and a call that brought no reply show only a note.
+//   reply that holds no answer for the node (status 0, as an exported page may give), a reply
+//   from another build, an answer or an error alike, and a call that brought no reply show only a
+//   note.
 import type { AgentCall } from "../../call-text.js";
-import { toolCommit } from "../build-guard.js";
+import { type Build, replyOfOtherBuild } from "../build-guard.js";
 import type { ToolReply } from "../data-types.js";
 import type { Model } from "../model.js";
 import { idOf } from "../routing.js";
@@ -45,17 +46,11 @@ export interface ShownReply {
   text: string | null;
 }
 
-export function shownReply(
-  reply: ToolReply | null,
-  builtCommit: string,
-): ShownReply {
+export function shownReply(reply: ToolReply | null, map: Build): ShownReply {
   if (reply === null) return { note: FAILED, text: null };
   if (reply.status === 0) return { note: NO_ANSWER, text: null };
+  // a reply that names another build than the map's draws nothing of it
+  if (replyOfOtherBuild(reply, map)) return { note: FAILED, text: null };
   if (!reply.ok) return { note: TOOL_ERROR, text: reply.text };
-  // an answer that names another build than the map's draws nothing of it
-  const commit = toolCommit(reply);
-  if (typeof commit === "string" && commit !== builtCommit) {
-    return { note: FAILED, text: null };
-  }
   return { note: null, text: reply.text };
 }

@@ -97,13 +97,15 @@ it("names a path that holds # : % or a quote by its full ID, and the root compon
 });
 
 it("shows an answer as it came, and nothing of an answer from another build", () => {
-  const built = m.map.builtCommit;
+  const built = m.map;
   const text = JSON.stringify(
     { id: "tiny:src/core/graph.ts", kind: "file", builtCommit: built },
     null,
     2,
   );
-  expect(shownReply({ ok: true, status: 200, text }, built)).toEqual({
+  expect(
+    shownReply({ ok: true, status: 200, text, build: null }, built),
+  ).toEqual({
     note: null,
     text,
   });
@@ -112,7 +114,9 @@ it("shows an answer as it came, and nothing of an answer from another build", ()
     null,
     2,
   );
-  expect(shownReply({ ok: true, status: 200, text: other }, built)).toEqual({
+  expect(
+    shownReply({ ok: true, status: 200, text: other, build: null }, built),
+  ).toEqual({
     note: "The answer could not be loaded.",
     text: null,
   });
@@ -126,14 +130,47 @@ it("shows an answer as it came, and nothing of an answer from another build", ()
     '{"answer":{"builtCommit":"0123456789ab"}}',
   ]) {
     expect(
-      shownReply({ ok: true, status: 200, text: plain }, built),
+      shownReply({ ok: true, status: 200, text: plain, build: null }, built),
       plain,
     ).toEqual({ note: null, text: plain });
   }
 });
 
+it("shows nothing of a reply whose build is another of the map's commit, an answer or an error", () => {
+  const built = m.map;
+  const text = JSON.stringify(
+    { id: "tiny:src/core/graph.ts", builtCommit: built.builtCommit },
+    null,
+    2,
+  );
+  const error = JSON.stringify(
+    { error: { code: "not_found", message: "tiny:web/ is not in the store" } },
+    null,
+    2,
+  );
+  for (const reply of [
+    { ok: true, status: 200, text, build: "fedcba9876543210" },
+    { ok: false, status: 422, text: error, build: "fedcba9876543210" },
+  ]) {
+    expect(shownReply(reply, built), String(reply.status)).toEqual({
+      note: "The answer could not be loaded.",
+      text: null,
+    });
+  }
+  // the map's own build is shown as it came
+  expect(
+    shownReply({ ok: true, status: 200, text, build: built.build }, built),
+  ).toEqual({ note: null, text });
+  expect(
+    shownReply(
+      { ok: false, status: 422, text: error, build: built.build },
+      built,
+    ),
+  ).toEqual({ note: "The tool answered an error:", text: error });
+});
+
 it("says the tool answered an error above its text, and says when there is no answer", () => {
-  const built = m.map.builtCommit;
+  const built = m.map;
   const error = JSON.stringify(
     {
       error: { code: "not_found", message: "src/nope.ts is not in the store" },
@@ -142,13 +179,17 @@ it("says the tool answered an error above its text, and says when there is no an
     2,
   );
   for (const status of [422, 400, 404, 500, 503]) {
-    expect(shownReply({ ok: false, status, text: error }, built)).toEqual({
+    expect(
+      shownReply({ ok: false, status, text: error, build: null }, built),
+    ).toEqual({
       note: "The tool answered an error:",
       text: error,
     });
   }
   // status 0: the page holds no answer for this node, as an exported page may not
-  expect(shownReply({ ok: false, status: 0, text: "" }, built)).toEqual({
+  expect(
+    shownReply({ ok: false, status: 0, text: "", build: null }, built),
+  ).toEqual({
     note: "This export holds no agent answer for this node.",
     text: null,
   });

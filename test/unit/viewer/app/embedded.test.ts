@@ -23,7 +23,7 @@ import {
 import { tinyHost } from "../tiny-host.js";
 import { tinyStore } from "../tiny-store.js";
 
-const NONE = { ok: false, status: 0, text: "" };
+const NONE = { ok: false, status: 0, text: "", build: null };
 const GRAPH = "tiny:src/core/graph.ts";
 
 const bundleOf = (
@@ -61,6 +61,7 @@ it("answers each node's Agent call, as the tab asks it, with the answer stored f
       ok: stored?.ok,
       status: stored?.ok ? 200 : 422,
       text: stored?.text,
+      build: bundle.map.build,
     });
     asked.push(id);
   }
@@ -82,7 +83,12 @@ it("gives a tool's error as a 422 with its text", async () => {
       repo: "tiny",
       target: GRAPH,
     }),
-  ).toEqual({ ok: false, status: 422, text: stored?.text });
+  ).toEqual({
+    ok: false,
+    status: 422,
+    text: stored?.text,
+    build: bundle.map.build,
+  });
 });
 
 it("holds no answer for a call it did not store, which is status 0", async () => {
