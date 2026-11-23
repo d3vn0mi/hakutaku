@@ -14,6 +14,7 @@ import {
 } from "../../../src/model/index.js";
 import type { Host } from "../../../src/tools/index.js";
 import { viewerApi } from "../../../src/viewer/api.js";
+import { ROWS_SHOWN } from "../../../src/viewer/app/constants.js";
 import { LEGEND } from "../../../src/viewer/app/map/colors.js";
 import {
   BUILD_HEADER,
@@ -409,6 +410,21 @@ it("lists every key the page binds, with what it does", () => {
     covered.push(...values);
   }
   expect(covered.sort()).toEqual([...bound.keys()].sort());
+});
+
+it("says how many rows each list of the details shows, with the words that end a longer one", () => {
+  const reading = flat(sectionOf("Reading the map"));
+  expect(reading).toContain(
+    `A list of rows on the Overview shows its first ${ROWS_SHOWN}, then says how many more there are: "and \`<n>\` more".`,
+  );
+  // a component's core files are as many as that, so no more follow them
+  expect(reading).toContain(`its core files, the top ${ROWS_SHOWN} by rank,`);
+  // Inside lists every definition
+  expect(reading).toContain("the list of its definitions, all of them,");
+  // the words, as the details write them
+  expect(source("src/viewer/app/detail/overview.ts")).toMatch(
+    /`and \$\{[^`}]+\} more`/,
+  );
 });
 
 it("quotes each legend word for word, and the usage line as view prints it", () => {

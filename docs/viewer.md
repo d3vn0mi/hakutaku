@@ -141,13 +141,14 @@ tabs:
   libraries and the entry points that launch it. Every row selects its node. Above 2,000 production
   files, the files that change together wait behind a button that fetches them, unless History or
   Inside has fetched them already, or does while the Overview is shown: then they are listed at
-  once. A component lists its files, one dot each, its core files and its entry points; a library,
-  the files that import it.
-- **Inside:** one dot per definition, in file order, and the list of definitions with their glyph,
-  name, users (or, with none, "exported, unused" or "internal") and line. A dot is ivory when other
-  files use the definition, dimmed when it is exported but unused, and faint when it is internal; it
-  is round for a method; an orange ring says that no test mentions it. Each dot's title says the
-  same in words, as its row does. A dot opens the source at its line.
+  once. A component lists its files, one dot each, its core files, the top 10 by rank, and its
+  entry points; a library, the files that import it. A list of rows on the Overview shows its
+  first 10, then says how many more there are: "and `<n>` more".
+- **Inside:** one dot per definition, in file order, and the list of its definitions, all of them,
+  with their glyph, name, users (or, with none, "exported, unused" or "internal") and line. A dot
+  is ivory when other files use the definition, dimmed when it is exported but unused, and faint
+  when it is internal; it is round for a method; an orange ring says that no test mentions it.
+  Each dot's title says the same in words, as its row does. A dot opens the source at its line.
 - **Source:** the file's source, from the store's redacted copy, highlighted for TypeScript,
   JavaScript, Python, shell, JSON, YAML, TOML, INI and Markdown, and shown as plain text in any other
   language. The gutter marks each definition's first line; with a definition selected, its line is
