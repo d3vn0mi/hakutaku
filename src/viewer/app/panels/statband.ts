@@ -5,13 +5,14 @@
 //   button is pressed while they are marked;
 // - components: Components depth;
 // - cycles: the Risk lens, with the first file of the first cycle selected;
-// - tests: shows the tests on the map.
+// - tests: shows the tests on the map, or, at a depth that draws none while no list is open, turns
+//   them on for the list view and says why the map shows none.
 // A depth is picked through pick, which remembers it, as the depth control picks one.
 // Under it, at Core depth, the coverage line says what share of the production files carries at
 // least half of what the code depends on.
 import type { MapData } from "../../../query/view/types.js";
-import { coverageLine } from "../depth.js";
-import { h } from "../dom.js";
+import { coverageLine, testsShownNowhere, WHY_NO_TESTS } from "../depth.js";
+import { h, showToast } from "../dom.js";
 import type { Model } from "../model.js";
 import type { Depth, Sel, StateStore } from "../state.js";
 import { noun, whole } from "../words.js";
@@ -54,7 +55,10 @@ export function mountStatband(
       const first = model.map.cycles[0]?.[0];
       if (first !== undefined) select({ kind: "file", file: first });
     },
-    tests: () => state.set({ show: { ...state.get().show, tests: true } }),
+    tests: () => {
+      state.set({ show: { ...state.get().show, tests: true } });
+      if (testsShownNowhere(state.get())) showToast(WHY_NO_TESTS);
+    },
   };
   const buttons = new Map(
     stats.map(([stat, n, label]) => [

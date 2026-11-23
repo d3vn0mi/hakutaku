@@ -82,7 +82,8 @@ Each count is a button:
 - *entry points* marks the entry points in orange, and a second press unmarks them;
 - *components* switches to Components depth;
 - *cycles* switches to the Risk lens and selects the first file of the first cycle;
-- *tests* shows the tests.
+- *tests* shows the tests; at Core and Components depth, where the map draws none, it turns them on
+  for the list view and says that the map shows tests at Files depth only.
 
 **The galaxy.** Production files sit on a disc. The more of the code depends on a file, the closer
 it sits to the centre: its distance follows its PageRank rank. Its angle falls within its group's

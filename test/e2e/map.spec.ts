@@ -326,6 +326,69 @@ test("the show toggles carry their counts, and the tests stat turns Tests on", a
   );
 });
 
+test("the tests stat says why no test shows where the map draws none", async ({
+  page,
+  browserName,
+}) => {
+  const m = await fetchMap(E2E.sample);
+  expect(m.counts.tests).toBeGreaterThan(0);
+  const toast = page.locator("#toast");
+  const tests = page.getByRole("checkbox", { name: /^Tests/ });
+  const stat = page.locator('#statband [data-stat="tests"]');
+  const depth = (name: string) =>
+    page
+      .locator("#depth")
+      .getByRole("button", { name: new RegExp(`^${name}`) });
+  const map = page.locator("#map");
+  await openViewer(page, E2E.sample);
+  const webgl = await hasWebGL(page);
+  if (browserName === "chromium") expect(webgl).toBe(true);
+  expect(await mapDrawn(page)).toBe(webgl);
+  if (!webgl) {
+    // the list in the map's place lists tests at every depth: at Core the stat shows them there,
+    // and has nothing to explain
+    await expectNoWebGL(page);
+    await depth("Core").click();
+    await expect(depth("Core")).toHaveAttribute("aria-pressed", "true");
+    await stat.click();
+    await expect(tests).toBeChecked();
+    await expect(listView(page).getByRole("button")).toHaveCount(
+      m.counts.productionFiles + m.counts.tests,
+    );
+    await expect(toast).toBeHidden();
+    return;
+  }
+  // at Components and Core depth the map draws no test: the stat turns Tests on, which the list
+  // view would show, and says why the map shows none; each depth on a fresh page, so that the
+  // toast is the one this click showed
+  for (const name of ["Components", "Core"]) {
+    await openViewer(page, E2E.sample);
+    await depth(name).click();
+    await expect(depth(name)).toHaveAttribute("aria-pressed", "true");
+    const nodes = await map.getAttribute("data-nodes");
+    await expect(toast).toBeHidden();
+    await stat.click();
+    await expect(tests).toBeChecked();
+    await expect(toast).toBeVisible();
+    await expect(toast).toHaveText("The map shows tests at Files depth only.");
+    await expect(map).toHaveAttribute("data-nodes", nodes ?? "");
+  }
+  // at Files depth the stat draws the tests, and has nothing to say
+  await openViewer(page, E2E.sample);
+  await depth("Files").click();
+  await stat.click();
+  await expect(map).toHaveAttribute(
+    "data-nodes",
+    String(
+      m.counts.productionFiles +
+        m.counts.tests +
+        m.components.filter((c) => c[1] > 0).length +
+        m.counts.libraries,
+    ),
+  );
+  await expect(toast).toBeHidden();
+});
+
 test("the zoom controls are named buttons, shown only with the map", async ({
   page,
   browserName,

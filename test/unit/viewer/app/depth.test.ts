@@ -13,6 +13,8 @@ import {
   defaultDepth,
   fileShownAt,
   nextDepth,
+  testsShownNowhere,
+  WHY_NO_TESTS,
 } from "../../../../src/viewer/app/depth.js";
 import { buildModel } from "../../../../src/viewer/app/model.js";
 import type { Depth } from "../../../../src/viewer/app/state.js";
@@ -131,5 +133,16 @@ describe("fileShownAt", () => {
     const m = tinyModel();
     const shown = (d: Depth) => upTo(5).filter((f) => fileShownAt(m, d, f));
     expect(DEPTHS.map(shown)).toEqual([[], [1, 3], [1, 2, 3, 4]]);
+  });
+});
+
+describe("testsShownNowhere", () => {
+  it("is true at Core and Components depth with no list open, where nothing draws or lists tests", () => {
+    const at = (depth: Depth, listOpen: boolean) =>
+      testsShownNowhere({ depth, listOpen });
+    expect(DEPTHS.map((d) => at(d, false))).toEqual([true, true, false]);
+    // the list view, over the map or in its place, lists tests at every depth
+    expect(DEPTHS.map((d) => at(d, true))).toEqual([false, false, false]);
+    expect(WHY_NO_TESTS).toBe("The map shows tests at Files depth only.");
   });
 });

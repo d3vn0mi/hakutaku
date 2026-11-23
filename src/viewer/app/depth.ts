@@ -64,6 +64,18 @@ export function coverageLine(map: MapData): string {
   return `${whole(files)} of ${whole(ofFiles)} production files (${Math.round((100 * files) / ofFiles)}%) carry at least half of what the code depends on`;
 }
 
+// Whether no test shows in a view, whatever the Tests toggle says: the map draws tests at Files
+// depth only, while the list view, open over the map or in its place, lists them at every depth.
+// What the page says then is WHY_NO_TESTS.
+export function testsShownNowhere(view: {
+  depth: Depth;
+  listOpen: boolean;
+}): boolean {
+  return !view.listOpen && view.depth !== "files";
+}
+
+export const WHY_NO_TESTS = "The map shows tests at Files depth only.";
+
 // Whether a depth draws a file, the show toggles aside: Files every file of the map, Core the
 // core view's, Components none.
 export function fileShownAt(model: Model, depth: Depth, file: number): boolean {

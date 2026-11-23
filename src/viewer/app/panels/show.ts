@@ -5,13 +5,12 @@
 // a line under it says why. It is off through aria-disabled, not disabled, so that it keeps the
 // focus when a key turns it off and Tab still reaches it and its reason; a click, Space
 // included, then changes nothing.
+import { testsShownNowhere, WHY_NO_TESTS } from "../depth.js";
 import { h } from "../dom.js";
 import type { Model } from "../model.js";
 import type { StateStore, ViewState } from "../state.js";
 
 type Shown = keyof ViewState["show"];
-
-const WHY_NO_TESTS = "The map shows tests at Files depth only.";
 
 export function mountShow(
   root: HTMLElement,
@@ -59,7 +58,7 @@ export function mountShow(
   const tests = boxes.get("tests");
   // Tests is off while nothing it shows is drawn or listed, and says why
   const follow = (now: ViewState) => {
-    const off = !now.listOpen && now.depth !== "files";
+    const off = testsShownNowhere(now);
     if (tests === undefined) return;
     why.hidden = !off;
     if (off) {
