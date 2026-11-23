@@ -483,13 +483,63 @@ test("at Components depth a selected hub keeps the hubs an import joins to it br
   }
 });
 
+// The map with its code files in twenty components: fourteen of two files or more, and six of
+// one file each. The map always labels the hubs as large as its fourteenth largest, and the
+// sample as mapped has no hub outside them, so only smaller hubs beyond those fourteen can show
+// that Components depth labels every hub. Every other file goes to the first component.
+const MORE_HUBS = 20;
+const SMALL_HUBS = 6;
+function moreHubs(m: MapData): MapData {
+  const code = m.files.flatMap((f, i) => (f[F.kind] === CODE ? [i] : []));
+  const big = MORE_HUBS - SMALL_HUBS;
+  expect(code.length - SMALL_HUBS).toBeGreaterThanOrEqual(2 * big);
+  const part = new Map(
+    code.map((f, i) => [
+      f,
+      i < code.length - SMALL_HUBS
+        ? i % big
+        : big + i - (code.length - SMALL_HUBS),
+    ]),
+  );
+  const files = m.files.map((f, i) => {
+    const moved = [...f] as typeof f;
+    moved[F.component] = part.get(i) ?? 0;
+    return moved;
+  });
+  const components = Array.from(
+    { length: MORE_HUBS },
+    (_, c): MapData["components"][number] => {
+      const mine = files.filter((f) => f[F.component] === c);
+      return [
+        `part${String(c).padStart(2, "0")}`,
+        mine.filter((f) => f[F.kind] === CODE).length,
+        mine.filter((f) => f[F.kind] === 1 || f[F.kind] === 2).length,
+        mine.reduce((sum, f) => sum + f[F.lines], 0),
+      ];
+    },
+  );
+  return {
+    ...m,
+    files,
+    components,
+    counts: { ...m.counts, components: MORE_HUBS },
+  };
+}
+
 test("at Components depth every hub is drawn larger, and labelled with its name", async ({
   page,
   browserName,
 }) => {
-  const m = await fetchMap(E2E.sample);
+  const m = moreHubs(await fetchMap(E2E.sample));
   const { hubs } = levelsOf(m);
-  expect(hubs).toBeGreaterThan(1);
+  expect(hubs).toBe(MORE_HUBS);
+  await page.route("**/api/map", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({
+      response,
+      json: moreHubs((await response.json()) as MapData),
+    });
+  });
   await openViewer(page, E2E.sample);
   const webgl = await hasWebGL(page);
   if (browserName === "chromium") expect(webgl).toBe(true);
@@ -506,6 +556,8 @@ test("at Components depth every hub is drawn larger, and labelled with its name"
   const atFiles = (await drawnNodes(page, keys)).nodes.map((n, i) =>
     must(n, `hub ${keys[i]} drawn at Files depth`),
   );
+  // at Files depth the small hubs are not among those always labelled
+  expect(atFiles.filter((n) => !n.forceLabel)).toHaveLength(SMALL_HUBS);
   await depthButton(page, "Components").click();
   await atDepth(page, "Components");
   // as sigma draws them: each hub HUB_GROWTH times its size at Files depth, its name the label it
