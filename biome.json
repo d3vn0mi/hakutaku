@@ -4,6 +4,7 @@
     "includes": [
       "**",
       "!!**/dist",
+      "!!**/.cache",
       "!!**/coverage",
       "!!**/test-results",
       "!!**/playwright-report",
