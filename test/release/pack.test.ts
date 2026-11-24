@@ -312,5 +312,8 @@ it("the macOS job runs the smoke from the packed package after its build", () =>
   const at = runs.indexOf("node scripts/release/smoke.mjs --from-pack");
   expect(runs.indexOf("npm run build")).toBeGreaterThanOrEqual(0);
   expect(runs.indexOf("npm run build")).toBeLessThan(at);
+  expect(
+    runs.indexOf("node dist/cli/main.js --version"),
+  ).toBeGreaterThanOrEqual(0);
   expect(runs.indexOf("node dist/cli/main.js --version")).toBeLessThan(at);
 });
