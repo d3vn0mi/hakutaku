@@ -29,7 +29,8 @@ export function pythonModuleIndex(
 
 // The files under a root that claim a name another file holds, by the rules pythonModuleIndex
 // names them with, in path order. A single-file module whose stem a root names is not one: it
-// is declared, so it is no file a root shadows.
+// is declared, so it is no file a root shadows. Nor is a file that loses its name under its root
+// but is declared, since its stem names it.
 export function pythonShadowedModules(
   paths: Iterable<string>,
   roots: readonly string[],
@@ -76,10 +77,21 @@ function claimModules(
       named.set(name, { path, rank, package: isPackage });
     }
   }
+  // the holder of each name the roots give, before a declared module names its stem
+  const heldByRoots = new Map(named);
+  for (const path of singleFileModules) {
+    if (!tracked.has(path) || !path.endsWith(".py")) continue;
+    const stem = posix.basename(path, ".py");
+    if (stem === "__init__" || !IDENTIFIER.test(stem) || named.has(stem))
+      continue;
+    named.set(stem, { path, rank: roots.length, package: false });
+  }
+  // a file the index names, as a declared module's stem, is not shadowed: an import reaches it
+  const namedPaths = new Set([...named.values()].map((c) => c.path));
   const shadowed: ShadowedModule[] = [];
   for (const claim of claims) {
-    const held = named.get(claim.name) as Claim;
-    if (held.path === claim.path) continue;
+    if (namedPaths.has(claim.path)) continue;
+    const held = heldByRoots.get(claim.name) as Claim;
     shadowed.push({
       path: claim.path,
       name: claim.name,
@@ -88,13 +100,6 @@ function claimModules(
     });
   }
   shadowed.sort((a, b) => comparePaths(a.path, b.path));
-  for (const path of singleFileModules) {
-    if (!tracked.has(path) || !path.endsWith(".py")) continue;
-    const stem = posix.basename(path, ".py");
-    if (stem === "__init__" || !IDENTIFIER.test(stem) || named.has(stem))
-      continue;
-    named.set(stem, { path, rank: roots.length, package: false });
-  }
   const index = new Map(
     [...named]
       .sort(([a], [b]) => comparePaths(a, b))

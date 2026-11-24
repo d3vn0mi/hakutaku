@@ -131,3 +131,27 @@ it("lists each file a claimed name leaves unnamed, with the file that holds the 
       by: "root",
     },
   ]));
+
+it("lists no file the index names, though a root's file holds the name it claims under its root", () => {
+  const paths = [
+    "sim/src/observatory/__init__.py",
+    "sim/src/observatory/orbit.py",
+    "tools/observatory/__init__.py",
+    "tools/observatory/orbit.py",
+  ];
+  const roots = ["sim/src", "tools"];
+  // tools/observatory/orbit.py loses observatory.orbit to sim/src, but is declared, so its stem
+  // names it and an import reaches it
+  const declared = ["tools/observatory/orbit.py"];
+  expect(pythonModuleIndex(paths, roots, declared).get("orbit")).toBe(
+    "tools/observatory/orbit.py",
+  );
+  expect(pythonShadowedModules(paths, roots, declared)).toEqual([
+    {
+      path: "tools/observatory/__init__.py",
+      name: "observatory",
+      heldBy: "sim/src/observatory/__init__.py",
+      by: "root",
+    },
+  ]);
+});

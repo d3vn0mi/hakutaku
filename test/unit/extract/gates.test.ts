@@ -550,3 +550,29 @@ it("names at most five shadowed modules in path order, after their count", () =>
       "python 0/0 (6 shadowed: tools/a/__init__.py, tools/b/__init__.py, tools/c/__init__.py, tools/d/__init__.py, tools/e/__init__.py)",
   });
 });
+
+it("counts a declared module that its stem names, though an earlier root holds the name it claims", () => {
+  const files: File[] = [
+    py("sim/src/observatory/__init__.py"),
+    py("sim/src/observatory/orbit.py"),
+    py("tools/observatory/__init__.py"),
+    py("tools/observatory/orbit.py"),
+  ];
+  expect(
+    gate(
+      runGates(
+        withFiles(files, {
+          python: {
+            roots: ["sim/src", "tools"],
+            singleFileModules: ["tools/observatory/orbit.py"],
+          },
+        }),
+      ),
+      "files-indexed",
+    ),
+  ).toEqual({
+    gate: "files-indexed",
+    ok: true,
+    detail: "python 3/3 (1 shadowed: tools/observatory/__init__.py)",
+  });
+});
