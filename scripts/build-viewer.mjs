@@ -9,6 +9,8 @@
 // - page.html, the page template, copied as it is;
 // - manifest.json, which lists every asset with its type, size and hash, and every bundled
 //   package with its version and licence.
+// Last, outside dist/, it writes .cache/viewer-meta.json: the inputs of the build, from esbuild's
+// metafile, which the licence report reads to know what the viewer bundles.
 // Any esbuild warning fails the build, as an error does, and so does a bundle that cannot go
 // inline in one self-contained page, as an export puts it: a script or styles whose text would end
 // its element early, or keep its end tag from ending it.
@@ -30,6 +32,7 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const APP = join(ROOT, "src/viewer/app");
 const OUT = join(ROOT, "dist/viewer");
 const ASSETS = join(OUT, "assets");
+const META = join(ROOT, ".cache", "viewer-meta.json");
 
 // The Latin-1 subsets of the two font families: [bundled name, package, file in the package].
 const FONT_PACKAGES = ["@ibm/plex-mono", "@ibm/plex-sans-condensed"];
@@ -83,10 +86,11 @@ if (!existsSync(INLINER)) {
   process.exit(1);
 }
 
-// 1. The last bundle goes; tsc's output stays.
+// 1. The last bundle goes, and the record of its inputs; tsc's output stays.
 rmSync(ASSETS, { recursive: true, force: true });
 rmSync(join(OUT, "page.html"), { force: true });
 rmSync(join(OUT, "manifest.json"), { force: true });
+rmSync(META, { force: true });
 
 // 2. The app and its worker. The app's entry is named "app", so that its outputs are app.js and
 // app.css, and the worker's "hl-worker", the script the page starts it from. The fonts stay as
@@ -255,3 +259,11 @@ writeFileSync(
 // cannot go inline as they are.
 const { inlineViewerHtml } = await import(INLINER.href);
 inlineViewerHtml(null);
+
+// 7. What the bundle holds, for the licence report: the union of every build's metafile inputs,
+// keyed by their paths from the repository's root. It is written last, so that it exists only
+// beside a bundle that built whole.
+const builds = [result];
+const inputs = Object.assign({}, ...builds.map((b) => b.metafile.inputs));
+mkdirSync(join(ROOT, ".cache"), { recursive: true });
+writeFileSync(META, `${JSON.stringify(sortedKeys({ inputs }), null, 2)}\n`);

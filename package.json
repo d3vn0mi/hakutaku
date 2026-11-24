@@ -50,9 +50,10 @@
     "test:e2e": "playwright test",
     "bench:viewer": "HAKUTAKU_BENCH=1 HAKUTAKU_E2E_WITH_SCALE=1 playwright test test/e2e/first-run.spec.ts test/e2e/performance.spec.ts --workers=1",
     "check:pack": "vitest run test/release/pack.test.ts",
+    "check:licences": "vitest run test/release/licences.test.ts",
     "check:tree": "vitest run test/repo/tree.test.ts",
     "check:secrets": "vitest run test/repo/secrets.test.ts",
-    "ci:local": "npm run build && npm run typecheck && npm run lint && npm test && npm run test:oracle && npm run test:golden && npm run test:hostile && npm run test:mcp && npm run test:e2e && npm run check:pack && npm run check:secrets && npm run check:tree"
+    "ci:local": "npm run build && npm run typecheck && npm run lint && npm test && npm run test:oracle && npm run test:golden && npm run test:hostile && npm run test:mcp && npm run test:e2e && npm run check:pack && npm run check:licences && npm run check:secrets && npm run check:tree"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
