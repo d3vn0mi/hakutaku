@@ -170,9 +170,15 @@ it("versionAtLeast reads a leading v and a prerelease's numbers, and nothing tha
 
 const SCRIPT = resolve("scripts/release/check-release.mjs");
 
-// check-release.mjs run in dir, with PATH replaced when one is given.
-function runCli(dir: string, args: string[], path?: string) {
-  const r = spawnSync(process.execPath, [SCRIPT, ...args], {
+// check-release.mjs run in dir, with PATH replaced when one is given, and Node's own flags before
+// the script.
+function runCli(
+  dir: string,
+  args: string[],
+  path?: string,
+  nodeFlags: string[] = [],
+) {
+  const r = spawnSync(process.execPath, [...nodeFlags, SCRIPT, ...args], {
     cwd: dir,
     encoding: "utf8",
     env: path === undefined ? process.env : { ...process.env, PATH: path },
@@ -288,6 +294,41 @@ it("check-release.mjs --publishing refuses an npm older than trusted publishing 
     expect(readFileSync(notes, "utf8")).toBe(
       "First public release.\n\n- One.\n",
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+it("check-release.mjs --publishing refuses a Node older than trusted publishing needs, beside a new enough npm", () => {
+  const root = releaseDir("hakutaku-check-release-node-");
+  try {
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    writeFileSync(join(bin, "npm"), "#!/bin/sh\necho 11.5.1\n");
+    chmodSync(join(bin, "npm"), 0o755);
+    const path = `${bin}:${process.env.PATH ?? ""}`;
+    // Node's flags that make the script see process.versions.node as the given version
+    const nodeAt = (version: string) => [
+      "--import",
+      `data:text/javascript,${encodeURIComponent(
+        `Object.defineProperty(process.versions, "node", { value: ${JSON.stringify(version)} });`,
+      )}`,
+    ];
+
+    for (const old of ["22.13.1", "22.9.0", "20.19.0"]) {
+      expect(
+        runCli(root, ["v0.1.0", "--publishing"], path, nodeAt(old)),
+        old,
+      ).toMatchObject({
+        status: 1,
+        out: [
+          `trusted publishing needs Node >= 22.14.0 and npm >= 11.5.1; this runner has ${old} and 11.5.1`,
+        ],
+      });
+    }
+    expect(
+      runCli(root, ["v0.1.0", "--publishing"], path, nodeAt("22.14.0")),
+    ).toMatchObject({ status: 0, out: ["release-check: ok (v0.1.0)"] });
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
