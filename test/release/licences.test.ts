@@ -712,6 +712,12 @@ it("NOTICE has its five parts in order, every required key, and the runtime it n
   // no part names an entry twice
   const seen = notice.entries.map(where);
   expect(seen.filter((w, i) => seen.indexOf(w) !== i)).toEqual([]);
+  // only what the package bundles has a licence text in THIRD_PARTY_LICENSES/
+  expect(
+    notice.entries
+      .filter((e) => e.part !== BUNDLED && e.fields.Text !== undefined)
+      .map(where),
+  ).toEqual([]);
 });
 
 it("every bundled package is credited with its licence text, and every bundled entry is bundled", () => {
