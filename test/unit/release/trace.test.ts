@@ -2,9 +2,16 @@
 // which sandbox started an extract, and what inside one is a finding. Then how the runner is
 // called, and where ci:local and CI run it.
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { expect, it } from "vitest";
 import YAML from "yaml";
 import { checkTrace } from "../../../scripts/hostile-sandbox.mjs";
@@ -76,6 +83,22 @@ it("a bwrap call without --unshare-all is not a sandboxed run", () => {
     checkTrace(
       [
         '60 execve("/usr/bin/bwrap", ["bwrap", "--version"], 0x1 /* 2 vars */) = 0',
+      ],
+      { fixturesDir: F },
+    ),
+  ).toEqual({ findings: [], sandboxRuns: 0 });
+});
+
+it("an extract under a bwrap without --unshare-all is neither judged nor a sandboxed run", () => {
+  expect(
+    checkTrace(
+      [
+        '70 execve("/usr/bin/bwrap", ["bwrap", "--ro-bind", "/", "/", "--die-with-parent", "/bin/sh"], 0x1 /* 2 vars */) = 0',
+        "70 clone(child_stack=NULL, flags=CLONE_NEWNS|SIGCHLD) = 71",
+        '71 execve("/opt/node/bin/node", ["node", "/r/dist/cli/main.js", "extract"], 0x5 /* 4 vars */) = 0',
+        "71 clone(child_stack=NULL, flags=SIGCHLD) = 72",
+        '72 execve("/w/export/snapshot/tools/run.sh", ["run.sh"], 0x6 /* 4 vars */) = 0',
+        "72 socket(AF_INET, SOCK_STREAM|SOCK_CLOEXEC, IPPROTO_IP) = 3",
       ],
       { fixturesDir: F },
     ),
@@ -240,6 +263,186 @@ it("hostile-sandbox.mjs takes only --keep-trace, and fails naming a tool it cann
   } finally {
     rmSync(empty, { recursive: true, force: true });
   }
+});
+
+// Stand-ins for strace and bwrap, first on PATH. The strace records its arguments and the two
+// settings it was given, writes the trace STAND_IN_TRACE holds where -o names, and exits with
+// STAND_IN_STATUS; -V exits 0. The bwrap answers --version, unless STAND_IN_BWRAP is broken.
+const STAND_IN_STRACE = [
+  "#!/bin/sh",
+  'if [ "$1" = "-V" ]; then exit 0; fi',
+  'for a in "$@"; do printf \'%s\\n\' "$a"; done > "$STAND_IN_RECORD"',
+  'printf \'sandbox=%s\\n\' "$HAKUTAKU_HOSTILE_SANDBOX" >> "$STAND_IN_RECORD"',
+  'printf \'dir=%s\\n\' "$HAKUTAKU_HOSTILE_DIR" >> "$STAND_IN_RECORD"',
+  'if [ -d "$HAKUTAKU_HOSTILE_DIR/canary" ]; then echo canary >> "$STAND_IN_RECORD"; fi',
+  'while [ $# -gt 0 ]; do if [ "$1" = "-o" ]; then cp "$STAND_IN_TRACE" "$2"; fi; shift; done',
+  'exit "$STAND_IN_STATUS"',
+  "",
+].join("\n");
+const STAND_IN_BWRAP = [
+  "#!/bin/sh",
+  'if [ "$STAND_IN_BWRAP" = "broken" ]; then exit 1; fi',
+  "exit 0",
+  "",
+].join("\n");
+
+// count sandboxes under which hakutaku's extract started, each with pids of its own
+function extractRoots(count: number): string[] {
+  return Array.from({ length: count }, (_, i) => {
+    const pid = 1000 + 10 * i;
+    return [
+      `${pid} execve("/usr/bin/bwrap", ["bwrap", "--unshare-all", "--die-with-parent"], 0x1 /* 2 vars */) = 0`,
+      `${pid} clone(child_stack=NULL, flags=CLONE_NEWNS|CLONE_NEWPID|SIGCHLD) = ${pid + 1}`,
+      `${pid + 1} execve("/opt/node/bin/node", ["node", "/r/dist/cli/main.js", "extract"], 0x5 /* 2 vars */) = 0`,
+    ];
+  }).flat();
+}
+
+it("hostile-sandbox.mjs runs the suite under strace with every extract at require, and needs one sandboxed run per extract case", () => {
+  const cases = (
+    JSON.parse(readFileSync("fixtures/hostile/cases.json", "utf8")) as Array<{
+      stage: string;
+      detail?: string;
+    }>
+  ).filter((c) => c.stage === "extract" && c.detail !== "deep").length;
+  expect(cases).toBeGreaterThan(0);
+  const root = mkdtempSync(join(tmpdir(), "hakutaku-trace-runner-"));
+  try {
+    const bin = join(root, "bin");
+    const temp = join(root, "temp");
+    mkdirSync(bin);
+    mkdirSync(temp);
+    writeFileSync(join(bin, "strace"), STAND_IN_STRACE, { mode: 0o755 });
+    writeFileSync(join(bin, "bwrap"), STAND_IN_BWRAP, { mode: 0o755 });
+    const record = join(root, "record.txt");
+    const traceFile = join(root, "trace.txt");
+    const runner = (
+      lines: string[],
+      opts: { status?: number; bwrap?: string; args?: string[] } = {},
+    ) => {
+      writeFileSync(traceFile, `${lines.join("\n")}\n`);
+      rmSync(record, { force: true });
+      const r = spawnSync(
+        process.execPath,
+        ["scripts/hostile-sandbox.mjs", ...(opts.args ?? [])],
+        {
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH ?? ""}`,
+            TMPDIR: temp,
+            STAND_IN_RECORD: record,
+            STAND_IN_TRACE: traceFile,
+            STAND_IN_STATUS: String(opts.status ?? 0),
+            STAND_IN_BWRAP: opts.bwrap ?? "",
+          },
+        },
+      );
+      return { status: r.status, last: r.stdout.trimEnd().split("\n") };
+    };
+
+    // as many sandboxed runs as extract cases: clean, and the run's directory removed
+    const clean = runner(extractRoots(cases));
+    expect(clean.last.at(-1)).toBe(
+      `hostile-sandbox: clean (${cases} sandboxed runs, ${cases} extract cases)`,
+    );
+    expect(clean.status).toBe(0);
+    expect(readdirSync(temp)).toEqual([]);
+    const recorded = readFileSync(record, "utf8").split("\n");
+    const trace = recorded[recorded.indexOf("-o") + 1] ?? "";
+    expect(recorded).toEqual([
+      "--seccomp-bpf",
+      "-f",
+      "-qq",
+      "--pidns-translation",
+      "-s",
+      "4096",
+      "-e",
+      "trace=execve,execveat,clone,clone3,fork,vfork,socket,connect",
+      "-o",
+      trace,
+      "--",
+      process.execPath,
+      "node_modules/vitest/vitest.mjs",
+      "run",
+      "test/hostile",
+      "--testTimeout=600000",
+      "--no-file-parallelism",
+      "sandbox=require",
+      `dir=${join(dirname(trace), "fixtures")}`,
+      "canary",
+      "",
+    ]);
+    expect(dirname(dirname(trace))).toBe(temp);
+
+    // one sandboxed run fewer: a finding, though the trace holds no other
+    const few = runner(extractRoots(cases - 1));
+    expect(few.last.slice(-2)).toEqual([
+      `too few sandboxed runs: ${cases - 1}, fewer than the ${cases} extract cases`,
+      "hostile-sandbox: 1 findings",
+    ]);
+    expect(few.status).toBe(1);
+
+    // a finding inside a sandbox fails the run, with enough runs
+    const breach = runner([
+      ...extractRoots(cases),
+      '1001 execve("/w/export/snapshot/tools/run.sh", ["run.sh"], 0x6 /* 4 vars */) = 0',
+    ]);
+    expect(breach.last.slice(-2)).toEqual([
+      "exec of a snapshot or fixture path: /w/export/snapshot/tools/run.sh (pid 1001)",
+      "hostile-sandbox: 1 findings",
+    ]);
+    expect(breach.status).toBe(1);
+
+    // the suite failing under strace fails the run, whatever the trace holds
+    const failed = runner(extractRoots(cases), { status: 3 });
+    expect(failed.last.at(-1)).toBe(
+      "hostile-sandbox: the hostile suite failed under strace: exit code 3",
+    );
+    expect(failed.status).toBe(1);
+
+    // a bwrap that does not run stops the runner before it makes anything
+    const broken = runner(extractRoots(cases), { bwrap: "broken" });
+    expect(broken.last).toEqual(["hostile-sandbox: bwrap is not installed"]);
+    expect(broken.status).toBe(1);
+    expect(readdirSync(temp)).toEqual([]);
+
+    // --keep-trace keeps the directory and names the trace
+    const kept = runner(extractRoots(cases), { args: ["--keep-trace"] });
+    const keptRecord = readFileSync(record, "utf8").split("\n");
+    const keptTrace = keptRecord[keptRecord.indexOf("-o") + 1] ?? "";
+    expect(dirname(dirname(keptTrace))).toBe(temp);
+    expect(kept.last.slice(-2)).toEqual([
+      `hostile-sandbox: the trace is kept at ${keptTrace}`,
+      `hostile-sandbox: clean (${cases} sandboxed runs, ${cases} extract cases)`,
+    ]);
+    expect(readFileSync(keptTrace, "utf8")).toBe(
+      readFileSync(traceFile, "utf8"),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}, 60_000);
+
+// The runner's minimum counts the extract cases alone, so an export or query case that kept its
+// own sandbox would still pass it: every sandbox a hostile test names is hostileSandbox()'s.
+it("every extract of the hostile suite takes its sandbox from hostileSandbox()", () => {
+  const dir = "test/hostile";
+  const sites = readdirSync(dir)
+    .filter((name) => name.endsWith(".test.ts"))
+    .flatMap((name) =>
+      readFileSync(join(dir, name), "utf8")
+        .split("\n")
+        .filter((line) => !line.trim().startsWith("//"))
+        .flatMap((line) => [
+          ...line.matchAll(
+            /(?:\bsandbox:|"--sandbox",)\s*(\w+\(\)|"[^"]*"|'[^']*'|[\w.]+)/g,
+          ),
+        ])
+        .map((m) => `${name}: ${m[1] ?? ""}`),
+    );
+  expect(sites.length).toBeGreaterThanOrEqual(5);
+  for (const site of sites) expect(site).toMatch(/: hostileSandbox\(\)$/);
 });
 
 it("ci:local and CI's hostile fixtures step run the suite, then the suite under the sandbox", () => {
