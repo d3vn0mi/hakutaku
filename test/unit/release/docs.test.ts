@@ -241,10 +241,22 @@ it("README's MCP client example starts the installed hakutaku over stdio", () =>
 });
 
 it("README's viewer section shows the sample's map and its source view", () => {
-  const shown = [
-    ...section(readme, "Viewer").matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g),
-  ].map((m) => m[1]);
+  const viewer = section(readme, "Viewer");
+  const shown = [...viewer.matchAll(/!\[[^\]]*\]\(([^)\s]+)\)/g)].map(
+    (m) => m[1],
+  );
   expect(shown).toEqual(["docs/img/map.png", "docs/img/source.png"]);
+  expect(viewer).toContain("All screenshots come from the synthetic sample.");
+});
+
+it("README's credits point to NOTICE and the licence texts, and its licence line is the project's", () => {
+  const credits = section(readme, "Credits");
+  expect(credits).toContain("[NOTICE](NOTICE)");
+  expect(credits).toContain("[THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES/)");
+  expect(section(readme, "Licence").trim()).toBe(
+    "MIT. Copyright (c) 2026 d3vn0mi. See [LICENSE](LICENSE).",
+  );
+  expect(read("LICENSE")).toContain("Copyright (c) 2026 d3vn0mi");
 });
 
 // The public docs, each read whole.
@@ -255,6 +267,40 @@ const PUBLIC_DOCS = [
   "CHANGELOG.md",
   ...listed("docs").filter((p) => p.endsWith(".md")),
 ];
+
+// The fenced code blocks of a Markdown text, each with its info string, indented ones included.
+const fences = (md: string): Array<{ info: string; body: string }> =>
+  [...md.matchAll(/^ *```([^\n]*)\n([\s\S]*?)^ *```[ \t]*$/gm)].map((m) => ({
+    info: (m[1] ?? "").trim(),
+    body: m[2] ?? "",
+  }));
+
+it("no public doc runs hakutaku through npx, in a command or an MCP client's set-up", () => {
+  const found: string[] = [];
+  let servers = 0;
+  for (const f of PUBLIC_DOCS) {
+    for (const { info, body } of fences(read(f))) {
+      for (const line of body.split("\n")) {
+        if (/\bnpx\b/.test(line) && /\bhakutaku\b/.test(line)) {
+          found.push(`${f}: ${line.trim()}`);
+        }
+      }
+      if (info !== "json" || !body.includes('"mcpServers"')) continue;
+      const cfg = JSON.parse(body) as {
+        mcpServers: Record<string, { command?: string; args?: string[] }>;
+      };
+      for (const [name, server] of Object.entries(cfg.mcpServers)) {
+        servers += 1;
+        const words = [server.command ?? "", ...(server.args ?? [])];
+        if (words.some((w) => /(?:^|\/)npx$/.test(w))) {
+          found.push(`${f}: the MCP server ${name} starts through npx`);
+        }
+      }
+    }
+  }
+  expect(servers).toBeGreaterThanOrEqual(2);
+  expect(found).toEqual([]);
+});
 
 it("every relative link in the public docs resolves", () => {
   const files = new Set(listed("."));
@@ -341,6 +387,13 @@ it("SECURITY.md routes reports privately, and names no email address", () => {
   expect(security).not.toMatch(
     /\b[\w.+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}\b/,
   );
+  for (const sentence of [
+    "Report it privately, through GitHub's private vulnerability reporting: https://github.com/d3vn0mi/hakutaku/security/advisories/new. Please do not open a public issue.",
+    "Never send private code, paths or output.",
+    "The latest 0.x release.",
+  ]) {
+    expect(security).toContain(sentence);
+  }
 });
 
 it("CONTRIBUTING.md keeps issues on the synthetic sample", () => {
@@ -415,9 +468,20 @@ it("issue and pull request templates ask for a reproduction on the sample", () =
   expect(cfg.contact_links?.[0]?.url).toBe(
     "https://github.com/d3vn0mi/hakutaku/security/advisories/new",
   );
-  expect(read(".github/pull_request_template.md")).toContain(
-    "fixtures/observatory",
-  );
+  const pr = read(".github/pull_request_template.md").split("\n");
+  for (const line of [
+    "## What and why",
+    "## Checks",
+    "- [ ] It reproduces on the synthetic sample (`fixtures/observatory`) or a hostile fixture.",
+    "- [ ] `npm run ci:local` passes.",
+    "- [ ] The change holds no private code, paths, names or output.",
+  ]) {
+    expect(pr).toContain(line);
+  }
+  // the feature form's examples come from the sample too
+  const feature = read(".github/ISSUE_TEMPLATE/feature_request.yml");
+  expect(feature).toContain("fixtures/observatory");
+  expect(feature).not.toMatch(/public repositor/i);
 });
 
 it("the repository holds one bug form and one pull request template", () => {

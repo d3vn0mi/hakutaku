@@ -295,8 +295,8 @@ A **link token** is the URL fragment that opens a node in the viewer:
 
 To build a token, take each part of the ID as git holds it: the path, the qualified name, or an
 external module's name. Percent-encode every character except `A` to `Z`, `a` to `z`, `0` to `9`,
-`.`, `_`, `-` and `/`, as its UTF-8 bytes in upper-case hex. Then write as `%2D` every `-` that
-another `-` follows, or that ends the part, and turn each `/` into `~`. A definition's token is its
+`.`, `_`, `-` and `/`, as its UTF-8 bytes in upper-case hex. Then write as `%2D` every `-` that is
+followed by another `-`, or that ends the part, and turn each `/` into `~`. A definition's token is its
 path's, `--`, then its qualified name's, and an external module's is its ecosystem, `:`, then its
 name's. So a token always decodes to exactly one ID.
 
@@ -322,6 +322,7 @@ person who opens it in the viewer sees the node the agent cited. These answers a
 session token, and `--open` also opens it in your browser. The most depended-on files sit at the
 centre, the components in a ring around them, and the libraries outside. The layout is fixed, with no
 force simulation, so the same store always draws the same picture.
+All screenshots come from the synthetic sample.
 
 ![The map of the sample at Files depth, under the Structure lens: the files on a disc, the components in a ring around it and the libraries outside, with the stat band and the Core, Change activity and Hotspots lists](docs/img/map.png)
 

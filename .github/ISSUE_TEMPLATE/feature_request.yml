@@ -42,7 +42,7 @@ body:
     id: problem
     attributes:
       label: The problem
-      description: What you are trying to do, and what gets in the way today. Use the synthetic sample, or a public repository, for any example.
+      description: What you are trying to do, and what gets in the way today. Use the synthetic sample (fixtures/observatory) for any example.
     validations:
       required: true
 
