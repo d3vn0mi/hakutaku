@@ -376,7 +376,7 @@ it("release.yml maps the pinned public repository inside the sandbox before publ
   for (const before of [
     /\bapt-get install -y bubblewrap\b/,
     /\bsysctl -w kernel\.apparmor_restrict_unprivileged_userns=0$/m,
-    /^npm ci$/,
+    /^npm ci --ignore-scripts$/,
     /^npm run build$/,
   ]) {
     const at = runs.findIndex((r) => before.test(r.trim()));
@@ -385,6 +385,20 @@ it("release.yml maps the pinned public repository inside the sandbox before publ
   }
   expect(run).toContain('git clone --quiet "$URL" "$RUNNER_TEMP/realism"');
   expect(run).not.toMatch(/--depth|--shallow|--filter/);
+});
+
+it("no release job runs a dependency's install script", () => {
+  // every job of the release can reach the tag's code, and two of them can request a token, so
+  // each installs with npm ci --ignore-scripts; the build needs no install script
+  const rel = release();
+  const installs = Object.keys(rel.jobs).flatMap((job) =>
+    runsOf(job)
+      .flatMap((run) => run.split("\n").map((line) => line.trim()))
+      .filter((line) => /\bnpm (?:ci|install|i)\b/.test(line))
+      .map((line) => `${job}: ${line}`),
+  );
+  expect(installs.length).toBeGreaterThanOrEqual(3);
+  expect(installs.filter((i) => !i.endsWith(": npm ci --ignore-scripts"))).toEqual([]);
 });
 
 it("every checkout keeps no credentials, each action has one pin, and no release step may fail without failing the release", () => {
