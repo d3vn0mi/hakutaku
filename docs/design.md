@@ -667,7 +667,11 @@ text_index      FTS5, with the trigram tokenizer: every non-empty line of every 
   already built costs nothing. A store whose engines ran out of memory is built again when the memory
   cap changes.
 - **The gates**, which a new store must pass before it is swapped in:
-  - `files-indexed`: the engines indexed the files they were given;
+  - `files-indexed`: the engines indexed the files they were given, and every Python module an
+    import statement can name has a module name. A Python file whose name another file already
+    holds, an earlier import root's file, or within one root a package of the same name, is
+    shadowed, not missing: the gate does not count it, the store records it, and `blindSpots`
+    names it;
   - `unresolved-imports`: unresolved relative imports stay under the profile's threshold (0.5% by
     default), and do not grow from the current store;
   - `scip-duplicates`: no symbol in scip-typescript's index is defined by two files as their own;
@@ -766,8 +770,8 @@ when it does. It never renames, removes or reorders a field.
   typed by an interface, so the compiler binds the call to the interface's method. The `scoped` label
   recovers it as a caller of `Orbit.position`.
 - **`blindSpots`** comes from the build's coverage: computed `import()` paths, receivers typed by
-  packages that were not installed, a compiler tier that did not run, and a language that has no
-  callers.
+  packages that were not installed, a compiler tier that did not run, a language that has no
+  callers, and Python modules shadowed by another file of the same module name.
 
 **Snippets.**
 

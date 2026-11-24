@@ -1073,6 +1073,12 @@ its `from` definition's:
   and for a file, or a path, `<n> dynamic imports with a computed path are not followed`.
 - `compiler-bound uses that match no outline definition are counted in coverage only (<n>)`, for
   TypeScript, JavaScript and Python
+- `<n> Python modules are shadowed by an earlier import root, so no import reaches them: <modules>`
+  and `<n> Python modules are shadowed by a package of the same name, so no import reaches them: <modules>`,
+  in every answer that carries `blindSpots`, whatever its language. A Python file an import statement
+  could name gives no module when another file holds its name: a file of an earlier import root, or,
+  within one root, a package of the same name. `<modules>` names the first five in path order, each
+  as `<path> (<name> is <file>)`, where `<file>` holds the name
 
 For `code_references`:
 
@@ -1081,6 +1087,9 @@ For `code_references`:
 - `hakutaku records no references for <language>`, for any other language
 - `compiler-bound uses that match no outline definition are counted in coverage only (<n>)`, for
   TypeScript, JavaScript and Python
+- `<n> Python modules are shadowed by an earlier import root, so no import reaches them: <modules>`
+  and `<n> Python modules are shadowed by a package of the same name, so no import reaches them: <modules>`,
+  as for `code_callers`
 
 For `code_deps`, by the file's language, and for `code_path` via imports, by its `from` file's:
 
@@ -1092,6 +1101,9 @@ For `code_deps`, by the file's language, and for `code_path` via imports, by its
 - `<n> TypeScript and JavaScript files have imports that come from hakutaku's own resolver, not dependency-cruiser`,
   for TypeScript and JavaScript
 - `<n> denylisted files are left out of the map, with their imports`
+- `<n> Python modules are shadowed by an earlier import root, so no import reaches them: <modules>`
+  and `<n> Python modules are shadowed by a package of the same name, so no import reaches them: <modules>`,
+  as for `code_callers`
 
 For `code_path` via calls, last, the links its walk does not follow:
 
@@ -1104,6 +1116,9 @@ For `code_search_text`:
 - `<n> files over 1 MB, minified or generated keep no stored text and are not searched`
 - `<n> denylisted files are left out of the map`
 - `secret-shaped text is redacted (<n> spans across the map), so it cannot be found`
+- `<n> Python modules are shadowed by an earlier import root, so no import reaches them: <modules>`
+  and `<n> Python modules are shadowed by a package of the same name, so no import reaches them: <modules>`,
+  as for `code_callers`
 
 **What the map leaves out.**
 
