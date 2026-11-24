@@ -508,6 +508,35 @@ it("CONTRIBUTING.md names what ci:local needs and checks, and how to refresh the
   expect(contributing).toContain("node scripts/screenshots.mjs");
 });
 
+// GitHub creates an environment that a job names the first time the job runs, with no reviewer and
+// no rule, so a v* tag pushed before the npm environment is set up would publish unapproved. The
+// release steps check the settings before the version reaches main, and before any tag.
+const RELEASE_GATES = [
+  `gh api repos/d3vn0mi/hakutaku/environments/npm --jq '(.protection_rules | map(.type) | index("required_reviewers") != null) and .deployment_branch_policy.custom_branch_policies == true'`,
+  `gh api repos/d3vn0mi/hakutaku/environments/npm/deployment-branch-policies --jq '[.branch_policies[] | select(.type == "tag" and .name == "v*")] | length'`,
+  `gh api repos/d3vn0mi/hakutaku/rulesets --jq '[.[] | select(.target == "tag" and .enforcement == "active")] | length'`,
+];
+
+it("CONTRIBUTING.md checks the npm environment and the tag ruleset before the version is merged", () => {
+  const releasing = section(read("CONTRIBUTING.md"), "Releasing");
+  const lines = releasing.split("\n").map((l) => l.trim());
+  for (const gate of RELEASE_GATES) expect(lines, gate).toContain(gate);
+  const steps = releasing
+    .split("\n")
+    .map((l) => /^\d+\. (.*)$/.exec(l)?.[1])
+    .filter((s): s is string => s !== undefined);
+  const gateStep = steps.findIndex((s) => s.includes("`npm` environment"));
+  const merge = steps.indexOf("Merge.");
+  const tag = steps.findIndex((s) => s.startsWith("Push the tag"));
+  expect(gateStep).toBeGreaterThanOrEqual(0);
+  expect(merge).toBeGreaterThan(gateStep);
+  expect(tag).toBeGreaterThan(merge);
+  const flat = releasing.replace(/\s+/g, " ");
+  expect(flat).toContain("a required reviewer");
+  expect(flat).toContain("tags matching `v*` only");
+  expect(flat).toContain("environment `npm`");
+});
+
 interface IssueForm {
   body: Array<{
     id?: string;

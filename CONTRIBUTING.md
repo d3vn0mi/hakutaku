@@ -226,8 +226,23 @@ For the maintainer:
    the version alone: the release reads no other heading. Map the sample again, and replace the
    summaries in README.md and docs/design.md, whose first line names the version.
 3. `node scripts/release/check-release.mjs v<x.y.z>`.
-4. Merge.
-5. Push the tag `v<x.y.z>`, then approve the `npm` environment. The release workflow runs the full
-   CI, maps a pinned public repository inside the sandbox, publishes to npm with provenance through
-   trusted publishing, writes the GitHub release from the changelog, and deploys the sample's map to
-   GitHub Pages.
+4. Check the `npm` environment and the tag ruleset on GitHub, before the version reaches main. GitHub
+   creates an environment that a job names the first time the job runs, with no reviewer and no
+   rule, so a `v*` tag pushed before these exist would publish with no approval. The `npm`
+   environment holds a required reviewer and allows deployments from tags matching `v*` only, and a
+   tag ruleset lets only administrators create, update or delete `v*` tags. They come before npm's
+   trusted publisher, which names the workflow `release.yml` and the environment `npm`. The first
+   command must print `true`, and each of the other two a number of 1 or more; a `Not Found` means
+   the environment does not exist yet:
+
+   ```bash
+   gh api repos/d3vn0mi/hakutaku/environments/npm --jq '(.protection_rules | map(.type) | index("required_reviewers") != null) and .deployment_branch_policy.custom_branch_policies == true'
+   gh api repos/d3vn0mi/hakutaku/environments/npm/deployment-branch-policies --jq '[.branch_policies[] | select(.type == "tag" and .name == "v*")] | length'
+   gh api repos/d3vn0mi/hakutaku/rulesets --jq '[.[] | select(.target == "tag" and .enforcement == "active")] | length'
+   ```
+
+5. Merge.
+6. Push the tag `v<x.y.z>`, once the three commands above still print what they must, then approve
+   the `npm` environment. The release workflow runs the full CI, maps a pinned public repository
+   inside the sandbox, publishes to npm with provenance through trusted publishing, writes the
+   GitHub release from the changelog, and deploys the sample's map to GitHub Pages.
