@@ -434,8 +434,8 @@ vulnerability, follow [SECURITY.md](SECURITY.md), never a public issue.
 - **A Python module another file shadows is unreachable.** When two import roots give the same
   module name, the earlier root's file holds it, as the earlier entry of `sys.path` does; within one
   root, a package wins over a module of the same name. The other file gets no module name, so no
-  import reaches it. The build does not fail on it: `blindSpots` names each such file, with the file
-  that holds its name.
+  import reaches it. The build does not fail on it: `blindSpots` gives how many there are and names
+  the first five, each with the file that holds its name.
 - **`scoped` callers are name matches** in files linked by imports. They can include false matches,
   and `collision` flags the riskiest.
 - **`mentionedByTests` is a mention, not coverage.** hakutaku never runs tests.
