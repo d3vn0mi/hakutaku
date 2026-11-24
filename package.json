@@ -2,6 +2,14 @@
   "name": "hakutaku",
   "version": "0.1.0",
   "description": "Code intelligence for agents first, humans second.",
+  "keywords": [
+    "code-intelligence",
+    "mcp",
+    "ai-agents",
+    "call-graph",
+    "static-analysis",
+    "code-map"
+  ],
   "license": "MIT",
   "author": "d3vn0mi",
   "repository": {

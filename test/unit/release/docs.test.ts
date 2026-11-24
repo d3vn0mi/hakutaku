@@ -477,8 +477,9 @@ it("CONTRIBUTING.md keeps issues on the synthetic sample", () => {
   );
   const sample = section(contributing, "Reproduce on the sample").split("\n");
   for (const command of [
-    "node fixtures/observatory/make.mjs /tmp/hakutaku-sample",
-    "node dist/cli/main.js map /tmp/hakutaku-sample/observatory --yes",
+    'S="$(mktemp -d)"',
+    'node fixtures/observatory/make.mjs "$S/hakutaku-sample"',
+    'node dist/cli/main.js map "$S/hakutaku-sample/observatory" --yes',
     `node dist/cli/main.js query code_explain observatory --args '{"target":"web/src/orbits/kepler.ts"}'`,
   ]) {
     expect(sample).toContain(command);

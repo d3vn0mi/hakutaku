@@ -12,8 +12,8 @@ to [SECURITY.md](SECURITY.md), never to an issue, a discussion or a pull request
 - Linux or macOS. Windows is not supported.
 - Node.js 22.16 or later: from 22.16, `node:sqlite` needs no flag, and its SQLite includes the FTS5
   full-text index that hakutaku's store uses.
-- Python 3, for grimp, which reads Python imports, and for the deep detail level and the Python
-  fixtures.
+- Python 3.10 or later, with pip, for grimp, which reads Python imports, and for the deep detail
+  level and the Python fixtures.
 - git.
 - On Linux, for `npm run ci:local`: strace and bubblewrap, for `npm run test:sandbox`, which runs the
   hostile fixtures again with every extract inside bubblewrap and strace watching, and fails, rather
@@ -30,7 +30,7 @@ git clone https://github.com/d3vn0mi/hakutaku.git
 cd hakutaku
 npm ci            # the lockfile is committed; always install with npm ci
 npm run build
-node dist/cli/main.js engines install --yes   # the pinned engines; add --deep for scip-python
+node dist/cli/main.js engines install --yes --deep   # the pinned engines, scip-python included
 npx playwright install chromium firefox       # the browsers for the viewer's end-to-end tests
 npm run ci:local  # the build, typecheck and Biome, then the unit, oracle, golden and hostile
                   # tests, the hostile tests again inside bubblewrap under strace, the MCP and
@@ -39,8 +39,9 @@ npm run ci:local  # the build, typecheck and Biome, then the unit, oracle, golde
 ```
 
 `npm run ci:local` runs every check CI runs. The oracle and hostile tests build with every engine,
-scip-python included, so install the engines with `--deep` too, as CI does. A test whose engine is
-missing is skipped locally, saying why, and fails in CI. On macOS, `npm run ci:local` stops at
+scip-python included, so install the engines with `--deep` too, as CI does. Without the engines
+installed, the oracle, golden and hostile tests fail rather than skip; only a test that needs
+scip-python, Python, bubblewrap or strace skips locally, saying why, and fails in CI. On macOS, `npm run ci:local` stops at
 `npm run test:sandbox`, which needs Linux; CI runs it.
 
 The pack check installs the packed package into an empty project, with its dependencies from the npm
@@ -121,8 +122,9 @@ own, and the script writes them under their real names.
 After the set-up above, write the sample, map it and ask about one of its files:
 
 ```sh
-node fixtures/observatory/make.mjs /tmp/hakutaku-sample
-node dist/cli/main.js map /tmp/hakutaku-sample/observatory --yes
+S="$(mktemp -d)"
+node fixtures/observatory/make.mjs "$S/hakutaku-sample"
+node dist/cli/main.js map "$S/hakutaku-sample/observatory" --yes
 node dist/cli/main.js query code_explain observatory --args '{"target":"web/src/orbits/kepler.ts"}'
 ```
 
@@ -143,8 +145,8 @@ the code it maps.
 ```
 
 - **Types:** `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci` and `chore`.
-- **Scopes** name the module: `cli`, `export`, `extract`, `store`, `model`, `manifests`, `profile`,
-  `redact`, `query`, `tools`, `mcp` or `viewer`.
+- **Scopes** name the module: `cli`, `engines`, `export`, `extract`, `store`, `model`, `manifests`,
+  `profile`, `redact`, `registry`, `query`, `tools`, `mcp` or `viewer`.
 - **Breaking changes** add `!` after the scope, and a `BREAKING CHANGE:` footer. A change is breaking
   when it alters the tool contract, the store schema, the profile or rules format, or the CLI.
 
@@ -222,7 +224,7 @@ unix socket under `TMPDIR` must keep the socket's path under 108 bytes.
 For the maintainer:
 
 1. `npm version <x.y.z> --no-git-tag-version`.
-2. Update every `hakutaku@` pin in the README, and add a `CHANGELOG.md` section headed `## <x.y.z>`,
+2. Update every `hakutaku@` pin in README.md and docs/tools.md, and add a `CHANGELOG.md` section headed `## <x.y.z>`,
    the version alone: the release reads no other heading. Map the sample again, and replace the
    summaries in README.md and docs/design.md, whose first line names the version.
 3. `node scripts/release/check-release.mjs v<x.y.z>`.

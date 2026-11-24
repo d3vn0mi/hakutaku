@@ -4,7 +4,7 @@ hakutaku maps a code repository for AI agents first and people second: who calls
 
 ## Quick start
 
-You need Node.js 22.16 or later, on Linux or macOS, and git. Python 3 is optional: hakutaku reads
+You need Node.js 22.16 or later, on Linux or macOS, and git. Python 3.10 or later, with pip, is optional: hakutaku reads
 Python imports with it, and without it they come from hakutaku's own resolver, which the answers'
 `blindSpots` name. On Linux, install bubblewrap too: it is the strongest sandbox for a build.
 `hakutaku doctor` checks what your machine has.
@@ -59,7 +59,7 @@ next  hakutaku view observatory    the map, in your browser
 | Detail | Adds | Cost |
 |---|---|---|
 | `quick` | Imports, definitions, `scoped` callers, metrics, entry points, the text index and sources | Seconds; no compiler runs |
-| `standard`, the default | Compiler-bound TypeScript and JavaScript callers and references, from scip-typescript | On marimo-team/marimo at `b0e402345e0a`: 64.8 s, a peak of 1,099 MB and a store of 194 MB |
+| `standard`, the default | Compiler-bound TypeScript and JavaScript callers and references, from scip-typescript | On marimo-team/marimo at `b0e402345e0a`, measured with a prototype before hakutaku was built: 64.8 s, a peak of 1,099 MB and a store of 194 MB |
 | `deep` | Compiler-bound Python callers, from scip-python | Opt-in, with a memory cap |
 
 [All commands](docs/design.md#all-commands) lists every command and option.
@@ -341,7 +341,7 @@ flashed, and the Agent tab the exact call an agent makes for the node, with the 
 
 ![The Source tab of the sample's solveKepler, highlighted, with its line flashed in the gutter](docs/img/source.png)
 
-**Local only.** The viewer binds to `127.0.0.1`, every call to its server needs the session token,
+**Local only.** The viewer binds to `127.0.0.1`, every API call needs the session token,
 and the `Host` header is checked against DNS rebinding. Its fonts and libraries are bundled, and a
 strict Content Security Policy keeps the page from loading anything from outside your machine.
 `--open` hands the browser a page under the system temporary directory, which a Snap-packaged browser
