@@ -302,6 +302,35 @@ it("no public doc runs hakutaku through npx, in a command or an MCP client's set
   expect(found).toEqual([]);
 });
 
+// The version a doc shows: each hakutaku@x.y.z it pins and each map summary's first line. The
+// release check reads only the README's pins, so a guide or the design could name an older
+// version unseen; CHANGELOG.md is left out, since it names every version.
+it("every version the docs show is package.json's", () => {
+  const version = (JSON.parse(read("package.json")) as { version: string })
+    .version;
+  const pins: string[] = [];
+  const summaries: string[] = [];
+  for (const f of PUBLIC_DOCS.filter((p) => p !== "CHANGELOG.md")) {
+    for (const m of read(f).matchAll(
+      /(?<![\w.-])hakutaku@(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]*)?)/g,
+    )) {
+      pins.push(`${f}: ${m[1]}`);
+    }
+    for (const m of read(f).matchAll(
+      /^ *hakutaku (\S+) \S+ observatory at [0-9a-f]{12} /gm,
+    )) {
+      summaries.push(`${f}: ${m[1]}`);
+    }
+  }
+  expect(pins).toContain(`README.md: ${version}`);
+  expect(pins).toContain(`docs/tools.md: ${version}`);
+  expect(pins.filter((p) => !p.endsWith(`: ${version}`))).toEqual([]);
+  expect(summaries).toEqual([
+    `README.md: ${version}`,
+    `docs/design.md: ${version}`,
+  ]);
+});
+
 it("every relative link in the public docs resolves", () => {
   const files = new Set(listed("."));
   const folders = new Set(
