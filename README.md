@@ -43,7 +43,7 @@ extra launch manifests. It stops on a conflict rather than guess. Finally, it bu
 prints a summary. The sample's, on Linux with bubblewrap:
 
 ```text
-hakutaku 0.0.0 · observatory at 5f7b72a77e7a (HEAD), standard detail
+hakutaku 0.1.0 · observatory at 5f7b72a77e7a (HEAD), standard detail
   files      143 tracked · 109 code (TypeScript 65, Python 37, shell 4, JavaScript 3) · 71 production, 38 test
   imports    146 edges · 0 unresolved relative · 1 cycle
   callers    1,126 call sites · 191 bound · 160 scoped · 775 unresolved
