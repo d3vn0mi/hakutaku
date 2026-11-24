@@ -10,10 +10,8 @@ Every example comes from `observatory`, the synthetic sample in
 
 ## Setting it up
 
-Planned for 0.1: hakutaku is not on npm yet, and these are the steps it will take.
-
 Install hakutaku once, globally, outside any repository, and map the repository you want to serve,
-as the README's [quick start](../README.md#quick-start-planned-for-01) shows:
+as the README's [quick start](../README.md#quick-start) shows:
 
 ```sh
 npm install -g hakutaku@0.1.0

@@ -283,6 +283,45 @@ it("every relative link in the public docs resolves", () => {
   expect(broken).toEqual([]);
 });
 
+// GitHub's anchor for a heading: its text in lower case, without markup or punctuation, each
+// space a hyphen, and "-1", "-2" and so on after a repeated one.
+function anchorsOf(md: string): Set<string> {
+  const seen = new Map<string, number>();
+  const anchors = new Set<string>();
+  for (const line of withoutFences(md).split("\n")) {
+    const m = /^#{1,6} (.+)$/.exec(line);
+    if (m?.[1] === undefined) continue;
+    const base = m[1]
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, "")
+      .replace(/ /g, "-");
+    const n = seen.get(base) ?? 0;
+    seen.set(base, n + 1);
+    anchors.add(n === 0 ? base : `${base}-${n}`);
+  }
+  return anchors;
+}
+
+it("every anchor a public doc links to names a heading of the doc it points at", () => {
+  const broken: string[] = [];
+  let checked = 0;
+  for (const f of PUBLIC_DOCS) {
+    for (const target of linkTargets(read(f))) {
+      const m = /^([^#]*)#(.+)$/.exec(target);
+      if (m === null || /^(?:https?:|mailto:)/.test(target)) continue;
+      const file = m[1] === "" ? f : normalize(join(dirname(f), m[1] ?? ""));
+      if (!file.endsWith(".md")) continue;
+      checked += 1;
+      if (!anchorsOf(read(file)).has(m[2] ?? ""))
+        broken.push(`${f}: ${target}`);
+    }
+  }
+  expect(checked).toBeGreaterThan(5);
+  expect(broken).toEqual([]);
+});
+
 it("the public docs carry no home path or secret", () => {
   for (const f of [...PUBLIC_DOCS, "NOTICE"]) {
     expect(scanText(f, read(f)), f).toEqual([]);
