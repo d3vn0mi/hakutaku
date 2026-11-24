@@ -29,7 +29,7 @@ extract inside the sandbox.
 | Vector | Control | Hostile fixture |
 |---|---|---|
 | The repository's git config: smudge filters, fsmonitor, hooks, the pager, signature checks, textconv, external diffs, askpass and ssh commands | Export reads git objects only, with every git call hardened: below the table | `git-config`, `smudge-filter`, `show-signature`, `fsmonitor-hooks` |
-| Symlinks and special entries | Symlinks (mode 120000) are recorded with their target text, and never created on disk or followed. Submodules (mode 160000) are recorded and not followed. LFS pointers stay pointers. A path with `..`, an absolute path, or a control character is refused | `symlink-host`, `dotdot-path` |
+| Symlinks and special entries | Symlinks (mode 120000) are recorded with their target text, and never created on disk or followed. Submodules (mode 160000) are recorded and not followed. LFS pointers stay pointers. A path with a `..` or `.git` component, an absolute path, or a control character is refused | `symlink-host`, `dotdot-path` |
 | The engines' configs in the repository: `.dependency-cruiser.*`, `sgconfig.yml`, `pyrightconfig.json`, `[tool.pyright]`, babel and webpack configs | They are removed at export, or never read. hakutaku generates every engine config beside the snapshot, and passes it explicitly. dependency-cruiser always gets `--config` with hakutaku's own config, since a `.dependency-cruiser.js` runs as code when it is loaded. ast-grep gets hakutaku's `sgconfig.yml` after the subcommand, and runs from a directory outside the snapshot | `depcruise-config`, `sgconfig` |
 | Python's import machinery, in grimp | The driver runs isolated, without `site` and without writing bytecode (`python -I -S -B`). It imports everything it needs before the import roots go on `sys.path`, and appends them at its end rather than prepending them. From then on, an audit hook refuses the import statement and `__import__`, and a finder refuses to load any module found under the roots. grimp parses files, and does not import them. So a `json.py`, a `sitecustomize.py` or a side-effecting `__init__.py` in the snapshot never runs | `python-shadow` |
 | Interpreter discovery: Pyright, inside scip-python, starts a Python to read `sys.path` | A pinned interpreter is passed explicitly, with `PYTHONNOUSERSITE=1`, and the repository's Pyright configs are stripped. Pyright runs that Python only to ask for its version and search paths, through a fixed script that first drops the working directory from the import path. This runs at deep detail only | `pyright-interpreter` |
@@ -44,7 +44,8 @@ extract inside the sandbox.
 
 Every git call is hardened:
 
-- It runs with `--no-pager -c core.fsmonitor=false -c core.hooksPath=/dev/null -c protocol.allow=never -c log.showSignature=false`.
+- It runs with `--no-pager -c core.fsmonitor=false -c core.hooksPath=/dev/null -c protocol.allow=never -c log.showSignature=false`,
+  beside options that fix the shape of git's output: unquoted paths and rename detection.
 - Its environment is exactly `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`,
   `GIT_TERMINAL_PROMPT=0`, `GIT_NO_LAZY_FETCH=1`, `GIT_OPTIONAL_LOCKS=0`, an empty
   `GIT_ALLOW_PROTOCOL`, which allows no transport at all, `LANG=C`, a fresh empty `HOME` and the
@@ -76,7 +77,9 @@ directory. It needs no network and no git.
 - **Otherwise a `systemd-run --user` service**, with `PrivateNetwork=yes`, no socket but a netlink
   one, private `/tmp` and devices, no new privileges, and read-only control groups, so that a build
   can neither lift its own memory cap nor stop another service. Before a build uses such a service,
-  each of these is shown from inside a test service.
+  a test service shows from inside that it sees no network but loopback, reaches no unix socket,
+  writes nothing but its one writable directory, reads nothing outside its binds, and cannot write
+  its own control group.
 - Either way, the sandbox's root is otherwise empty. It holds only the system directories, Node,
   hakutaku, the pinned Python, the export and the engines, all read-only, and a fresh work directory,
   the one path a build can write.
@@ -98,8 +101,10 @@ The other modes:
 **Limits.**
 
 - A memory cap for each build: 3 GB by default, which `hakutaku extract --memory-max` changes. Deep
-  detail asks for its own, 15 GB. Wherever systemd-run can set one, only the engine that reaches the
-  cap stops, and the build says so. Elsewhere, the build records that nothing caps its memory.
+  detail asks for its own, 15 GB. Where systemd lets a unit go on after the kernel kills one of its
+  processes at the cap (`OOMPolicy=continue`), only the engine that reaches the cap stops, and the
+  build says so; with an older systemd the whole build stops at the cap. Where bubblewrap runs but
+  systemd-run cannot start the scope that caps it, the build records that nothing caps its memory.
 - No engine writes a core file.
 - One build at a time, under a build lock.
 - A low priority: each engine runs at nice 19.
