@@ -2,8 +2,11 @@
 // commit SHA, with its tag in a comment; no workflow that runs on pull_request_target, reads a
 // secret, passes secrets on to a workflow it calls or names a stored npm token; installs through
 // npm ci; every dependency and override pinned to one exact version, with the lockfile committed;
-// Renovate's update proposals, which wait 14 days and never push or merge on their own; and
-// ci.yml's triggers and its read-only token.
+// Renovate's update proposals, which wait 14 days and never push or merge on their own; ci.yml's
+// triggers and its read-only token; and release.yml, which runs on a v* tag only: the full CI and
+// a map of a pinned public repository inside the sandbox, then the package through npm's trusted
+// publishing, the GitHub release and the sample's map on Pages, each job with only the
+// permissions it needs.
 import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { expect, it } from "vitest";
@@ -11,14 +14,35 @@ import YAML from "yaml";
 
 interface Step {
   name?: string;
+  id?: string;
   run?: string;
   uses?: string;
+  shell?: string;
+  with?: Record<string, unknown>;
+  env?: Record<string, unknown>;
+  "continue-on-error"?: unknown;
+}
+
+// The fields of a job the tests read; environment as release.yml's pages job writes it.
+interface Job {
+  uses?: string;
+  needs?: string | string[];
+  permissions?: unknown;
+  environment: { name: string; url: string };
+  "timeout-minutes"?: number;
+  "continue-on-error"?: unknown;
+  defaults?: unknown;
+  steps?: Step[];
+  secrets?: unknown;
 }
 
 interface Workflow {
+  name?: string;
   on?: unknown;
   permissions?: unknown;
-  jobs?: Record<string, { steps?: Step[]; secrets?: unknown }>;
+  concurrency?: unknown;
+  defaults?: unknown;
+  jobs?: Record<string, Job>;
 }
 
 const WORKFLOWS = ".github/workflows";
@@ -192,4 +216,211 @@ it("ci.yml runs on branch pushes, pull requests and calls, with read-only conten
     workflow_call: null,
   });
   expect(ci.permissions).toEqual({ contents: "read" });
+});
+
+// release.yml, read in each test that needs it, so that the other tests run without it.
+function release(): Workflow & { jobs: Record<string, Job> } {
+  return YAML.parse(readFileSync(`${WORKFLOWS}/release.yml`, "utf8"));
+}
+
+// A job of release.yml: its steps, their run strings and their uses values.
+const stepsOf = (job: string): Step[] => release().jobs[job]?.steps ?? [];
+const runsOf = (job: string): string[] =>
+  stepsOf(job).flatMap((s) => (s.run === undefined ? [] : [s.run]));
+const usesOf = (job: string): string[] =>
+  stepsOf(job).flatMap((s) => (s.uses === undefined ? [] : [s.uses]));
+
+// An expression of GitHub's, written here without a template literal's placeholder.
+const expr = (inner: string): string => `$\{{ ${inner} }}`;
+
+it("release.yml runs only for v* tags, with no default permissions", () => {
+  const rel = release();
+  expect(rel.on).toEqual({ push: { tags: ["v*"] } });
+  expect(rel.permissions).toEqual({});
+  // one release at a time, and none cancelled halfway; the five jobs, and no other
+  expect(rel.name).toBe("release");
+  expect(rel.concurrency).toEqual({
+    group: "release",
+    "cancel-in-progress": false,
+  });
+  expect(Object.keys(rel.jobs)).toEqual([
+    "ci",
+    "realism",
+    "publish",
+    "github-release",
+    "pages",
+  ]);
+});
+
+it("release.yml publishes after the full CI, through OIDC, with provenance", () => {
+  const rel = release();
+  expect(rel.jobs.ci.uses).toBe("./.github/workflows/ci.yml");
+  expect(rel.jobs.publish.needs).toEqual(["ci", "realism"]);
+  expect(rel.jobs.publish.permissions).toEqual({
+    contents: "read",
+    "id-token": "write",
+  });
+  expect(rel.jobs.publish.environment).toBe("npm");
+  const runs = runsOf("publish").map((r) => r.trim());
+  const check = runs.indexOf(
+    'node scripts/release/check-release.mjs "$GITHUB_REF_NAME" --publishing',
+  );
+  expect(check).toBeGreaterThanOrEqual(0);
+  expect(
+    runs.indexOf("npm publish --provenance --access public"),
+  ).toBeGreaterThan(check);
+  // the called CI reads only; the version check comes before npm ci and the build, and nothing
+  // else runs; Node and npm come from lts/*, never the 22.16.0 floor, with npm's registry
+  expect(rel.jobs.ci.permissions).toEqual({ contents: "read" });
+  expect(runs).toEqual([
+    'node scripts/release/check-release.mjs "$GITHUB_REF_NAME" --publishing',
+    "npm ci",
+    "npm run build",
+    "npm publish --provenance --access public",
+  ]);
+  const node = stepsOf("publish").find((s) =>
+    s.uses?.startsWith("actions/setup-node@"),
+  );
+  expect(node?.with).toEqual({
+    "node-version": "lts/*",
+    "registry-url": "https://registry.npmjs.org",
+  });
+});
+
+it("release.yml writes the GitHub release from CHANGELOG.md and deploys the sample's map to Pages", () => {
+  const rel = release();
+  expect(rel.jobs["github-release"].needs).toBe("publish");
+  expect(rel.jobs["github-release"].permissions).toEqual({ contents: "write" });
+  expect(runsOf("github-release").join("\n")).toContain(
+    'gh release create "$GITHUB_REF_NAME" --verify-tag',
+  );
+  expect(rel.jobs.pages.needs).toBe("publish");
+  expect(rel.jobs.pages.permissions).toEqual({
+    contents: "read",
+    pages: "write",
+    "id-token": "write",
+  });
+  expect(rel.jobs.pages.environment.name).toBe("github-pages");
+  expect(runsOf("pages").join("\n")).toContain(
+    "view observatory --export site/index.html --with-source",
+  );
+  expect(runsOf("pages").join("\n")).toContain(
+    "node scripts/release/scan.mjs site/index.html",
+  );
+  expect(usesOf("pages").map((u) => u.split("@")[0])).toEqual(
+    expect.arrayContaining([
+      "actions/upload-pages-artifact",
+      "actions/deploy-pages",
+    ]),
+  );
+  // the notes check-release writes are the notes gh reads, with the job's own token
+  expect(runsOf("github-release").map((r) => r.trim())).toEqual([
+    'node scripts/release/check-release.mjs "$GITHUB_REF_NAME" --notes "$RUNNER_TEMP/notes.md"',
+    'gh release create "$GITHUB_REF_NAME" --verify-tag --title "hakutaku $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"',
+  ]);
+  const gh = stepsOf("github-release").find((s) =>
+    s.run?.includes("gh release create"),
+  );
+  expect(gh?.env).toEqual({ GH_TOKEN: expr("github.token") });
+  // the sample, made and mapped with no sandbox, is exported, then scanned by the bare command,
+  // whose every failure fails the job, and only then uploaded and deployed
+  const pages = stepsOf("pages");
+  const exported = pages.findIndex(
+    (s) => s.run?.includes("--export site/index.html") === true,
+  );
+  const scanned = pages.findIndex(
+    (s) => s.run?.trim() === "node scripts/release/scan.mjs site/index.html",
+  );
+  const uploaded = pages.findIndex(
+    (s) => s.uses?.startsWith("actions/upload-pages-artifact@") === true,
+  );
+  const deployed = pages.findIndex(
+    (s) => s.uses?.startsWith("actions/deploy-pages@") === true,
+  );
+  expect(exported).toBeGreaterThanOrEqual(0);
+  expect(scanned).toBeGreaterThan(exported);
+  expect(uploaded).toBeGreaterThan(scanned);
+  expect(deployed).toBeGreaterThan(uploaded);
+  const build = pages[exported]?.run ?? "";
+  expect(build).toContain(
+    'node fixtures/observatory/make.mjs "$RUNNER_TEMP/sample"',
+  );
+  expect(build).toContain(
+    'map "$RUNNER_TEMP/sample/observatory" --sandbox none --yes',
+  );
+  expect(pages[uploaded]?.with).toEqual({ path: "site" });
+  expect(pages[deployed]?.id).toBe("deploy");
+  expect(rel.jobs.pages.environment.url).toBe(
+    expr("steps.deploy.outputs.page_url"),
+  );
+});
+
+it("release.yml maps the pinned public repository inside the sandbox before publishing", () => {
+  const rel = release();
+  const pin = JSON.parse(readFileSync("fixtures/realism.json", "utf8"));
+  expect(Object.keys(pin)).toEqual(["url", "commit"]);
+  expect(pin.url).toMatch(/^https:\/\/\S+$/);
+  expect(pin.commit).toMatch(/^[0-9a-f]{40}$/);
+  expect(rel.jobs.realism.needs).toBe("ci");
+  const run = runsOf("realism").join("\n");
+  expect(run).toContain('require("./fixtures/realism.json")');
+  expect(run).toContain('--ref "$COMMIT" --sandbox require --yes');
+  // a read-only token and a time limit; bubblewrap installed, user namespaces allowed and the
+  // package built before the map; and a full clone, since export has no network to fetch with
+  expect(rel.jobs.realism.permissions).toEqual({ contents: "read" });
+  expect(rel.jobs.realism["timeout-minutes"]).toBe(30);
+  const runs = runsOf("realism");
+  const mapped = runs.findIndex((r) => r.includes("--sandbox require --yes"));
+  for (const before of [
+    /\bapt-get install -y bubblewrap\b/,
+    /\bsysctl -w kernel\.apparmor_restrict_unprivileged_userns=0$/m,
+    /^npm ci$/,
+    /^npm run build$/,
+  ]) {
+    const at = runs.findIndex((r) => before.test(r.trim()));
+    expect(at, String(before)).toBeGreaterThanOrEqual(0);
+    expect(at, String(before)).toBeLessThan(mapped);
+  }
+  expect(run).toContain('git clone --quiet "$URL" "$RUNNER_TEMP/realism"');
+  expect(run).not.toMatch(/--depth|--shallow|--filter/);
+});
+
+it("every checkout keeps no credentials, each action has one pin, and no release step may fail without failing the release", () => {
+  const offenders: string[] = [];
+  const pins = new Map<string, Set<string>>();
+  let checkouts = 0;
+  for (const w of workflows()) {
+    for (const { job, step } of steps(w.doc)) {
+      if (step.uses === undefined || step.uses.startsWith("./")) continue;
+      const [action = "", sha = ""] = step.uses.split("@");
+      pins.set(action, new Set([...(pins.get(action) ?? []), sha]));
+      if (action !== "actions/checkout") continue;
+      checkouts += 1;
+      if (step.with?.["persist-credentials"] !== false) {
+        offenders.push(`${w.file}: ${job}: checkout keeps its credentials`);
+      }
+    }
+  }
+  expect(checkouts).toBeGreaterThan(0);
+  for (const [action, shas] of pins) {
+    if (shas.size !== 1) offenders.push(`${action}: ${[...shas].join(", ")}`);
+  }
+  // a step that may fail quietly, or a shell that need not stop at a failed command
+  const rel = release();
+  if ("defaults" in rel) offenders.push("release.yml: defaults");
+  for (const [name, job] of Object.entries(rel.jobs)) {
+    for (const key of ["continue-on-error", "defaults"] as const) {
+      if (key in job) offenders.push(`release.yml: ${name}: ${key}`);
+    }
+    for (const step of job.steps ?? []) {
+      for (const key of ["continue-on-error", "shell"] as const) {
+        if (key in step) {
+          offenders.push(
+            `release.yml: ${name}: ${step.run ?? step.uses}: ${key}`,
+          );
+        }
+      }
+    }
+  }
+  expect(offenders).toEqual([]);
 });

@@ -1,0 +1,142 @@
+name: release
+
+# A v* tag: the full CI, and a map of a pinned public repository inside the sandbox; only then the
+# package, published through npm's trusted publishing (OIDC, with provenance, and no stored
+# token), the GitHub release, with CHANGELOG.md's notes for the version, and the sample's static
+# map on GitHub Pages. No job reads a secret, and each job's token holds only what that job needs.
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+# One release at a time, and none cancelled halfway.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# The IBM Plex font packages, which the viewer bundles, run IBM's telemetry collector when npm
+# installs them, and it collects only in CI or a container. This turns it off in every job here;
+# the CI called below sets its own.
+env:
+  IBM_TELEMETRY_DISABLED: "true"
+
+jobs:
+  # The same CI as every push: the Linux job on its three Node versions, the determinism check
+  # and the macOS smoke test.
+  ci:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+
+  # A real, permissively licensed public repository, pinned by URL and commit in
+  # fixtures/realism.json and fetched here, never vendored, is mapped inside bubblewrap, and the
+  # build must pass its gates. The clone is a full one: export has no network, so a partial clone
+  # could not supply the objects it lacks.
+  realism:
+    needs: ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - run: |
+          sudo apt-get install -y bubblewrap
+          # Ubuntu 24.04 restricts unprivileged user namespaces, which bubblewrap needs.
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+      - run: npm ci
+      - run: npm run build
+      - name: realism check
+        run: |
+          URL="$(node -p 'require("./fixtures/realism.json").url')"; COMMIT="$(node -p 'require("./fixtures/realism.json").commit')"
+          git clone --quiet "$URL" "$RUNNER_TEMP/realism"
+          export XDG_DATA_HOME="$RUNNER_TEMP/xdg/data" XDG_CONFIG_HOME="$RUNNER_TEMP/xdg/config" XDG_CACHE_HOME="$RUNNER_TEMP/xdg/cache"
+          node dist/cli/main.js map "$RUNNER_TEMP/realism" --ref "$COMMIT" --sandbox require --yes
+
+  # The package, from the tag's commit, once both jobs above have passed and the npm
+  # environment's reviewer has approved. The release check runs first: the tag must match
+  # package.json's version, CHANGELOG.md must hold that version's notes and README.md must pin no
+  # other version; and trusted publishing needs Node 22.14.0 and npm 11.5.1 or later, which is
+  # why this job runs on lts/* and never on the 22.16.0 floor, whose npm is older.
+  publish:
+    needs: [ci, realism]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: npm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
+      - run: node scripts/release/check-release.mjs "$GITHUB_REF_NAME" --publishing
+      - run: npm ci
+      - run: npm run build
+      - run: npm publish --provenance --access public
+
+  # The GitHub release for the tag, whose notes are CHANGELOG.md's section for its version.
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - run: node scripts/release/check-release.mjs "$GITHUB_REF_NAME" --notes "$RUNNER_TEMP/notes.md"
+      - run: gh release create "$GITHUB_REF_NAME" --verify-tag --title "hakutaku $GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # The demo: the synthetic sample, mapped with no sandbox, since it is hakutaku's own repository,
+  # and exported as one self-contained page with its sources, which are synthetic and redacted
+  # like any other. The page is scanned for home-directory paths and secrets before it is
+  # uploaded: a finding, or a scan that cannot run (exit 2), fails the job.
+  pages:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: lts/*
+      - run: npm ci
+      - run: npm run build
+      - name: the sample's static map
+        run: |
+          export XDG_DATA_HOME="$RUNNER_TEMP/xdg/data" XDG_CONFIG_HOME="$RUNNER_TEMP/xdg/config" XDG_CACHE_HOME="$RUNNER_TEMP/xdg/cache"
+          node fixtures/observatory/make.mjs "$RUNNER_TEMP/sample"
+          node dist/cli/main.js map "$RUNNER_TEMP/sample/observatory" --sandbox none --yes
+          mkdir -p site
+          node dist/cli/main.js view observatory --export site/index.html --with-source
+      - run: node scripts/release/scan.mjs site/index.html
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
