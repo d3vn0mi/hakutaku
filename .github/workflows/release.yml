@@ -65,7 +65,10 @@ jobs:
   # environment's reviewer has approved. The release check runs first: the tag must match
   # package.json's version, CHANGELOG.md must hold that version's notes and README.md must pin no
   # other version; and trusted publishing needs Node 22.14.0 and npm 11.5.1 or later, which is
-  # why this job runs on lts/* and never on the 22.16.0 floor, whose npm is older.
+  # why this job runs on lts/* and never on the 22.16.0 floor, whose npm is older. Since this job
+  # can request the OIDC token that publishes, npm ci runs no dependency's install script here.
+  # The build needs none: esbuild finds its binary in its platform package, and the font
+  # packages' script is IBM's telemetry.
   publish:
     needs: [ci, realism]
     runs-on: ubuntu-latest
@@ -82,7 +85,7 @@ jobs:
           node-version: lts/*
           registry-url: https://registry.npmjs.org
       - run: node scripts/release/check-release.mjs "$GITHUB_REF_NAME" --publishing
-      - run: npm ci
+      - run: npm ci --ignore-scripts
       - run: npm run build
       - run: npm publish --provenance --access public
 

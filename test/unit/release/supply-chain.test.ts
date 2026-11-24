@@ -270,11 +270,13 @@ it("release.yml publishes after the full CI, through OIDC, with provenance", () 
     runs.indexOf("npm publish --provenance --access public"),
   ).toBeGreaterThan(check);
   // the called CI reads only; the version check comes before npm ci and the build, and nothing
-  // else runs; Node and npm come from lts/*, never the 22.16.0 floor, with npm's registry
+  // else runs; npm ci runs no dependency's install script, since this job can request the OIDC
+  // token that publishes the package; Node and npm come from lts/*, never the 22.16.0 floor,
+  // with npm's registry
   expect(rel.jobs.ci.permissions).toEqual({ contents: "read" });
   expect(runs).toEqual([
     'node scripts/release/check-release.mjs "$GITHUB_REF_NAME" --publishing',
-    "npm ci",
+    "npm ci --ignore-scripts",
     "npm run build",
     "npm publish --provenance --access public",
   ]);
