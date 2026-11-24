@@ -1,13 +1,15 @@
-// The hostile extract cases. Each test makes the fixtures afresh, then runs its control first:
-// the stock engine or Python running the vector on a copy of the case, which must fire it, or,
-// where nothing can run it, a check of the fixture's shape; the canary is emptied again before
-// hakutaku runs. Then the case's checkout is exported with exportRepo and extracted with
-// extractSnapshot and no sandbox, and every engine's own status is checked, never the build's
-// result alone; separator-names runs hakutaku map itself, with no sandbox. Every export and store
-// is made outside the fixtures, under a directory removed afterwards. Run `node dist/cli/main.js
-// engines install --yes` once before this file.
+// The hostile extract cases. Each test makes the fixtures afresh (or takes those that
+// HAKUTAKU_HOSTILE_DIR names), then runs its control first: the stock engine or Python running
+// the vector on a copy of the case, which must fire it, or, where nothing can run it, a check of
+// the fixture's shape; the canary is emptied again before hakutaku runs. Then the case's checkout
+// is exported with exportRepo and extracted with extractSnapshot, and every engine's own status is
+// checked, never the build's result alone; separator-names runs hakutaku map itself. Each extract
+// runs with no sandbox unless HAKUTAKU_HOSTILE_SANDBOX=require puts it inside one
+// (hostileSandbox). Every export and store is made outside the fixtures, under a directory removed
+// afterwards. Run `node dist/cli/main.js engines install --yes` once before this file.
 import { spawnSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   mkdtempSync,
   readdirSync,
@@ -16,7 +18,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { PassThrough } from "node:stream";
 import { afterAll, expect, it, vi } from "vitest";
 import type { CliIO } from "../../src/cli/commands/index.js";
@@ -59,6 +61,7 @@ import {
   type HostileCaseId,
   type HostileFixtures,
   hostileFixtures,
+  hostileSandbox,
   scratchCopy,
   takeCanary,
 } from "../helpers/hostile.js";
@@ -128,7 +131,7 @@ interface Built {
 }
 
 // The case's main branch exported into a fresh directory, then extracted at the detail given
-// with the installed engines and no sandbox, into a store of its own.
+// with the installed engines, in hostileSandbox()'s sandbox, into a store of its own.
 async function exportAndExtract(
   fx: HostileFixtures,
   id: HostileCaseId,
@@ -142,7 +145,7 @@ async function exportAndExtract(
     out: store,
     enginesDir: ENGINES_DIR,
     detail,
-    sandbox: "none",
+    sandbox: hostileSandbox(),
   });
   return {
     result,
@@ -507,6 +510,23 @@ const FAILING_AST_GREP = [
   "",
 ].join("\n");
 
+// The engines directory engine-failure-text builds with: the installed engines, with the stand-in
+// in place of ast-grep's bin. With no sandbox it is made of links to them. A sandbox binds the
+// engines directory alone, so that a link out of it cannot be followed there, and the directory is
+// then a copy of the installed engines instead, made under this file's own directory.
+function failingEnginesDir(): string {
+  if (hostileSandbox() === "none") {
+    return standInEnginesDir("ast-grep", { sh: FAILING_AST_GREP });
+  }
+  const dir = join(tmp(), "engines");
+  cpSync(ENGINES_DIR, dir, { recursive: true, verbatimSymlinks: true });
+  writeFileSync(
+    join(dir, relative(resolve(ENGINES_DIR), bin("ast-grep"))),
+    FAILING_AST_GREP,
+  );
+  return dir;
+}
+
 // What one hakutaku command prints on stdout; it must exit 0 and print nothing on stderr.
 async function cli(argv: string[]): Promise<string> {
   const c = { out: "", err: "" };
@@ -568,7 +588,7 @@ it(
     );
 
     // made before the XDG variables move, from the installed engines
-    const enginesDir = standInEnginesDir("ast-grep", { sh: FAILING_AST_GREP });
+    const enginesDir = failingEnginesDir();
     const root = tmp();
     vi.stubEnv("XDG_DATA_HOME", join(root, "data"));
     vi.stubEnv("XDG_CONFIG_HOME", join(root, "config"));
@@ -596,7 +616,7 @@ it(
         out,
         enginesDir,
         detail: "quick",
-        sandbox: "none",
+        sandbox: hostileSandbox(),
       }).then(
         () => null,
         (error: unknown) => (error instanceof Error ? error.message : null),
@@ -724,8 +744,8 @@ it(
     vi.stubEnv("XDG_CONFIG_HOME", join(root, "config"));
     vi.stubEnv("XDG_CACHE_HOME", join(root, "cache"));
     try {
-      // hakutaku map, with the installed engines and no sandbox, at deep detail, where every
-      // engine reads the files; what it says on stderr is the message of a failure
+      // hakutaku map, with the installed engines, in hostileSandbox()'s sandbox, at deep detail,
+      // where every engine reads the files; what it says on stderr is the message of a failure
       const c = { out: "", err: "" };
       const io: CliIO = {
         stdout: (s) => {
@@ -738,7 +758,8 @@ it(
         env: process.env,
         isTTY: false,
       };
-      const argv = ["map", join(fx.dir, id), "--id", id, "--sandbox", "none"];
+      const argv = ["map", join(fx.dir, id), "--id", id];
+      argv.push("--sandbox", hostileSandbox());
       argv.push("--engines-dir", ENGINES_DIR, "--detail", "deep");
       expect(await main(argv, io), c.err).toBe(0);
       expect(c.out).toMatch(

@@ -1,10 +1,12 @@
-// The hostile export cases. Each test makes the fixtures afresh, then runs its control first:
-// stock git on a copy of the case, which must fire the canary, so that the fixture is shown to
-// be live; the canary is emptied again before hakutaku runs. Then the case's checkout is
-// exported with exportRepo, and the export extracted with extractSnapshot at quick detail and
-// no sandbox, so that the checks every case ends with cover a store as well as the snapshot.
-// Every export and store is made outside the fixtures, under a directory removed afterwards.
-// Run `node dist/cli/main.js engines install --yes` once before this file.
+// The hostile export cases. Each test makes the fixtures afresh (or takes those that
+// HAKUTAKU_HOSTILE_DIR names), then runs its control first: stock git on a copy of the case,
+// which must fire the canary, so that the fixture is shown to be live; the canary is emptied again
+// before hakutaku runs. Then the case's checkout is exported with exportRepo, and the export
+// extracted with extractSnapshot at quick detail, with no sandbox unless
+// HAKUTAKU_HOSTILE_SANDBOX=require puts it inside one (hostileSandbox), so that the checks every
+// case ends with cover a store as well as the snapshot. Every export and store is made outside the
+// fixtures, under a directory removed afterwards. Run `node dist/cli/main.js engines install
+// --yes` once before this file.
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
@@ -31,6 +33,7 @@ import {
   type HostileCaseId,
   type HostileFixtures,
   hostileFixtures,
+  hostileSandbox,
   MARKER,
   scratchCopy,
   takeCanary,
@@ -99,7 +102,8 @@ interface Built {
 }
 
 // The case's main branch exported into exportDir (a fresh directory unless given), then
-// extracted at quick detail with no sandbox into a store of its own, which must build.
+// extracted at quick detail, in hostileSandbox()'s sandbox, into a store of its own, which must
+// build.
 async function exportAndExtract(
   fx: HostileFixtures,
   id: HostileCaseId,
@@ -111,7 +115,7 @@ async function exportAndExtract(
     dir: exportDir,
     out: store,
     detail: "quick",
-    sandbox: "none",
+    sandbox: hostileSandbox(),
   });
   expect(r.result).toBe("built");
   const json = (name: string) =>

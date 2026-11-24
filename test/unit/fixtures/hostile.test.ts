@@ -13,12 +13,13 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterAll, expect, it } from "vitest";
+import { afterAll, expect, it, vi } from "vitest";
 import type { FileRow } from "../../../src/store/index.js";
 import {
   filesHolding,
   type HostileCaseId,
   hostileFixtures,
+  hostileSandbox,
   MARKER,
   storedTextsHolding,
   takeCanary,
@@ -70,6 +71,40 @@ it("makes the fixtures afresh on each call, with an empty canary and the host's 
     for (const id of IDS) {
       expect(statSync(join(made.dir, id)).isDirectory()).toBe(true);
     }
+  }
+});
+
+it("uses the fixtures HAKUTAKU_HOSTILE_DIR names on every call, and refuses a directory that make.mjs did not make", async () => {
+  const shared = await hostileFixtures();
+  try {
+    vi.stubEnv("HAKUTAKU_HOSTILE_DIR", shared.dir);
+    expect(await hostileFixtures()).toEqual(shared);
+    expect(await hostileFixtures()).toEqual(shared);
+    for (const dir of [tmp(), join("relative", "fixtures"), ""]) {
+      vi.stubEnv("HAKUTAKU_HOSTILE_DIR", dir);
+      await expect(hostileFixtures()).rejects.toThrow(
+        `HAKUTAKU_HOSTILE_DIR names no fixtures that fixtures/hostile/make.mjs made, by an absolute path holding canary/: ${JSON.stringify(dir)}`,
+      );
+    }
+  } finally {
+    vi.unstubAllEnvs();
+  }
+});
+
+it("extracts with no sandbox unless HAKUTAKU_HOSTILE_SANDBOX is require, and refuses any other value", () => {
+  try {
+    vi.stubEnv("HAKUTAKU_HOSTILE_SANDBOX", undefined);
+    expect(hostileSandbox()).toBe("none");
+    vi.stubEnv("HAKUTAKU_HOSTILE_SANDBOX", "require");
+    expect(hostileSandbox()).toBe("require");
+    for (const value of ["none", "auto", "", "REQUIRE"]) {
+      vi.stubEnv("HAKUTAKU_HOSTILE_SANDBOX", value);
+      expect(() => hostileSandbox()).toThrow(
+        `HAKUTAKU_HOSTILE_SANDBOX is "require" or unset, not ${JSON.stringify(value)}`,
+      );
+    }
+  } finally {
+    vi.unstubAllEnvs();
   }
 });
 

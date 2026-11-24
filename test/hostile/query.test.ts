@@ -6,13 +6,14 @@
 // a name comes back in IDs, paths and candidates, so every result that holds one must go out
 // under the untrusted marking that the MCP server puts in _meta.
 //
-// Each test makes the fixtures afresh and runs its control first. Then the case's checkout is
-// exported with exportRepo and extracted with extractSnapshot and no sandbox, at the case's
-// detail, and each engine's own tier is checked, never the build's result alone. The suite goes
-// through runTool over a fixed host: the overview, every file explained, the callers of every
-// definition's name and a search for that name, a text search for the first word of four letters
-// or more of each injected line, and a snippet of every file with a source. Run `node
-// dist/cli/main.js engines install --yes` once before this file.
+// Each test makes the fixtures afresh (or takes those that HAKUTAKU_HOSTILE_DIR names) and runs
+// its control first. Then the case's checkout is exported with exportRepo and extracted with
+// extractSnapshot at the case's detail, with no sandbox unless HAKUTAKU_HOSTILE_SANDBOX=require
+// puts it inside one (hostileSandbox), and each engine's own tier is checked, never the build's
+// result alone. The suite goes through runTool over a fixed host: the overview, every file
+// explained, the callers of every definition's name and a search for that name, a text search for
+// the first word of four letters or more of each injected line, and a snippet of every file with a
+// source. Run `node dist/cli/main.js engines install --yes` once before this file.
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -36,6 +37,7 @@ import {
   type HostileCaseId,
   type HostileFixtures,
   hostileFixtures,
+  hostileSandbox,
   MARKER,
   scratchCopy,
   takeCanary,
@@ -83,8 +85,9 @@ interface Built {
 }
 
 // The case's main branch exported into a fresh directory, then extracted at the case's detail
-// with the installed engines and no sandbox, into a store of its own. Every engine either ran or
-// was skipped at that detail: one that failed or fell back builds a store whose answers differ.
+// with the installed engines, in hostileSandbox()'s sandbox, into a store of its own. Every engine
+// either ran or was skipped at that detail: one that failed or fell back builds a store whose
+// answers differ.
 async function exportAndExtract(
   fx: HostileFixtures,
   id: HostileCaseId,
@@ -103,7 +106,7 @@ async function exportAndExtract(
     out: store,
     enginesDir: ENGINES_DIR,
     detail,
-    sandbox: "none",
+    sandbox: hostileSandbox(),
   });
   expect(result.result).toBe("built");
   const opened = openStore(store);

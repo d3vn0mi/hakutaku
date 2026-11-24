@@ -81,9 +81,17 @@ jobs:
           path: ${{ runner.temp }}/sample-hash.txt
           if-no-files-found: error
       # Each hostile case through export and extract, with no sandbox, after its control has
-      # shown that the fixture fires.
+      # shown that the fixture fires. Then the same suite with every extract inside bubblewrap,
+      # under strace: no process inside may exec a file of a snapshot or of the fixtures, or open
+      # or reach an internet socket, and the extract cases must each have run in a sandbox.
       - name: hostile fixtures
-        run: npm run test:hostile
+        run: |
+          npm run test:hostile
+          # Ubuntu 24.04 restricts unprivileged user namespaces, which bubblewrap needs.
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+          npm run test:sandbox
       # hakutaku mcp from dist/, over stdio with the MCP SDK's client: the tools, the golden answers
       # (all but code_repos' and those made at a detail other than standard or under a cap of their
       # own), a store swapped under the server, and, under strace, no process, no internet socket

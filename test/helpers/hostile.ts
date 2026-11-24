@@ -2,6 +2,11 @@
 // OS temp directory on every call, removed after the last test of the file that made it, with
 // the cases fixtures/hostile/cases.json lists. A case fires when anything appears in canaryDir,
 // or when the marker line of markerFile appears where it must not.
+//
+// Two settings come from the environment, for scripts/hostile-sandbox.mjs, which runs the suite
+// under strace: HAKUTAKU_HOSTILE_SANDBOX=require, the sandbox every hostile extract then runs in,
+// and HAKUTAKU_HOSTILE_DIR, fixtures that make.mjs made already, which every call then returns
+// and none removes. With neither set, the suite extracts with no sandbox, on fixtures of its own.
 import { execFileSync } from "node:child_process";
 import {
   cpSync,
@@ -10,13 +15,15 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
+import { isAbsolute, join, relative } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 import { afterAll, expect } from "vitest";
+import type { SandboxMode } from "../../src/build.js";
 import type { Detail } from "../../src/model/index.js";
 
 const HOSTILE = fileURLToPath(
@@ -67,12 +74,45 @@ afterAll(() => {
     rmSync(dir, { recursive: true, force: true });
 });
 
-export async function hostileFixtures(): Promise<HostileFixtures> {
+// The sandbox the hostile suite extracts in: "require" when HAKUTAKU_HOSTILE_SANDBOX=require, and
+// "none" when it is unset. Any other value throws.
+export function hostileSandbox(): SandboxMode {
+  const mode = process.env.HAKUTAKU_HOSTILE_SANDBOX;
+  if (mode === undefined) return "none";
+  if (mode === "require") return "require";
+  throw new Error(
+    `HAKUTAKU_HOSTILE_SANDBOX is "require" or unset, not ${JSON.stringify(mode)}`,
+  );
+}
+
+// The fixtures' directory: the one HAKUTAKU_HOSTILE_DIR names, made by make.mjs already, which
+// must be an absolute path holding canary/; or else a fresh one, made here and removed after the
+// last test of this file.
+function fixturesDir(): string {
+  const given = process.env.HAKUTAKU_HOSTILE_DIR;
+  if (given !== undefined) {
+    if (
+      !isAbsolute(given) ||
+      statSync(join(given, "canary"), {
+        throwIfNoEntry: false,
+      })?.isDirectory() !== true
+    ) {
+      throw new Error(
+        `HAKUTAKU_HOSTILE_DIR names no fixtures that fixtures/hostile/make.mjs made, by an absolute path holding canary/: ${JSON.stringify(given)}`,
+      );
+    }
+    return given;
+  }
   const dir = mkdtempSync(join(tmpdir(), "hakutaku-hostile-"));
   made.push(dir);
   execFileSync(process.execPath, [join(HOSTILE, "make.mjs"), dir], {
     stdio: ["ignore", "ignore", "pipe"],
   });
+  return dir;
+}
+
+export async function hostileFixtures(): Promise<HostileFixtures> {
+  const dir = fixturesDir();
   const cases: HostileCase[] = JSON.parse(
     readFileSync(join(HOSTILE, "cases.json"), "utf8"),
   );
