@@ -146,7 +146,7 @@ it("the design and security docs keep the published sections", () => {
     "Threat model",
     "Nothing from the analysed repository runs",
     "The extraction sandbox",
-    "Secrets are never stored",
+    "Secrets and the store",
     "Injected instructions and the viewer",
     "What hakutaku never does",
     "Reporting a vulnerability",
@@ -395,6 +395,44 @@ it("every anchor a public doc links to names a heading of the doc it points at",
   }
   expect(checked).toBeGreaterThan(5);
   expect(broken).toEqual([]);
+});
+
+// Redaction is a fixed set of patterns, and the gate scans again with the same patterns, so no doc
+// may promise more than that: each says what reaches the store and what the patterns miss.
+it("no public doc promises that no secret is ever stored, and each security summary names what redaction misses", () => {
+  const promise =
+    /secrets?\s+(?:are|is)\s+never\s+stored|no\s+secret\s+(?:ever\s+)?enters\s+the\s+store/i;
+  for (const f of PUBLIC_DOCS) {
+    expect(read(f).replace(/\*\*/g, ""), f).not.toMatch(promise);
+  }
+  const summaries: Array<[string, string]> = [
+    ["SECURITY.md", section(read("SECURITY.md"), "The no-execution guarantee")],
+    ["README.md", section(readme, "Security model")],
+    ["docs/design.md", section(read("docs/design.md"), "Security")],
+    [
+      "docs/security.md",
+      section(read("docs/security.md"), "Secrets and the store"),
+    ],
+  ];
+  for (const [f, text] of summaries) {
+    const flat = text.replace(/\s+/g, " ");
+    expect(flat, f).toMatch(/redaction rules|its rules|the rules/);
+    expect(flat, f).toContain("connection string");
+    expect(flat, f).toContain("stored as written");
+  }
+  const model = section(read("docs/security.md"), "Secrets and the store")
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+  for (const gap of [
+    "connection string",
+    "no rule of its own",
+    "shorter than 16 characters",
+    "low entropy",
+    "the same rules",
+    "--with-source",
+  ]) {
+    expect(model, gap).toContain(gap);
+  }
 });
 
 it("the public docs carry no home path or secret", () => {

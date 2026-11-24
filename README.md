@@ -395,10 +395,14 @@ as data.
   fresh work directory, the one path a build can write. The environment is built from scratch, so no
   API key reaches an engine. Without a sandbox, as on macOS, the build warns and names what is
   missing, and `--sandbox require` fails instead.
-- **Secrets are never stored.** Denylisted files, such as `.env*`, `*.pem` and `id_rsa*`, never leave
-  the export, and a redaction pass replaces secret-looking spans before any text enters the store. A
-  store that would hold either is never swapped in. Stores live in your data directory, never in the
-  analysed repository.
+- **Denylisted files are never stored, and known secret shapes are redacted.** Denylisted files, such
+  as `.env*`, `*.pem` and `id_rsa*`, never leave the export, and a redaction pass replaces the
+  secret-looking spans that its rules match before any text enters the store. A store that would
+  hold a denylisted path, or a span that a second scan still finds, is never swapped in. The rules
+  are patterns, and the second scan uses the same ones: a password inside a connection string, a key
+  from a provider with no rule, or a short or low-entropy value is stored as written. So a store, and
+  a page exported with `--with-source`, is as sensitive as the code it maps. Stores live in your data
+  directory, never in the analysed repository.
 - **Repository text is marked untrusted.** Every answer that can carry the repository's content, its
   paths and names included, goes out marked as data, not instructions. The viewer escapes all of it,
   under a strict Content Security Policy.

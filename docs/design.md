@@ -88,8 +88,9 @@ a sky:
    share tool names, inputs and outputs. The viewer shows the same answers.
 5. **A viewer for a first look,** with a choice of depth, search and filter, and highlighted source,
    for TypeScript, JavaScript and Python.
-6. **Safe on hostile repositories.** Nothing from the analysed repository ever runs, and no secret
-   enters the store.
+6. **Safe on hostile repositories.** Nothing from the analysed repository ever runs, no denylisted
+   file enters the store, and the secret-looking spans that the redaction rules match are redacted
+   before any text does.
 7. **Public and attributed.** MIT, and a [NOTICE](../NOTICE) that credits every upstream project.
    Examples and numbers come only from the synthetic sample and from public repositories.
 8. **Cheap to add a repository.** A generated profile that a person reviews, and no dependency
@@ -977,9 +978,12 @@ control, and how it is checked.
   Linux, bubblewrap, or a `systemd-run --user` service with the same narrow view of the file system
   where bubblewrap does not work. Without either, the build warns and names what is missing, and
   `--sandbox require` fails instead. The environment is built from scratch.
-- **Secrets are never stored.** A denylist keeps files such as `.env` and private keys out of every
-  snapshot, a redaction pass replaces secret-looking spans before any text enters the store, and a
-  gate refuses a store that holds either.
+- **Denylisted files are never stored, and known secret shapes are redacted.** A denylist keeps files
+  such as `.env` and private keys out of every snapshot, a redaction pass replaces the
+  secret-looking spans that its rules match before any text enters the store, and a gate refuses a
+  store that holds a denylisted path or a span that a second scan still finds. The rules are
+  patterns, so a secret they do not match, such as a password inside a connection string, is stored
+  as written.
 - **Injected instructions and the viewer.** Repository text is marked as untrusted towards models.
   The viewer escapes all of it, under a Content Security Policy that forbids anything that does not
   come from the viewer's own server or, in a static export, from the page itself.

@@ -123,7 +123,10 @@ blocked fails CI rather than passing it unseen. A build traced at standard detai
 socket, and SHA-256 manifests taken before and after show that it wrote nothing to the repository
 or to its snapshot.
 
-## Secrets are never stored
+## Secrets and the store
+
+Denylisted files never enter the store, and the secret-looking spans that the redaction rules match
+are redacted before any text is stored. A secret that the rules do not match is stored as written.
 
 - **A denylist of paths:** `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `id_ed25519*`,
   `.npmrc`, `.pypirc`, `.netrc`, `*.kdbx` and `secrets/**`, plus the profile's extras. A profile can
@@ -140,10 +143,18 @@ or to its snapshot.
   - The count goes in the build's coverage, as `redactions`.
 - **The gates.** A store that would hold a denylisted path, or a secret-looking span that a second
   scan of the redacted text still finds, is never swapped in.
+- **What redaction misses.** The rules are patterns, and the second scan runs the same rules, so it
+  cannot find what they miss. These are stored as written:
+  - a password inside a connection string or a URL;
+  - a key from a provider with no rule of its own;
+  - a value assigned to a name that `assigned-secret` does not list, or one shorter than 16
+    characters or of low entropy.
 - **Stores are as sensitive as the code they map.**
   - They live in the user's data directory, or in a host's own state directory, never in the
     analysed repository.
   - None goes into hakutaku's repository, apart from the synthetic sample's.
+  - A page that `hakutaku view --export --with-source` writes holds the sources, so it is as
+    sensitive as a store.
 - **How it is checked.** The sample carries a denylisted `.env` that must never reach the store, and
   a fake secret in its code that must be redacted. Its oracle checks both on every run. The
   `engine-failure-text` fixture has an engine fail on a line that holds a fake token, and print that
