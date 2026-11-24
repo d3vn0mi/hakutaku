@@ -188,10 +188,49 @@ function inSample(ref: NodeRef): boolean {
   }
 }
 
+// A table headed ENCODING_CASES shows how odd paths and names turn into link tokens. The sample
+// holds no such path, so the table's IDs are made up on purpose, and the docs test round-trips
+// each one through the codec; its rows are left out of the IDs a page shows.
+const ENCODING_CASES = "| ID | Token | What it shows |";
+function withoutEncodingCases(text: string): string {
+  const kept: string[] = [];
+  let inCases = false;
+  for (const line of text.split("\n")) {
+    if (line === ENCODING_CASES) inCases = true;
+    else if (inCases && !line.startsWith("|")) inCases = false;
+    if (!inCases) kept.push(line);
+  }
+  return kept.join("\n");
+}
+
+it("leaves out only the rows of a table of encoding cases", () => {
+  const text = [
+    "`observatory:web/src/orbits/kepler.ts`",
+    "",
+    ENCODING_CASES,
+    "|---|---|---|",
+    "| `observatory:web/a--b/c.ts` | `web~a%2D-b~c.ts` | an inner `--` |",
+    "",
+    "`observatory:npm:react`",
+    "| ID | Token |",
+    "| `observatory:web/x.ts` | `web~x.ts` |",
+  ].join("\n");
+  expect(withoutEncodingCases(text).split("\n")).toEqual([
+    "`observatory:web/src/orbits/kepler.ts`",
+    "",
+    "",
+    "`observatory:npm:react`",
+    "| ID | Token |",
+    "| `observatory:web/x.ts` | `web~x.ts` |",
+  ]);
+});
+
 for (const page of PAGES) {
   it(`${page.path} shows only IDs of nodes the sample has`, () => {
     const shown = [
-      ...new Set(page.text.match(/observatory:[^\s`"|)]*/g) ?? []),
+      ...new Set(
+        withoutEncodingCases(page.text).match(/observatory:[^\s`"|)]*/g) ?? [],
+      ),
     ];
     expect(shown.length).toBeGreaterThan(0);
     const missing = shown.filter((id) => {
