@@ -1,0 +1,29 @@
+name: Bug report
+description: Something hakutaku does wrong, shown on the synthetic sample.
+body:
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction on the synthetic sample
+      description: Commands that show the bug on fixtures/observatory or on a hostile fixture. Never private code, paths or output.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Output of hakutaku --version
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Linux, macOS]
+    validations:
+      required: true

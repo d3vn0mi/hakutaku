@@ -1,395 +1,115 @@
-<div align="center">
-
 # hakutaku
 
-### 白沢
+hakutaku maps a code repository for AI agents first and people second: who calls what, what a change reaches, what matters most. It works from one local store, and never runs the repository's code.
 
-**hakutaku maps a code repository for AI agents first and people second: who calls what, what a change reaches, what matters most. It works from one local store, and never runs the repository's code.**
+## Quick start
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Status: pre-release](https://img.shields.io/badge/status-pre--release-orange.svg)](#status-and-roadmap)
-[![MCP: planned](https://img.shields.io/badge/MCP-planned-lightgrey.svg)](#set-it-up-in-an-mcp-client-planned-for-01)
-
-[Status](#status-and-roadmap) ·
-[Quick start](#quick-start-planned-for-01) ·
-[MCP setup](#set-it-up-in-an-mcp-client-planned-for-01) ·
-[Tools](#the-tools) ·
-[Viewer](#the-viewer) ·
-[Security](#security-model) ·
-[Contributing](#contributing)
-
-</div>
-
-> [!IMPORTANT]
-> **Pre-release: 0.1 in progress.** Nothing is installable yet: 0.1 is not on npm. The engine, the
-> store, the 13 tools, the MCP server and the viewer are built and tested in this repository. Every
-> command and config below is **planned for 0.1**, and may change before it ships. Watch
-> the repository, or join [Discussions](https://github.com/d3vn0mi/hakutaku/discussions), to follow
-> the first release.
-
-## What it is
-
-hakutaku reads a git repository at one commit and builds **one SQLite store** for it: the files,
-imports, definitions, labelled callers, metrics, entry points and recent history. Every answer, for
-an agent or a person, comes from that store through the same query functions. There are three ways
-in:
-
-- **An MCP server** over stdio, with 13 read-only `code_*` tools, for AI agents in any MCP client.
-- **A CLI.** `hakutaku query` runs any tool from a shell, with the same JSON in and out.
-- **A local viewer.** A map of the repository in your browser, served on `127.0.0.1`.
-
-It knows a codebase by reading it. Nothing from the analysed repository ever runs: no package
-scripts, no build configs, no git hooks or filters, no tests.
-
-### Why agents first
-
-An agent needs answers that are precise, labelled, small and citable. It asks where X is defined,
-who calls it, what breaks if it changes, and which files matter most. So hakutaku is built this way:
-
-- **The tool contract comes first.** It is designed, tested and frozen before the viewer. The viewer
-  is a client of the tools, never the other way round.
-- **Every inferred answer is labelled, and every blind spot is named.** A name match is never
-  presented as a fact.
-- **Unknowns are refused, never guessed.** An unknown target answers `not_found` with near misses. An
-  ambiguous name answers `ambiguous` with candidates.
-- **Answers are capped and paged**, so a result never floods a context window.
-- **IDs are stable**, so an agent can quote them back to the tools and a person can open them in the
-  viewer.
-
-People get the same map, drawn. In minutes, a newcomer sees what the code depends on, where it starts
-running, what changes often and what changes together. The viewer's Agent tab shows the exact JSON
-an agent gets for the node on screen.
-
-## How it works
-
-```mermaid
-flowchart TD
-    repo["Your git repository<br/>read at one commit, never written"]
-
-    subgraph stage1["1 · export"]
-        export["hakutaku export<br/>reads git objects only:<br/>no filters, hooks or pager"]
-        snapshot["snapshot + history<br/>tracked files only, secrets denylisted"]
-    end
-
-    subgraph stage2["2 · extract, offline, in a sandbox"]
-        engines["analysis engines<br/>scip-typescript · dependency-cruiser<br/>grimp · ast-grep · scip-python"]
-    end
-
-    store[("store.sqlite<br/>redacted, gated, swapped in atomically")]
-    tools["13 code_* tools<br/>pure, read-only query functions"]
-    mcp["MCP server<br/>stdio"]
-    cli["hakutaku query<br/>CLI"]
-    viewer["viewer<br/>127.0.0.1"]
-    agents(["AI agents"])
-    people(["people"])
-
-    repo --> export --> snapshot --> engines --> store --> tools
-    tools --> mcp --> agents
-    tools --> cli
-    tools --> viewer --> people
-```
-
-The two stages are separate on purpose. Export needs git and reads your repository. Extract needs
-neither: it runs the parsers over untrusted input, with no network. So each stage can run in its own
-sandbox. A new store is checked against five gates before it replaces the old one, and the previous
-store is kept:
-
-- **`files-indexed`** wants each TypeScript and JavaScript file given to the engines indexed by
-  dependency-cruiser and scip-typescript when they ran. It wants each Python module that an import
-  statement can name, in a package below the repository's top, named under the profile's Python
-  roots, and each single-file module the profile declares named there or by its file name. It skips
-  files stored as metadata only.
-- **`unresolved-imports`** wants the share of relative imports left unresolved within the profile's
-  limit, and no more of them than the current store has.
-- **`scip-duplicates`** wants no symbol in scip-typescript's index that two files define as their
-  own.
-- **`denylist`** wants no denylisted path among the store's files.
-- **`redaction`** scans the redacted text a second time, and wants no secret-looking span left.
-
-### What the store knows
-
-| Part | What it holds |
-|---|---|
-| **Definitions** | Functions, classes, methods, constants and types, with ranges, signatures and whether they are exported |
-| **Imports** | File to file and file to package, with the kind (static, dynamic, type-only, re-export, require, side-effect, shell `source` and `exec`) and the line |
-| **Callers and references** | Every call site, labelled with how it was found ([below](#how-answers-are-labelled)), and the uses that are not calls |
-| **Entry points** | Read from launch manifests: `package.json` `bin` and `scripts`, systemd units, `pyproject.toml` and `setup.cfg` scripts, `Dockerfile`, `Procfile`, CI workflows. Also files with a shebang, `__main__` guards and framework routes. Each records the manifest line that launches it |
-| **Rank and core** | PageRank over production imports. The core set is the smallest run of files, by rank, that carries at least half of what the code depends on |
-| **History** | Churn over 90 days, files that change together over 180 days, hotspots (depended on and changing often), and a 26-week timeline. Windows are anchored at the built commit, so the store depends only on the commit |
-| **Risk** | Import cycles, each with its shortest closing chain, and violations of the layer rules you declare |
-| **Text** | A trigram index over code, config and docs, and redacted sources for snippets and the source view |
-
-## Status and roadmap
-
-| Version | Scope | Status |
-|---|---|---|
-| **0.1** | `map`, `view`, `mcp` and `query`. The 13 tools, with labels, paging and errors. TypeScript, JavaScript and Python. The viewer. The synthetic sample and its golden answers. The security model below | **In progress** |
-| **0.2** | **The MCP App.** The MCP server also serves the viewer as an MCP Apps `ui://` resource, so the map renders inside MCP-Apps hosts. An answer such as `code_explain` can open the map on the node it names, and a new tool will open the map itself (its name is still to be settled). The answers themselves do not change | Planned |
-| Later | `code_pr_impact` (what a pull request changes and reaches), questions across repositories, the Ownership lens, reuse of unchanged engine output between builds, compiler-precise callers for more languages | Ideas |
-
-The road to 0.1:
-
-- [x] **Phase 0: measure before building** (done 2026-11-19).
-  - [x] The analysis engines are pinned and installed. Read-only snapshots of the test repositories
-        are taken, one of them a public repository (marimo).
-  - [x] A throwaway pipeline builds a full store from a snapshot inside the sandbox.
-  - [x] **Containment against 13 hostile repositories** ([`fixtures/hostile/`](fixtures/hostile/)).
-        Planted git pagers, filters, hooks and fsmonitors, a fake Python interpreter, rogue engine
-        configs, shadowing Python modules, host symlinks and path tricks: none of them ran, and
-        nothing from the host leaked. One resource finding: a 50 MB single-line minified file
-        exhausted the build's memory cap, so 0.1 keeps oversized and minified files out of every
-        engine's input. Only Pyright, at `deep` detail, still follows an import into one (see
-        [Limits and blind spots](#limits-and-blind-spots)).
-  - [x] **Caller accuracy**, judged blind by hand on a stratified sample. Every compiler-bound answer
-        in the sample was a real call. Import-scoped name matches were right often, but not often
-        enough to state as facts, so the `scoped` label tells agents to confirm with `code_snippet`.
-  - [x] **Dependency installs.** Installing a repository's dependencies, sandboxed and with scripts
-        off, found no extra callers, so hakutaku analyses bare snapshots and needs no network.
-  - [x] **Deep Python.** A compiler-grade Python index found many real callers that import-scoped
-        name matching misses, so the deep detail level ships. It needs a larger memory cap (15 GB)
-        on big Python codebases.
-  - [x] **Real costs**, measured in resource-capped units. On a public repository of about 5,300
-        files (marimo), a full map took about a minute and peaked near 1.1 GB, queries answered in a
-        few milliseconds, and no network connection was opened.
-- [x] **Engine and store** (done 2026-11-21). Export, sandboxed extract, the store, metrics, launch
-      manifests, the profile generator, redaction, gates, the synthetic sample and its oracle,
-      `hakutaku map`. All 30 steps:
-  - [x] **The store.** One SQLite file per build, with a full-text index and a content hash, written
-        deterministically. Its reader, its cache and the metric algorithms.
-  - [x] **Redaction.** The rules that replace secret-shaped text, and the denylist that keeps files
-        such as `.env` and private keys out of every snapshot.
-  - [x] **The registry.** Which repositories are mapped, a build lock, and whether each map is still
-        current. Branches and tags are read from `.git` as data, without running git.
-  - [x] **Layout profiles.** Files are classified as code, tests, config or docs and grouped into
-        components. Entry points are read as data from launch manifests: `package.json`,
-        Dockerfiles, Procfiles, systemd units, CI workflows, Python packaging and Next.js routes.
-        A generator writes a starting profile from a snapshot.
-  - [x] **Export.** A hardened read of one commit into a snapshot directory, with the last 26 weeks
-        of history. git runs with every transport refused and a throwaway home; paths holding `..`,
-        `.git` or control characters are refused; the repository's own engine configs are removed,
-        and hakutaku generates its own.
-  - [x] **The engines and the sandbox.** The engines are pinned in a hash-checked lock and
-        installed from it. On Linux, extract runs inside bubblewrap or, where bubblewrap does not
-        work, a systemd-run service given the same narrow view of the file system, with no network,
-        no local sockets and read-only control groups, each checked from inside a test service
-        before it is used. A build can write only a fresh work directory of its own; the finished
-        store is checked and swapped in from outside the sandbox. Each engine runs in a fresh
-        environment under a timeout, with a memory cap wherever systemd-run can set one; at the
-        cap only the engine stops, and the build says so. Drivers for scip-typescript,
-        dependency-cruiser, grimp and ast-grep.
-  - [x] **Merge and gates.** Engine output merged into one store, with ranks, cycles, churn and
-        co-change stored. Five quality gates decide whether a new store replaces the current one,
-        which keeps serving when a gate fails. `hakutaku extract`.
-  - [x] **Proof.** A synthetic sample repository ([`fixtures/observatory/`](fixtures/observatory/)),
-        with a TypeScript web UI, a Python service, shell scripts and launch manifests, built by a
-        script with a fixed history, and the hand-written oracle its store is checked against. A
-        build killed part-way leaves the current store serving. Traced at standard detail, a build
-        opens no network socket and writes nothing to the repository or its snapshot. Node 22.16,
-        the current LTS and the current release build the same content hash, and broken profiles
-        fail the gates while the previous store keeps serving. The hostile-repository cases run
-        through export and extract in CI.
-  - [x] **The commands** `map`, `list`, `profile` and `doctor`, and deep Python detail, which runs
-        scip-python under a 15 GB memory cap by default.
-- [x] **Tools and MCP server** (done 2026-11-21). The 13 tools, with labels, paging and errors, the
-      stdio MCP server, `hakutaku query` and the golden tests. All 16 steps:
-  - [x] **The tool contract.** Types, limits, errors, label wording, argument checks and paging.
-  - [x] **The 13 tools and the host.** All 13 tools answer from a store. The host serves the
-        registered repositories, says whether each map is current, and rate-limits refreshes.
-  - [x] **The MCP server.** `hakutaku mcp` serves the tools over stdio, and `hakutaku query` runs
-        any of them from a shell. Every answer that can carry repository content is marked as
-        untrusted, and the answers about references, dependencies, paths and text search name
-        their blind spots.
-  - [x] **Golden answers.** Every tool's answers to a fixed set of calls on the synthetic sample,
-        pinned byte for byte in [`test/golden/`](test/golden/), and the oracle's facts that only
-        the tools can show, checked through them.
-  - [x] **Conformance.** An MCP client over stdio replays the golden calls, all but the one to
-        `code_repos` and those made at a detail other than standard or under a size cap of their
-        own, and gets each golden answer back byte for byte. A store swapped in under a running
-        server answers the next call. Instructions planted in a hostile repository's comments and
-        docstrings come back only as source text, and nothing runs the command they ask for. Names
-        that hold markup, shell commands or instructions come back only in answers the MCP server
-        marks untrusted. Traced with strace after start-up, a server asked about paths, URLs and
-        globs outside its store starts no process, opens no network socket, and opens no file
-        outside its store's directory, the repository's `.git` and hakutaku's own files, apart from
-        `/proc`, `/sys` and `/dev`.
-  - [x] **Latency.** A generated repository of 2,500 files answers 200 calls over stdio, 20 for each
-        of ten tools, timed from the client. The check holds their 95th percentile under 300 ms,
-        and every call under 1.5 s.
-  - [x] **The reference**, [`docs/tools.md`](docs/tools.md): what each tool takes and answers, and
-        how it refuses. A test checks its argument tables, error codes, label wording, examples and
-        IDs against the code and the sample.
-- [x] **Viewer** (done 2026-11-23). Lenses, depth levels, search and filters, the source view,
-      accessibility and the performance budget, in 17 steps:
-  - [x] **Viewer data.** The map, file outlines, source and history, read from a store as compact
-        payloads that come out byte for byte the same on every read.
-  - [x] **The viewer API.** One read-only API over the store and the tools. A file the denylist
-        keeps out is refused, and so is an ID from another repository.
-  - [x] **The page.** One bundled page with its own fonts and no outside address, no inline script
-        or style, under a strict Content Security Policy, served under any base path.
-  - [x] **`hakutaku view`.** Serves the viewer on `127.0.0.1` behind a session token, and an
-        end-to-end harness drives it in Chromium and Firefox.
-  - [x] **The galaxy**, its curves and the panels around it. A fixed layout with no force
-        simulation, so the same store always draws the same picture. A browser without WebGL shows
-        the list view in the map's place.
-  - [x] **Selection** by link token, and the details header. Any node opens from its token in the
-        address bar, from the keyboard too, and each selection is read out to screen readers.
-  - [x] **Lenses**, entry points and grouping. Structure, Risk and History on the keys 1 to 3, and
-        files grouped by component, folder or language.
-  - [x] **Depth levels** and the coverage line. Components, Core and Files on the D key, with a line
-        that says how much of the repository the view shows.
-  - [x] **Find.** Files, definitions and libraries in one box, on F or /, ranked by importance.
-  - [x] **Filters** and the list view. A filter dims what it leaves out and never moves anything.
-        The list view, on L, gives the same files as a ranked list for the keyboard and screen readers.
-  - [x] **The Overview and Inside tabs.** A node's facts and its neighbours, and a file's
-        definitions, one dot each.
-  - [x] **The Source tab.** The store's redacted copy of a file, highlighted, with the selected
-        definition flashed and the call sites marked.
-  - [x] **The Agent tab.** The exact call an agent would make for a node, and the tool's own answer
-        to it.
-  - [x] **The static export.** `--export` writes one self-contained page that requests nothing,
-        under a CSP that names its one script and style by hash, without sources unless
-        `--with-source` is given.
-  - [x] **Accessibility.** An axe scan of every panel in every state with no serious finding, a
-        keyboard-only walk, a visible focus ring, reduced motion, and the list view and a live region
-        for screen readers.
-  - [x] **Offline and contained.** With every outside request blocked the viewer still renders
-        fully, markup in names and code stays text, and every file the page loads comes under a
-        policy that allows nothing.
-  - [x] **First run and performance**, and the [viewer guide](docs/viewer.md). CI checks the
-        budgets on the sample and on a generated repository of 20,000 files, and a bench mode
-        measures them on a laptop.
-- [ ] **Release.** CI, the hostile-repository suite, and an npm release with provenance. A static map of
-      the sample as a live demo.
-
-hakutaku stays at 0.x until the tool contract is frozen. Even before 1.0, `code_explain` changes only
-by adding fields at the end.
-
-## Quick start (planned for 0.1)
-
-**Requirements (planned):** Linux or macOS, Node.js 22.16 or later (`node:sqlite` with FTS5),
-and git. Python 3 is used for Python imports; without it, a fallback resolver labels its edges. On
-Linux, install bubblewrap for the strongest sandbox. Windows is not supported in v1.
+You need Node.js 22.16 or later, on Linux or macOS, and git. Python 3 is optional: hakutaku reads
+Python imports with it, and without it they come from hakutaku's own resolver, which the answers'
+`blindSpots` name. On Linux, install bubblewrap too: it is the strongest sandbox for a build.
+`hakutaku doctor` checks what your machine has.
 
 ```sh
-# 0. Install once, globally, outside any repository
+# Install once, globally, outside any repository
 npm install -g hakutaku@0.1.0
 
-# 1. Map a repository: profile it, build its store, register it as "my-repo"
-hakutaku map . --id my-repo
+# Map a repository: profile it, build its store, and register it as "observatory"
+hakutaku map ~/code/observatory
 
-# 2. Explore the map in your browser (127.0.0.1, behind a session token)
-hakutaku view my-repo --open
+# Explore the map in your browser, on 127.0.0.1 behind a session token
+hakutaku view observatory --open
 
-# 3. Serve the tools to an agent, over stdio
-hakutaku mcp my-repo
+# Serve the tools to an agent, over stdio
+hakutaku mcp observatory
 ```
 
-**Do not run hakutaku through `npx` inside a repository.** There, npx prefers the repository's own
-`node_modules` and reads its `.npmrc` before hakutaku starts, so a hostile repository could run its
-own code under hakutaku's name. A global install keeps hakutaku outside every repository it maps.
+**Do not run hakutaku through `npx` inside a repository.** There, npx prefers a copy in the
+repository's own `node_modules`, and reads its `.npmrc`, before hakutaku starts, so a hostile
+repository could stand in for hakutaku and run its own code under hakutaku's name. A global install
+keeps hakutaku outside every repository it maps.
 
-On first use, `map` names the analysis engines it needs and asks before fetching their pinned,
-hash-checked versions (`--yes` answers for scripts). That install is the only step that uses the
-network. Then `map` writes a layout profile for you to review: path aliases, Python import roots,
-components, test patterns. It stops on a conflict rather than guessing. Finally, it builds the store
-and prints a summary like this one (illustrative output, not a measurement):
+`~/code/observatory` is the synthetic sample that every example here uses. To write it, run
+`node fixtures/observatory/make.mjs ~/code` from a clone of this repository. Any git repository maps
+the same way.
+
+On first use, `map` names the analysis engines it needs, and asks before fetching their pinned,
+hash-checked versions:
+
+> hakutaku needs scip-typescript, dependency-cruiser and ast-grep (npm) and grimp (PyPI). Install the pinned versions now? [y/N]
+
+`--yes` answers for scripts. That install is the only step that uses the network. Then `map` writes a
+layout profile for you to review: path aliases, Python import roots, components, test patterns and
+extra launch manifests. It stops on a conflict rather than guess. Finally, it builds the store and
+prints a summary. The sample's, on Linux with bubblewrap:
 
 ```text
-hakutaku 0.1.0 · my-repo at 4f2a9c1e07b3 (main), standard detail
-  files      164 tracked · 131 code (TypeScript 74, Python 41, shell 9, JavaScript 7) · 97 production, 34 test
-  imports    388 edges · 0 unresolved relative · 1 cycle
-  callers    1,204 call sites · 902 bound · 263 scoped · 39 unresolved
-  entry      9 entry points from 5 launch manifests
-  core       14 of 97 production files (14%) carry at least half of what the code depends on
-  built      19 s · peak 0.6 GB · store 4.1 MB · sandbox: bubblewrap
-next  hakutaku view my-repo    the map, in your browser
-      hakutaku mcp my-repo     the tools, for an agent
+hakutaku 0.0.0 · observatory at 5f7b72a77e7a (HEAD), standard detail
+  files      143 tracked · 109 code (TypeScript 65, Python 37, shell 4, JavaScript 3) · 71 production, 38 test
+  imports    146 edges · 0 unresolved relative · 1 cycle
+  callers    1,126 call sites · 191 bound · 160 scoped · 775 unresolved
+  entry      13 entry points from 11 launch manifests
+  core       24 of 71 production files (34%) carry at least half of what the code depends on
+  built      2 s · peak 0.3 GB · store 0.9 MB · sandbox: bubblewrap
+next  hakutaku view observatory    the map, in your browser
+      hakutaku mcp observatory     the tools, for an agent
 ```
 
 **Choose how much to extract** with `--detail`:
 
 | Detail | Adds | Cost |
 |---|---|---|
-| `quick` | Imports, definitions, `scoped` callers, metrics, entry points, the text index and sources | The fastest: no compiler runs |
-| `standard` (default) | Compiler-bound TypeScript and JavaScript callers and references, from scip-typescript | Runs the TypeScript compiler |
-| `deep` | Compiler-bound Python callers, from scip-python | Runs Pyright. Opt-in and memory-hungry, under a memory cap |
+| `quick` | Imports, definitions, `scoped` callers, metrics, entry points, the text index and sources | Seconds; no compiler runs |
+| `standard`, the default | Compiler-bound TypeScript and JavaScript callers and references, from scip-typescript | On marimo-team/marimo at `b0e402345e0a`: 64.8 s, a peak of 1,099 MB and a store of 194 MB |
+| `deep` | Compiler-bound Python callers, from scip-python | Opt-in, with a memory cap |
 
-<details>
-<summary><strong>All commands (planned for 0.1)</strong></summary>
+[All commands](docs/design.md#all-commands) lists every command and option.
 
-| Command | What it does |
-|---|---|
-| `hakutaku map <repo> [--id] [--ref] [--detail] [--sandbox auto\|require\|none]` | Profiles the repository if it has no profile, then exports, extracts, checks the gates and swaps the store in. Registers the repository |
-| `hakutaku view <id> [--open] [--export file.html [--with-source]]` | Serves the viewer, or writes one self-contained page |
-| `hakutaku mcp <id>... \| --all [--allow-refresh]` | The MCP server over stdio, serving exactly the repositories named |
-| `hakutaku query <tool> <id> --args '<json>'` | Any tool, from a shell. The JSON is the same as over MCP |
-| `hakutaku list` | The registered repositories, their commits and their freshness |
-| `hakutaku profile <repo>` | Generates or regenerates the layout profile, for review |
-| `hakutaku engines install\|list\|verify [--engines-dir <path>]` | Manages the pinned engines. Installing is the only networked step |
-| `hakutaku export <repo> --ref <ref> --out <dir>` | Stage 1 alone: the snapshot, the history, and copies of the profile and rules |
-| `hakutaku extract <dir> --out <store> [--engines-dir <path>]` | Stage 2 alone: reads only the export directory and the engines, and writes the store |
-| `hakutaku doctor` | Checks Node, Python, the engines, and whether a sandbox is available |
+## Set up in an MCP client
 
-</details>
-
-## Set it up in an MCP client (planned for 0.1)
-
-Map the repository first. The server speaks MCP over stdio and serves exactly the repositories named
-when it starts (`mcp <id>...`, or `--all`). A model cannot add a repository, open a path or switch to
-another one.
-
-Register the globally installed hakutaku by absolute paths: the Node.js binary as the command, and
-hakutaku's entry script as its first argument. MCP clients often start servers inside the project
-directory, where `npx` would read that project's files first, and desktop clients do not share your
-shell's `PATH`, so a bare `node` or `hakutaku` may find nothing, or an older Node.js.
-
-**Claude Code**
-
-```sh
-claude mcp add hakutaku -- "$(command -v node)" "$(npm root -g)/hakutaku/dist/cli/main.js" mcp my-repo
-```
-
-**Claude Desktop**, in `claude_desktop_config.json`, with both paths filled in from
-`command -v node` and `npm root -g`:
+Map the repository first. Then register `hakutaku mcp` with your MCP client, which starts it and
+speaks MCP to it over stdio. In a client that reads a JSON configuration:
 
 ```json
 {
   "mcpServers": {
     "hakutaku": {
-      "command": "/absolute/path/to/node",
-      "args": ["/absolute/path/to/node_modules/hakutaku/dist/cli/main.js", "mcp", "my-repo"]
+      "command": "hakutaku",
+      "args": ["mcp", "observatory"]
     }
   }
 }
 ```
 
-**Any other MCP client (stdio)**
+Register the globally installed `hakutaku`, never `npx`: a client starts its servers in a working
+directory you do not choose, often the project itself, where npx would take a copy from that
+project's `node_modules` first. A desktop client does not share your shell's `PATH`, so if it cannot
+find `hakutaku`, or finds an older Node.js, register it by absolute paths, as
+[Setting it up](docs/tools.md#setting-it-up) shows.
 
-| Setting | Value |
-|---|---|
-| Transport | stdio |
-| Command | the absolute path of `node` (`command -v node`) |
-| Arguments | the absolute path of `hakutaku/dist/cli/main.js` under `npm root -g`, then `mcp <repo-id>...`, or `--all` in place of the ids |
-
-`code_refresh` answers `refresh_disabled` unless the server was started with `--allow-refresh`. With
-that flag, it runs the same sandboxed build as `map`: one build at a time, at most once every 10
-minutes per repository.
+- **`mcp <id>...`** serves exactly the repositories named, and **`mcp --all`** every registered one.
+  The list is fixed when the server starts: a model cannot add a repository, open a path or switch to
+  another one.
+- **`--allow-refresh`** lets `code_refresh` start a build: the same sandboxed build as `map`, one at
+  a time, at most once every 10 minutes for each repository. Without it, `code_refresh` answers
+  `refresh_disabled`.
 
 **Where an agent starts:** `code_repos` (what it may ask about, and how fresh each repository is),
 then `code_overview` (the core, the entry points and the hotspots), then `code_explain`,
-`code_callers` and `code_snippet` on whatever it needs. The server's own instructions say the same.
+`code_callers` and `code_snippet` on whatever it needs. The server's own instructions give a model
+the same order.
 
-## The tools
+## Tools
 
-Planned for 0.1. All 13 are read-only, except `code_refresh`, which asks for a rebuild. The full
-reference, with every argument, answer, error and limit, is [`docs/tools.md`](docs/tools.md).
+All 13 are read-only, except `code_refresh`, which asks for a rebuild. From a shell,
+`hakutaku query <tool> <id> --args '<json>'` runs any of them, with the same JSON in and out as over
+MCP.
 
 | Tool | Answers |
 |---|---|
 | `code_repos` | The repositories this client may ask about, and how fresh and complete each one is |
 | `code_overview` | A repository's core set, components, entry points, hotspots and cycles; or one component |
 | `code_find` | Where something is defined: exact matches first, then labelled near misses. Never a single guess |
-| `code_explain` | A file or a definition: rank, importers, imports, co-change partners and definitions, in one frozen JSON shape |
+| `code_explain` | A file or a definition, in one frozen JSON shape. Anything else answers `invalid_argument`, with a hint that names the tool to ask instead |
 | `code_callers` | Labelled callers, grouped by the calling definition, each call site with its line |
 | `code_references` | Uses of a definition that are not calls. For an external module, the files that import it |
 | `code_impact` | What a change can reach, hop by hop, with labels |
@@ -402,26 +122,64 @@ reference, with every argument, answer, error and limit, is [`docs/tools.md`](do
 
 **Conventions that hold for every tool:**
 
-- **Targets** take a stable ID, a repository-relative path or `path#qualname`, or a bare name. Paths
-  are only looked up in the store; no tool ever opens a file. Fuzzy matching only ever produces
-  candidates.
+- **`repo`** is a repository id, matched exactly against the ones the server serves. It is never a
+  path.
+- **Targets** take one of three forms: a stable ID, a repository-relative path or `path#qualname`,
+  or a bare name. Paths are only looked up in the store, and no tool ever opens a file. A bare name
+  with several matches answers `ambiguous` with candidates, and with none, `not_found` with near
+  misses: fuzzy matching only ever produces candidates.
 - **Freshness.** Every answer about a repository's content carries `builtCommit` and `stale`
   (`true`, `false` or `"unknown"`).
-- **Size.** An answer is at most 40,000 characters by default, measured as
-  `JSON.stringify(result, null, 2)`. An
-  answer with no paging fields is complete. A longer one goes out a page at a time (`offset`,
-  `returned`, `total`, `hasMore`, `nextOffset`), and nothing is ever cut mid-item.
-- **Untrusted content.** Everything taken from the repository is data, not instructions: source
-  lines, snippets and signatures, and also file paths, names and IDs, which a repository can fill
-  with instruction-shaped text. `code_snippet` marks its result `untrusted: true`, and the MCP server
+- **Paging.** An answer is at most 40,000 characters by default, measured as
+  `JSON.stringify(result, null, 2)`. An answer with no paging fields is complete. A longer one goes
+  out a page at a time (`offset`, `returned`, `total`, `hasMore`, `nextOffset`), and nothing is ever
+  cut mid-item.
+- **Untrusted text.** Everything taken from the repository is data, not instructions: source lines,
+  snippets and signatures, and also file paths, names and IDs, which a repository can fill with
+  instruction-shaped text. `code_snippet` marks its result `untrusted: true`, and the MCP server
   marks every answer, and every error that can quote the repository, with
   `_meta: { "untrustedContent": true }`.
-- **Errors** are one JSON object with a code: `unknown_repo`, `not_built`, `not_found` (with near
-  misses and renames), `ambiguous` (with candidates), `invalid_argument`, `denied_file`, `no_source`,
-  `rate_limited`, `refresh_disabled` or `internal`.
+
+[The tools reference](docs/tools.md) gives every argument, answer, error and limit, with worked
+examples on the sample.
+
+## Labels
+
+Every call site says how it was found, and each label is worth something different as evidence.
+Tool descriptions and the MCP server's instructions give a model the sentence quoted for each:
+
+| Label | How it is found | What a model is told |
+|---|---|---|
+| `bound` | The compiler resolves the call to exactly this definition, through a SCIP index: scip-typescript's, and scip-python's at `deep` detail | A compiler-bound call: the type checker resolved this call site to exactly this definition. |
+| `scoped` | ast-grep finds a call by this name in a file that imports the defining module, directly or through re-exports | A candidate: a name match in a file that imports the defining module, not compiler-checked; confirm it with code_snippet before relying on it. |
+| `unscoped` | A name match with no import link. Returned only when asked for | A bare name match with no import link; often a different definition with the same name, so treat it as a lead only. |
+| `reference` | A use that is not a call, such as a mock, a dispatch table or a value passed around, from SCIP. Served by `code_references` | A use that is not a call, such as a value passed around, a mock or a dispatch-table entry, resolved by the compiler. |
+
+**What each is worth**, in order of precision: `bound`, then `scoped`, then `reference` taken as a
+caller, then `unscoped`, which comes back only when asked for.
+
+- **`bound`** is the strongest evidence. It is blind to structural seams, to computed `import()`
+  paths, and to receivers typed by packages that are not installed.
+- **`scoped`** recovers what the compiler misses, such as a method called through an interface type,
+  as in the example below. It is a name match, so it can be wrong: `collision: true` marks a site
+  that can see two definitions with that name.
+- **`reference`** is compiler-bound, but a use is not a call: taken as a caller, it says the code
+  that holds the value may call it.
+- **`unscoped`** is weak, and often names another definition with the same name. It is the only way
+  to see calls made through computed `import()` paths.
+
+`code_callers` returns `bound` and `scoped` by default. `labels: ["unscoped"]` asks for name matches,
+and `scope: "transitive"` widens scoped matches to files that reach the defining module through any
+chain of imports. In `code_impact`, a hop is only as strong as its weakest link: a bound caller of a
+scoped caller is reported as `scoped`. `code_explain` sums up a definition's uses in one `label`,
+`bound` or `scoped`, beside a fixed `note` that says which tiers ran.
+
+**How the labels are checked.** CI checks every label on the synthetic sample's hand-written oracle,
+[`fixtures/observatory/oracle.json`](fixtures/observatory/oracle.json): each call it lists, with its
+label, and each reference, against the store and through the tools.
 
 <details>
-<summary><strong>Example: <code>code_callers</code> on the synthetic sample, from its golden answers</strong></summary>
+<summary><strong>Example: <code>code_callers</code> on the sample, from its golden answers</strong></summary>
 
 `code_callers({"repo":"observatory","symbol":"web/src/orbits/kepler.ts#Orbit.position"})`
 
@@ -495,278 +253,216 @@ call to the interface's method, not to `Orbit.position`. The `scoped` label reco
 blind spot is a count across the whole map, not for this method alone: uses at call sites that the
 compiler bound to a symbol of the repository matching no single definition in hakutaku's outline.
 
+
 </details>
-
-## How answers are labelled
-
-Every call site says how it was found. Each label has a different value as evidence.
-
-| Label | How it was found | What it is worth |
-|---|---|---|
-| `bound` | The compiler, through a SCIP index, resolves the call to exactly this definition | **The strongest evidence.** It is blind to structural seams, to computed `import()` paths, and to receivers typed by packages that are not installed |
-| `scoped` | ast-grep finds a call by this name in a file that imports the defining module, directly or through re-exports | **Recovers what the compiler misses**, such as a method called through an interface type. It is a name match, so it can be wrong. `collision: true` marks a site that can see two definitions with that name |
-| `unscoped` | A name match with no import link | **Weak.** Returned only when asked for. It is the only way to see calls made through computed `import()` paths |
-| `reference` | A use that is not a call: a mock, a dispatch table, a value passed around | **Compiler-bound.** Served by `code_references` |
-
-- **`code_callers`** returns `bound` and `scoped` by default. `labels: ["unscoped"]` asks for name
-  matches. `scope: "transitive"` widens scoped matches to files that reach the defining module
-  through any chain of imports.
-- **A hop is only as strong as its weakest link.** In `code_impact`, a bound caller of a scoped
-  caller is reported as `scoped`.
-- **`code_explain`** sums up a definition's uses in one `label`, `bound` or `scoped`. It always adds
-  one fixed `note` sentence that says which tiers ran, for example *"every counted file has a
-  compiler-bound use; code_callers lists each use with its line"*.
-- **`blindSpots`** names what the build could not see. Examples: dynamic imports with a computed
-  path, a compiler tier that did not run, a language hakutaku extracts no callers for, relative
-  imports that did not resolve, and denylisted files.
-
-> [!NOTE]
-> Precision and recall for each label will be published with 0.1. They will be measured against the
-> synthetic sample's hand-written oracle and against public repositories pinned by commit. hakutaku's
-> docs quote no other numbers.
 
 ## Stable IDs and link tokens
 
-Every node has an ID that an agent can cite and a person can open. These examples come from the
-synthetic sample, `observatory`:
+Every node has an ID that an agent can cite and a person can open. The examples are nodes of the
+sample, `observatory`:
 
 ```text
-repo        <repo-id>:                          observatory:
-file        <repo-id>:<path>                    observatory:web/src/orbits/kepler.ts
-directory   <repo-id>:<path>/                   observatory:web/src/orbits/
-definition  <repo-id>:<path>#<qualname>[(<n>)]  observatory:web/src/orbits/kepler.ts#Orbit.position
-module      <repo-id>:<path>#<module>           observatory:web/src/orbits/kepler.test.ts#<module>
-external    <repo-id>:<ecosystem>:<name>        observatory:npm:react   observatory:pypi:pytest
+repo-id     [a-z0-9][a-z0-9._-]{0,63}
+repo        <repo-id>:                            observatory:
+file        <repo-id>:<path>                      observatory:web/src/orbits/kepler.ts
+directory   <repo-id>:<path>/                     observatory:web/src/orbits/
+definition  <repo-id>:<path>#<qualname>[(<n>)]    observatory:web/src/orbits/kepler.ts#Orbit.position
+module      <repo-id>:<path>#<module>             observatory:web/src/orbits/kepler.test.ts#<module>
+external    <repo-id>:<ecosystem>:<name>          observatory:npm:react   observatory:pypi:pytest
 ```
 
+- **The path** is exactly as git tracks it, with `/` separators and case kept. `%`, `#`, `:` and
+  control characters are percent-encoded, so the first `:` ends the repo id, a second, unencoded `:`
+  marks an external module, and the first `#` starts the definition.
+- **`(n)`** appears only when one file defines the same qualified name more than once. It counts from
+  2, in file order.
+- **An external module's ID names its ecosystem:** `npm`, `pypi`, `node` or `python`. So a library
+  never collides with a folder of the same name, such as `lib/`.
 - **Stable across builds.** An ID stays the same as long as the path and the qualified name do. The
-  detail level never changes it, and neither does a compiler tier that failed.
-- **Renames.** A rename gives a new ID. The old ID then answers `not_found`, with candidates: the
-  same name elsewhere, and any rename seen in the last 180 days of history.
-- **Paths** are exactly as git tracks them. `%`, `#`, `:` and control characters are
-  percent-encoded. `(n)` appears only when one file defines the same qualified name more than once.
+  detail level never changes it, and neither does a compiler tier that failed. A rename gives a new
+  ID. The old ID then answers `not_found`, with candidates: the same name elsewhere, and any rename
+  seen in the last 180 days of history.
 
 A **link token** is the URL fragment that opens a node in the viewer:
 
-| ID | Token |
-|---|---|
-| `observatory:web/src/orbits/kepler.ts` | `web~src~orbits~kepler.ts` |
-| `observatory:web/src/orbits/kepler.ts#Orbit.position` | `web~src~orbits~kepler.ts--Orbit.position` |
-| `observatory:web/src/orbits/` | `web~src~orbits~` |
-| `observatory:npm:react` | `npm:react` |
+| ID | Token | Node |
+|---|---|---|
+| `observatory:web/src/orbits/kepler.ts` | `web~src~orbits~kepler.ts` | a file |
+| `observatory:web/src/orbits/kepler.ts#Orbit.position` | `web~src~orbits~kepler.ts--Orbit.position` | a definition |
+| `observatory:web/src/orbits/` | `web~src~orbits~` | a directory |
+| `observatory:npm:react` | `npm:react` | an external module |
+| `observatory:` | (empty) | the repository |
 
-Every answer about one node ends with a `view` field: `#` and the node's token. A person who opens it
-sees the node the agent cited. List answers carry IDs instead. To build a token, percent-encode every
-character except `A–Z a–z 0–9 . _ - /`. Then write any `-` that is doubled, or that ends a part, as
-`%2D`, and turn each `/` into `~`. So a token always decodes to exactly one ID.
+To build a token, take each part of the ID as git holds it: the path, the qualified name, or an
+external module's name. Percent-encode every character except `A` to `Z`, `a` to `z`, `0` to `9`,
+`.`, `_`, `-` and `/`, as its UTF-8 bytes in upper-case hex. Then write as `%2D` every `-` that
+another `-` follows, or that ends the part, and turn each `/` into `~`. A definition's token is its
+path's, `--`, then its qualified name's, and an external module's is its ecosystem, `:`, then its
+name's. So a token always decodes to exactly one ID.
 
-## The viewer
+**More cases.** The first four IDs are made up, since the sample holds nothing so odd:
 
-`hakutaku view` (planned for 0.1) draws a repository as a sky. The most depended-on files sit at the
-centre, the components in a ring around them, and the libraries in orbit outside. The layout is
-deterministic, with no force simulation: the same store always draws the same picture. The
-[viewer guide](docs/viewer.md) covers it in full.
+| ID | Token | What it shows |
+|---|---|---|
+| `observatory:web/a--b/c.ts` | `web~a%2D-b~c.ts` | an inner `--` |
+| `observatory:notes~old/x.md` | `notes%7Eold~x.md` | a literal `~` |
+| `observatory:tools/foo-/` | `tools~foo-~` | a directory whose name ends in `-` |
+| `observatory:npm:@types/node` | `npm:%40types~node` | a scoped npm name |
+| `observatory:web/src/orbits/kepler.test.ts#<module>` | `web~src~orbits~kepler.test.ts--%3Cmodule%3E` | module scope |
 
-**Lenses**, on the keys 1 to 3:
+**The `view` field.** Every answer about one node ends with `view`: `#` and the node's token, so a
+person who opens it in the viewer sees the node the agent cited. These answers are `code_overview`,
+`code_explain`, `code_callers`, `code_references`, `code_deps`, `code_snippet`, and `code_path`, whose
+`view` names its `from` node. The list answers, `code_repos`, `code_find`, `code_search_text`,
+`code_rules` and `code_impact`, carry IDs instead, and `code_refresh` carries none.
 
-| Lens | What it shows |
-|---|---|
-| **Structure** | Brightness by rank: the closer to the centre, the more of the code depends on a file. Curves through the middle are imports between components |
-| **Risk** | Orange marks hotspots, files the code depends on that also change often, and imports that run in a loop |
-| **History** | Brightness by churn over 90 days. Select a file to see, dashed, the files that change together with it |
-| **Ownership** | Later |
+## Viewer
 
-**Depth levels**, on the D key, from the big picture down:
+`hakutaku view observatory` serves the map on `127.0.0.1` and prints its link, which carries a
+session token, and `--open` also opens it in your browser. The most depended-on files sit at the
+centre, the components in a ring around them, and the libraries outside. The layout is fixed, with no
+force simulation, so the same store always draws the same picture.
 
-1. **Components.** Hubs only, with aggregated import curves.
-2. **Core.** The core set, plus every entry point, every strong hotspot and each component's top file.
-   Small, but no part of the repository vanishes. It is the default above 400 production files.
-3. **Files.** Every production file, with tests and libraries a toggle away. The default for smaller
-   repositories.
+![The map of the sample at Files depth, under the Structure lens: the files on a disc, the components in a ring around it and the libraries outside, with the stat band and the Core, Change activity and Hotspots lists](docs/img/map.png)
 
-Below a file, the details go down to a line of code. The **Inside** tab shows one dot per
-definition, in file order: a dot shows whether other files use it, and an orange ring marks a
-definition that no test mentions. The **Source** tab shows the file's highlighted source, from the
-store's redacted copy, with the selected line flashed.
+- **Depth levels**, on the D key: Components, the hubs alone, with their import curves; Core, the
+  core set plus every entry point, every strong hotspot and each component's top file, the default
+  above 400 production files; and Files, every production file, with tests and libraries a toggle
+  away. Below a file, its definitions and its source.
+- **Lenses**, on the keys 1 to 3: Structure, brightness by rank; Risk, hotspots and imports that run
+  in a loop, in orange; and History, churn over 90 days, with the files that change together.
+- **Find**, on F or /: files, definitions and libraries in one box, ranked by importance. Filters dim
+  what they leave out and never move anything, and the list view, on L, gives the same files as a
+  ranked list for the keyboard and screen readers.
 
-**Find** (F or /) searches files, definitions and libraries in one box, ranked by importance.
-**Filters** cover language, component, entry points, files in a cycle, recent changes (7, 30 or 90
-days) and a hotspot threshold. A filter dims what it excludes rather than moving anything, so the
-picture stays learnable. Each selection writes its link token into the address bar. The detail panel
-has four tabs: Overview, Inside, Source, and Agent, which holds the exact JSON an agent gets for the
-node.
+The Source tab shows a file from the store's redacted copy, highlighted, with the selected definition
+flashed, and the Agent tab the exact call an agent makes for the node, with the tool's own answer:
 
-**Built to be used from the keyboard and by everyone.** Esc, or the Back button, goes back one level,
-closing an open list first. A list view (L) gives screen readers the map's content. Text contrast
-meets WCAG AA, and colour is never the only signal.
+![The Source tab of the sample's solveKepler, highlighted, with its line flashed in the gutter](docs/img/source.png)
 
-**Local by design.** The viewer binds to `127.0.0.1`, every API call needs the session token, and the
-`Host` header is checked against DNS rebinding. Fonts and libraries are bundled, and a strict Content
-Security Policy keeps the page from loading anything from outside your machine.
-`hakutaku view --export map.html` writes one self-contained page, without sources unless you add
-`--with-source`. Screenshots of the synthetic sample will come with the first release.
+**Local only.** The viewer binds to `127.0.0.1`, every call to its server needs the session token,
+and the `Host` header is checked against DNS rebinding. Its fonts and libraries are bundled, and a
+strict Content Security Policy keeps the page from loading anything from outside your machine.
+`--open` hands the browser a page under the system temporary directory, which a Snap-packaged browser
+cannot read: with such a browser, open the link that `view` prints instead.
+
+**`--export map.html`** writes one self-contained page that requests nothing, without sources unless
+you add `--with-source`. [The live demo](https://d3vn0mi.github.io/hakutaku/) is such a page: the
+sample's map, with its sources, which are synthetic. [The viewer guide](docs/viewer.md) covers the
+viewer in full.
 
 ## Languages and engines
-
-As planned for 0.1:
 
 | Language | Imports, cycles and rules | Callers and references | Definitions |
 |---|---|---|---|
 | **TypeScript, JavaScript** (`.ts .tsx .mts .cts .js .jsx .mjs .cjs`) | dependency-cruiser | scip-typescript (`bound`); ast-grep, scoped by imports (`scoped`) | ast-grep's outline, joined to SCIP's ranges |
 | **Python** (`.py .pyi`) | grimp | ast-grep, scoped by grimp's importers (`scoped`); scip-python (`bound`) at `deep` detail | ast-grep's outline |
 | **Shell** (`.sh .bash`) | ast-grep rules for `source`, `.` and scripts run by path | Calls by function name, in the file and the files that source it | ast-grep |
-| **Config, docs, manifests** | — | — | In the text index. Launch manifests are parsed for entry points |
-| **Other languages** (C, C#, Go, Rust, …) | — | — | ast-grep's outline, where it has rules. Files appear on the map with their lines and history |
+| **Config, docs, manifests** | None | None | In the text index. Launch manifests are parsed for entry points |
+| **Other languages** (C, C#, Go, Rust and more) | None | None | ast-grep's outline, where it has rules. Files appear on the map with their lines and history |
 
 - **ast-grep's outline mints every ID**, at every detail level. So a commit yields the same IDs at
   quick, standard and deep detail, and when a compiler tier fails.
 - **When an engine is missing or fails,** hakutaku falls back to its own resolver over the import
-  statements. `blindSpots` names a compiler tier that did not run, and says when Python imports come
-  from hakutaku's own resolver because grimp did not run. When grimp ran, it says how many Python
-  files still have imports from that resolver, which reads every import of a file grimp did not read.
-  It counts the TypeScript and JavaScript files with imports from that resolver too, which reads
-  imports dependency-cruiser gave no edge.
+  statements, and `blindSpots` says so: a compiler tier that did not run, or Python imports that
+  come from hakutaku's resolver because grimp did not run.
 - **Engines are installed, not depended on.** `hakutaku engines install` reads `engines.lock.json`,
-  which pins exact versions with integrity hashes. It installs them into
-  `$XDG_DATA_HOME/hakutaku/engines/`, and grimp from binary wheels with `--require-hashes`. Only
-  releases that have been out for at least two weeks are pinned. A host that only queries never pulls
-  a compiler into its dependency tree: the library's own runtime dependencies are the MCP SDK and
-  nothing that parses code.
-- **The layout profile** (`hakutaku profile`) holds TS path aliases, Python import roots, components,
-  test patterns, extra launch manifests, denylist extras and gate thresholds. `tsconfig*.json`,
-  `package.json`, `pyproject.toml` and `setup.cfg` are parsed as data, never executed.
+  which pins exact versions with integrity hashes, and installs them into
+  `$XDG_DATA_HOME/hakutaku/engines/`, grimp from binary wheels with `--require-hashes`. A host that
+  only queries never pulls a compiler into its dependency tree: the package's one runtime dependency
+  is the MCP SDK, and nothing that parses code.
+- **The pin rule.** An engine is pinned only at a release that has been out for at least 14 days,
+  with its checksum or provenance verified, and the whole test suite runs on exactly the pinned
+  versions before a pin changes.
+- **The layout profile** (`hakutaku profile`) holds TypeScript path aliases, Python import roots,
+  components, test patterns, extra launch manifests, denylist extras and gate thresholds.
+  `tsconfig*.json`, `package.json`, `pyproject.toml` and `setup.cfg` are parsed as data, never run.
 
 ## Security model
 
-As designed for 0.1. Analysed repositories may be hostile: you will point hakutaku at code you did
-not write. So every byte of an analysed repository is treated as data.
+You will point hakutaku at code you did not write, so it treats every byte of an analysed repository
+as data.
 
-- **Nothing from the analysed repository runs.**
-  - Export reads git objects only, with `ls-tree`, raw `cat-file --batch` and `log`. Every git call
-    disables fsmonitor, hooks, the pager, signature checks, textconv and external diffs, and ignores
-    the system and global git config. `git archive` is not used, because it can run a smudge filter
-    that the repository's config names.
-  - Symlinks are recorded, never created. Submodules are not followed, and LFS pointers stay pointers.
-    A path with `..`, an absolute path or a control character is refused.
-  - The repository's own engine configs are removed, or never read; hakutaku generates every engine
-    config itself. hakutaku runs Python isolated (`python -I`), and grimp parses files without
-    importing them. At `deep` detail, Pyright runs the same pinned Python only to ask for its
-    version and search paths, through a fixed script that first drops the working directory from
-    the import path.
-  - hakutaku never runs `npm install`, `pip install`, `setup.py`, `conftest.py`, a test runner or a
-    package script on an analysed repository.
-- **Extraction runs offline, in a sandbox.** `--sandbox auto`, the default, uses the strongest one
-  available. Without one, the build warns and names what is missing; `--sandbox require` fails
-  instead.
-  - On Linux the strongest is bubblewrap, which shares no namespace with your machine and has a host
-    name of its own. Where bubblewrap does not work, it is a `systemd-run --user` service given the
-    same view of the file system, with no network, no unix socket and read-only control groups. Each
-    of these is checked from inside a test service before a build uses one.
-  - Either way, the sandbox's root holds only the system directories, Node, hakutaku, the pinned
-    Python, the export and the engines, all read-only, and a fresh work directory, the one path a
-    build can write. The finished store is checked and swapped in from outside the sandbox.
-  - The environment is built from scratch: `PATH` holds only Node and Python, and `HOME` is an empty
-    directory, so no API key reaches an engine. No engine writes a core file. Wherever systemd-run
-    can set one, a memory cap stops only the engine that reaches it; elsewhere the build records
-    that nothing caps its memory.
-  - **A known limit of systemd-run:** its service shares your machine's process list and host name,
-    which bubblewrap hides. An engine there can read other processes' command lines, though not their
-    environment, working directory or files. Every such build records a warning saying so.
-- **Secrets are never stored.** Denylisted files (`.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`,
-  `id_rsa*`, `id_ed25519*`, `.npmrc`, `.pypirc`, `.netrc`, `*.kdbx`, `secrets/**`, and your profile's
-  extras) never leave the export. A redaction pass replaces secret-looking spans with
-  `«redacted:<rule>»` before any text enters the store, and keeps the line numbers. A store that holds
-  a denylisted path, or a secret-looking span that a second scan still finds, is never swapped in.
-- **No tool opens what a model names.** No tool takes a filesystem path, glob or URL from a model and
-  opens it. After start-up, the MCP server starts no process and opens no network socket, except a
-  build when it runs with `--allow-refresh`. A test runs the server under strace, without that flag,
-  and holds it to this.
-- **Injected instructions stay data.** Everything a repository controls, its paths and names as well
-  as its text, is treated as untrusted: the server's instructions say so and the answers that carry
-  it are marked. The viewer escapes all of it, under a strict Content Security Policy.
-- **Nothing talks to the outside.** There is no telemetry and no update check. The engine install is
-  the one step that uses the network.
-- **Answers never carry** absolute host paths, store paths, environment values or engine command
-  lines.
+- **Nothing from the repository runs.** Export reads git objects only, with every git call hardened
+  against the repository's config, hooks and filters. The repository's engine configs are removed or
+  never read, and hakutaku writes its own. Python runs isolated, and grimp parses files without
+  importing them. hakutaku never runs `npm install`, `pip install`, `setup.py`, `conftest.py`, a test
+  runner or a package script on an analysed repository.
+- **Extraction is sandboxed and offline.** On Linux, a build runs its engines in bubblewrap or, where
+  bubblewrap does not work, in a `systemd-run --user` service with no network. Either holds only the
+  system directories, Node, hakutaku, Python, the export and the engines, all read-only, and one
+  fresh work directory, the one path a build can write. The environment is built from scratch, so no
+  API key reaches an engine. Without a sandbox, as on macOS, the build warns and names what is
+  missing, and `--sandbox require` fails instead.
+- **Secrets are never stored.** Denylisted files, such as `.env*`, `*.pem` and `id_rsa*`, never leave
+  the export, and a redaction pass replaces secret-looking spans before any text enters the store. A
+  store that would hold either is never swapped in. Stores live in your data directory, never in the
+  analysed repository.
+- **Repository text is marked untrusted.** Every answer that can carry the repository's content, its
+  paths and names included, goes out marked as data, not instructions. The viewer escapes all of it,
+  under a strict Content Security Policy.
+- **Nothing goes to the network except `hakutaku engines install`.** There is no telemetry, no update
+  check and no model call. A build, a query and the viewer reach nothing outside your machine.
 
-Stores are as sensitive as the code they map. They live in your data directory, never in the
-analysed repository. To report a vulnerability, see [SECURITY.md](SECURITY.md).
+[The security model](docs/security.md) sets out each control and the check that holds it. To report a
+vulnerability, follow [SECURITY.md](SECURITY.md), never a public issue.
 
 ## Limits and blind spots
 
+- **Not in v1:** security analysis proper, such as taint and data flow; writing or refactoring code;
+  model calls or summaries; questions across repositories, pull request impact and the Ownership
+  lens; a hosted or multi-user server; and any MCP transport other than stdio.
 - **Compiler-precise callers cover TypeScript, JavaScript and Python only.** Shell is matched by
-  name. Other languages appear as files, with their lines and history.
+  function name, and other languages appear as files, with their lines and history.
 - **Python callers are compiler-bound only at `deep` detail.** Below it, they are `scoped`.
 - **At `deep` detail, the host's Python can change a few answers.** Pyright asks the pinned Python
   for its search paths, which include that Python's own site-packages, so a package installed there
-  can change some deep call answers from one host to another.
-- **At `deep` detail, Pyright follows imports into files that hakutaku leaves out.** It reads a
-  large or generated Python file that an indexed file imports, though nothing from that file is
-  stored. A huge imported module can use up the deep tier's hour or its memory cap; the build then
-  falls back to `scoped` Python callers and says so.
-- **No dependency install.** A receiver typed by a package that is not installed is invisible to the
-  compiler tier.
-- **Computed `import()` paths are not followed.** `unscoped` name matches are the only way to see
-  them.
+  can change some deep call answers from one machine to another.
+- **At `deep` detail, Pyright follows imports into files that hakutaku leaves out.** It reads a large
+  or generated Python file that an indexed file imports, though nothing from that file is stored. A
+  huge imported module can use up the deep tier's hour or its memory cap; the build then falls back to
+  `scoped` Python callers and says so.
+- **What the compiler cannot see**, which `blindSpots` names in the answers it touches: computed
+  `import()` paths, which only `unscoped` name matches reach; receivers typed by packages that are not
+  installed, since hakutaku installs no dependency; a compiler tier that did not run; and the
+  languages hakutaku extracts no callers for.
 - **`scoped` callers are name matches** in files linked by imports. They can include false matches,
   and `collision` flags the riskiest.
 - **`mentionedByTests` is a mention, not coverage.** hakutaku never runs tests.
-- **Every new commit is a full rebuild** in v1. Reusing unchanged engine output is planned for later.
-- **Large, minified and generated files** (over 1 MB, or detected as such) are stored as metadata
-  only, without source.
-- **The sandbox is Linux-only** in v1. On macOS, the build warns, and the no-execution controls still
-  hold.
-- **Not in v1:** security analysis proper (taint and data flow), editing or refactoring code, model
-  calls or summaries, questions across repositories, pull request impact, a hosted or multi-user
-  server, any MCP transport other than stdio, and Windows.
+- **Every new commit is a full rebuild,** since neither SCIP indexer is incremental. Reusing unchanged
+  engine output is planned for later.
+- **Large, minified and generated files** (over 1 MB, or detected as such) are stored as metadata only,
+  without source.
+- **The sandbox is Linux-only.** On macOS, the build warns, and the no-execution controls still hold.
+- **No Windows.** hakutaku runs on Linux and macOS.
 
-## Contributing
-
-hakutaku is pre-release, so the most useful contributions right now are design feedback and use
-cases, in [Discussions](https://github.com/d3vn0mi/hakutaku/discussions). Before you open an issue or
-a pull request, read [CONTRIBUTING.md](CONTRIBUTING.md). In short:
-
-- Reproduce bugs on the bundled synthetic sample, and **never paste private code**.
-- Tests come with every change.
-- Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/).
-
-Everyone who takes part follows the [Code of Conduct](CODE_OF_CONDUCT.md). Security problems go to
-[SECURITY.md](SECURITY.md), never to a public issue.
+Found something wrong? Show it on the synthetic sample and open an issue, as
+[CONTRIBUTING.md](CONTRIBUTING.md) asks.
 
 ## Credits
 
-hakutaku stands on the work of others.
+hakutaku stands on the work of others. Its analysis engines are
+[scip-typescript](https://github.com/sourcegraph/scip-typescript) and
+[scip-python](https://github.com/sourcegraph/scip-python), which is built on
+[Pyright](https://github.com/microsoft/pyright), both writing the
+[SCIP](https://github.com/scip-code/scip) index format, whose schema hakutaku's decoder is written
+from; [dependency-cruiser](https://github.com/sverweij/dependency-cruiser);
+[grimp](https://github.com/python-grimp/grimp); and [ast-grep](https://github.com/ast-grep/ast-grep),
+with [tree-sitter](https://github.com/tree-sitter/tree-sitter) inside. [TypeScript](https://github.com/microsoft/TypeScript)
+runs inside scip-typescript and dependency-cruiser. The engines are installed on first use, never
+bundled. The viewer bundles [sigma.js](https://github.com/jacomyal/sigma.js),
+[graphology](https://github.com/graphology/graphology) with its utilities, the
+[events](https://github.com/browserify/events) package and
+[highlight.js](https://github.com/highlightjs/highlight.js), and the [IBM Plex](https://github.com/IBM/plex)
+fonts. The MCP server is built on the
+[MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk), the package's one direct
+dependency. The metrics use PageRank (Brin and Page) and Tarjan's strongly connected components.
+[NOTICE](NOTICE) credits every upstream project, with its version, licence and copyright line, and
+[THIRD_PARTY_LICENSES](THIRD_PARTY_LICENSES/) holds the full licence text of each project the package
+bundles.
 
-- **Analysis engines:** [scip-typescript](https://github.com/sourcegraph/scip-typescript)
-  and [scip-python](https://github.com/sourcegraph/scip-python), which is built on
-  [Pyright](https://github.com/microsoft/pyright); both write the [SCIP](https://github.com/scip-code/scip)
-  index format. Also [dependency-cruiser](https://github.com/sverweij/dependency-cruiser),
-  [grimp](https://github.com/python-grimp/grimp), and [ast-grep](https://github.com/ast-grep/ast-grep)
-  with [tree-sitter](https://github.com/tree-sitter/tree-sitter) inside.
-  [TypeScript](https://github.com/microsoft/TypeScript) runs inside scip-typescript and
-  dependency-cruiser.
-- **The viewer:** [sigma.js](https://github.com/jacomyal/sigma.js) and
-  [graphology](https://github.com/graphology/graphology), with graphology's utilities and the
-  [events](https://github.com/browserify/events) package, [highlight.js](https://github.com/highlightjs/highlight.js)
-  for the source view, and the [IBM Plex](https://github.com/IBM/plex) fonts.
-- **The MCP server:** the [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk).
-- **Algorithms:** PageRank (Brin and Page) and Tarjan's strongly connected components.
+## Licence
 
-The engines are installed separately, never bundled. The MCP SDK is installed with the package, as
-its one direct dependency. The viewer's libraries and fonts are bundled into its page when hakutaku
-is built. The repository vendors one upstream file, SCIP's schema, which
-hakutaku's decoder is written from. [NOTICE](NOTICE) credits each upstream project as it is added.
+MIT. Copyright (c) 2026 d3vn0mi. See [LICENSE](LICENSE).
 
-## The name
-
-Hakutaku (白沢) is the Japanese name of the Baize (白澤) of Chinese lore: a beast that knew all
-things, and described every kind of creature so that it could be catalogued. That is what this tool
-does for a codebase, by reading it, never by running it.
-
-## License
-
-[MIT](LICENSE), Copyright (c) 2026 d3vn0mi. Third-party projects are credited in [NOTICE](NOTICE).
-
-## Author
-
-**d3vn0mi**, [github.com/d3vn0mi](https://github.com/d3vn0mi)
+## Author: d3vn0mi
