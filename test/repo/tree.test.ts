@@ -12,7 +12,7 @@ import { runLines } from "../../src/manifests/ci.js";
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 
 const STORE_OR_INDEX = /\.(sqlite(-wal|-shm|-journal)?|db|scip)$/;
-const IMAGE = /\.(png|jpe?g|gif|webp|svg|ico|bmp)$/i;
+const IMAGE = /\.(png|jpe?g|gif|webp|svg|bmp|ico|avif|tiff?)$/i;
 const HOME_PATH = /\/(?:home|Users)\/[A-Za-z0-9._-]+/;
 const BINARY_SNIFF_BYTES = 8000;
 
