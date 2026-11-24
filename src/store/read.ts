@@ -3,7 +3,12 @@
 // readers of its own JSON use.
 import { lstatSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import type { Detail, EngineName, Severity } from "../model/index.js";
+import type {
+  Detail,
+  EngineName,
+  Severity,
+  ShadowedModule,
+} from "../model/index.js";
 import { SCHEMA_VERSION, TABLE_COLUMNS } from "./schema.js";
 import type {
   Coverage,
@@ -111,6 +116,16 @@ const isCoverage = shape<Coverage>({
       memoryMax: isString,
       tiers: engineMapOf(isString),
     }),
+  ),
+  shadowedPython: optional(
+    arrayOf(
+      shape<ShadowedModule>({
+        path: isString,
+        name: isString,
+        heldBy: isString,
+        by: oneOf<ShadowedModule["by"]>({ root: true, package: true }),
+      }),
+    ),
   ),
 });
 

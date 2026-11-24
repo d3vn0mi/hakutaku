@@ -496,3 +496,70 @@ it("keeps an entry point that only its test imports in production, after the ent
     [CLOCK, "test-support", 0],
   ]);
 });
+
+it("records the importable Python modules another file shadows in coverage, and the store keeps them", () => {
+  const input = mergeInput(
+    {
+      "sim/src/config.py": "",
+      "sim/src/observatory/__init__.py": "",
+      "sim/src/observatory/orbit.py": "",
+      "sim/src/observatory/orbit/__init__.py": "",
+      "tools/config/__init__.py": "",
+    },
+    {
+      profile: {
+        python: { roots: ["sim/src", "tools"], singleFileModules: [] },
+      },
+    },
+  );
+  const merged = mergeFacts(input);
+  const coverage = coverageOf({
+    input,
+    ...merged,
+    tiers: {},
+    cycleDifferences: 0,
+  });
+  const shadowed = [
+    {
+      path: "sim/src/observatory/orbit.py",
+      name: "observatory.orbit",
+      heldBy: "sim/src/observatory/orbit/__init__.py",
+      by: "package",
+    },
+    {
+      path: "tools/config/__init__.py",
+      name: "config",
+      heldBy: "sim/src/config.py",
+      by: "root",
+    },
+  ];
+  expect(coverage.shadowedPython).toEqual(shadowed);
+  const empty = emptyContent();
+  const store = openStore(
+    miniStore({
+      ...empty,
+      meta: [{ ...(empty.meta[0] as (typeof empty.meta)[0]), coverage }],
+    }),
+  );
+  if ("code" in store) throw new Error(store.reason);
+  try {
+    expect(store.meta.coverage.shadowedPython).toEqual(shadowed);
+  } finally {
+    store.close();
+  }
+  // a build with nothing shadowed has no such key, so its coverage reads as before
+  const plain = mergeInput(
+    { "sim/src/observatory/__init__.py": "" },
+    { profile: SIM },
+  );
+  expect(
+    Object.keys(
+      coverageOf({
+        input: plain,
+        ...mergeFacts(plain),
+        tiers: {},
+        cycleDifferences: 0,
+      }),
+    ),
+  ).not.toContain("shadowedPython");
+});

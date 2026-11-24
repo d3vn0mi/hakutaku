@@ -1,5 +1,8 @@
 import { expect, it } from "vitest";
-import { pythonModuleIndex } from "../../../src/manifests/index.js";
+import {
+  pythonModuleIndex,
+  pythonShadowedModules,
+} from "../../../src/manifests/index.js";
 
 it("indexes Python modules under their roots", () =>
   expect(
@@ -90,3 +93,41 @@ it("lists names in path order", () =>
       [],
     ).keys(),
   ]).toEqual(["_c", "a", "a.z", "b"]));
+
+it("lists each file a claimed name leaves unnamed, with the file that holds the name", () =>
+  expect(
+    pythonShadowedModules(
+      [
+        // three roots claim config; the earliest holds it, whatever order the files come in
+        "tests/_utils/config/__init__.py",
+        "sim/config.py",
+        "sim/src/config.py",
+        // within one root, the package wins over the module of the same name
+        "sim/src/observatory.py",
+        "sim/src/observatory/__init__.py",
+        // a declared single-file module whose stem a root names is not shadowed by a root
+        "tools/config.py",
+      ],
+      ["sim/src", "sim", "tests/_utils"],
+      ["tools/config.py"],
+    ),
+  ).toEqual([
+    {
+      path: "sim/config.py",
+      name: "config",
+      heldBy: "sim/src/config.py",
+      by: "root",
+    },
+    {
+      path: "sim/src/observatory.py",
+      name: "observatory",
+      heldBy: "sim/src/observatory/__init__.py",
+      by: "package",
+    },
+    {
+      path: "tests/_utils/config/__init__.py",
+      name: "config",
+      heldBy: "sim/src/config.py",
+      by: "root",
+    },
+  ]));

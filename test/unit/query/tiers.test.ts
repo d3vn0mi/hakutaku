@@ -3,7 +3,7 @@
 // its group's, with a count, a language or a reason in the place of <n>, <language> or <why>,
 // and each line of a group is given somewhere in the grid.
 import { expect, it } from "vitest";
-import type { Label, Lang } from "../../../src/model/index.js";
+import type { Label, Lang, ShadowedModule } from "../../../src/model/index.js";
 import {
   BLIND_SPOT_LINES,
   blindSpots,
@@ -12,9 +12,24 @@ import {
   referenceBlindSpots,
   searchBlindSpots,
 } from "../../../src/query/index.js";
-import { openTinyResolved } from "../../helpers/tiny.js";
+import { openTiny, openTinyResolved } from "../../helpers/tiny.js";
 
 type Group = keyof typeof BLIND_SPOT_LINES;
+
+// A shadowed module, held by the file of the same name under sim/src.
+const shadow = (
+  path: string,
+  name: string,
+  by: "root" | "package",
+): ShadowedModule => ({
+  path,
+  name,
+  heldBy:
+    by === "root"
+      ? `sim/src/${name}.py`
+      : `${path.slice(0, -".py".length)}/__init__.py`,
+  by,
+});
 
 // A line of BLIND_SPOT_LINES as a pattern that a given line must match whole.
 function patternOf(line: string): RegExp {
@@ -22,7 +37,8 @@ function patternOf(line: string): RegExp {
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
     .replaceAll("<n>", "\\d+")
     .replaceAll("<language>", "\\S+")
-    .replaceAll("<why>", ".+");
+    .replaceAll("<why>", ".+")
+    .replaceAll("<modules>", ".+");
   return new RegExp(`^${source}$`);
 }
 
@@ -65,6 +81,12 @@ it("gives only the lines BLIND_SPOT_LINES lists, and each of them", () => {
             denied: 2,
             noSourceFiles: 2,
             redactions: 2,
+            shadowedPython: [
+              shadow("sim/config.py", "config", "root"),
+              shadow("sim/sky.py", "sky", "root"),
+              shadow("sim/src/a/orbit.py", "a.orbit", "package"),
+              shadow("sim/src/a/sky.py", "a.sky", "package"),
+            ],
           },
         },
       );
@@ -101,5 +123,52 @@ it("gives only the lines BLIND_SPOT_LINES lists, and each of them", () => {
       lines.filter((_, i) => !seen.some((line) => patterns[i]?.test(line))),
       `${group}: listed, never given`,
     ).toEqual([]);
+  }
+});
+
+it("names the shadowed Python modules in every answer's blindSpots, whatever its language", () => {
+  const one = openTiny({
+    coverage: {
+      shadowedPython: [
+        {
+          path: "tests/_utils/config/__init__.py",
+          name: "config",
+          heldBy: "marimo/_internal/config.py",
+          by: "root",
+        },
+      ],
+    },
+  });
+  const ROOT_ONE =
+    "1 Python module is shadowed by an earlier import root, so no import reaches it: tests/_utils/config/__init__.py (config is marimo/_internal/config.py)";
+  try {
+    for (const lang of LANGS) {
+      expect(blindSpots(one, lang, {}).at(-1)).toBe(ROOT_ONE);
+      expect(referenceBlindSpots(one, lang).at(-1)).toBe(ROOT_ONE);
+      expect(importBlindSpots(one, lang).at(-1)).toBe(ROOT_ONE);
+      expect(pathBlindSpots(one, "calls", lang)).toContain(ROOT_ONE);
+    }
+    expect(searchBlindSpots(one).at(-1)).toBe(ROOT_ONE);
+  } finally {
+    one.close();
+  }
+  // several: the count, then the first five in path order; the root line before the package's
+  const many = openTiny({
+    coverage: {
+      shadowedPython: [
+        ...["f", "e", "d", "c", "b", "a"].map((n) =>
+          shadow(`tools/${n}/__init__.py`, n, "root"),
+        ),
+        shadow("sim/src/a/orbit.py", "a.orbit", "package"),
+      ],
+    },
+  });
+  try {
+    expect(searchBlindSpots(many).slice(-2)).toEqual([
+      "6 Python modules are shadowed by an earlier import root, so no import reaches them: tools/a/__init__.py (a is sim/src/a.py), tools/b/__init__.py (b is sim/src/b.py), tools/c/__init__.py (c is sim/src/c.py), tools/d/__init__.py (d is sim/src/d.py), tools/e/__init__.py (e is sim/src/e.py)",
+      "1 Python module is shadowed by a package of the same name, so no import reaches it: sim/src/a/orbit.py (a.orbit is sim/src/a/orbit/__init__.py)",
+    ]);
+  } finally {
+    many.close();
   }
 });

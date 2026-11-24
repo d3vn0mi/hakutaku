@@ -1,6 +1,7 @@
 // The gates a new store must pass before it is swapped in, each with a fixed wording:
 // - files-indexed: each TypeScript and JavaScript file the engines are given was indexed, and
-//   each Python module an import statement can name has a name under the profile's roots;
+//   each Python module an import statement can name has a name under the profile's roots, or is
+//   shadowed: another file holds its name, so it is named, not counted;
 // - unresolved-imports: the share of relative imports left unresolved is within the profile's
 //   limit, and their number has not grown from the current store's;
 // - scip-duplicates: no symbol is defined by two SCIP documents;
@@ -9,8 +10,16 @@
 // runGates is pure: it reads only its input. storedTexts lists the texts the redaction gate
 // scans again.
 import { posix } from "node:path";
-import { pythonModuleIndex } from "../manifests/index.js";
-import { comparePaths, type FileKind, type Lang } from "../model/index.js";
+import {
+  pythonModuleIndex,
+  pythonShadowedModules,
+} from "../manifests/index.js";
+import {
+  comparePaths,
+  type FileKind,
+  type Lang,
+  type ShadowedModule,
+} from "../model/index.js";
 import { findSecrets, isDenied } from "../redact/index.js";
 import type { FileRow, GateResult } from "../store/index.js";
 import type { MergedContent } from "./merge/index.js";
@@ -118,16 +127,54 @@ export function runGates(input: GateInput): GateResult[] {
   ];
 }
 
-// The expected files of a language, and those of them that were not indexed.
+// The expected files of a language, those of them that were not indexed, and the Python files
+// left out of both, since another file holds their name.
 interface Tally {
   expected: number;
   missing: string[];
+  shadowed: string[];
+}
+
+// What the gate reads to tell which Python files an import statement can name.
+type PythonInput = Pick<
+  GateInput,
+  "files" | "regularPaths" | "metadataOnly" | "python"
+>;
+
+// Whether the files-indexed gate expects a Python file of the map to have a module name: one of
+// an importable package, or a declared single-file module.
+function pythonExpected(
+  input: PythonInput,
+): (file: GateInput["files"][number]) => boolean {
+  const metadataOnly = new Set(input.metadataOnly);
+  const regular = new Set(input.regularPaths);
+  const declared = new Set(input.python.singleFileModules);
+  return ({ path, kind, lang }) =>
+    lang === "python" &&
+    ON_MAP.has(kind) &&
+    !metadataOnly.has(path) &&
+    (inImportablePackage(path, regular) || declared.has(path));
+}
+
+// The Python files the files-indexed gate expects that give no module name, since an earlier
+// root's file, or within one root a package of the same name, holds it, in path order. No import
+// reaches them, so the gate does not count them and the build's coverage records them.
+export function shadowedPython(input: PythonInput): ShadowedModule[] {
+  const expected = pythonExpected(input);
+  const paths = new Set(
+    input.files.filter((f) => expected(f)).map((f) => f.path),
+  );
+  return pythonShadowedModules(
+    input.regularPaths,
+    input.python.roots,
+    input.python.singleFileModules,
+  ).filter((m) => paths.has(m.path));
 }
 
 function filesIndexed(input: GateInput): GateResult {
   const metadataOnly = new Set(input.metadataOnly);
-  const regular = new Set(input.regularPaths);
-  const declared = new Set(input.python.singleFileModules);
+  const expectedPython = pythonExpected(input);
+  const shadowed = new Set(shadowedPython(input).map((m) => m.path));
   const named = new Set(
     pythonModuleIndex(
       input.regularPaths,
@@ -136,7 +183,17 @@ function filesIndexed(input: GateInput): GateResult {
     ).values(),
   );
   const tallies = new Map<Lang, Tally>();
-  for (const { path, kind, lang } of input.files) {
+  const tallyOf = (lang: Lang): Tally => {
+    const tally = tallies.get(lang) ?? {
+      expected: 0,
+      missing: [],
+      shadowed: [],
+    };
+    tallies.set(lang, tally);
+    return tally;
+  };
+  for (const file of input.files) {
+    const { path, kind, lang } = file;
     if (lang === null || !ON_MAP.has(kind) || metadataOnly.has(path)) continue;
     let indexed: boolean;
     if (SCRIPT_LANGS.has(lang)) {
@@ -147,20 +204,26 @@ function filesIndexed(input: GateInput): GateResult {
         (input.indexed.get(lang)?.has(path) ?? false) &&
         (input.scip === null || input.scip.documents.has(path));
     } else if (lang === "python") {
-      if (!(inImportablePackage(path, regular) || declared.has(path))) continue;
+      if (!expectedPython(file)) continue;
+      if (shadowed.has(path)) {
+        tallyOf(lang).shadowed.push(path);
+        continue;
+      }
       indexed = named.has(path);
     } else {
       continue;
     }
-    const tally = tallies.get(lang) ?? { expected: 0, missing: [] };
+    const tally = tallyOf(lang);
     tally.expected++;
     if (!indexed) tally.missing.push(path);
-    tallies.set(lang, tally);
   }
   const langs = [...tallies.keys()].sort(comparePaths);
   const count = (lang: Lang): string => {
-    const { expected, missing } = tallies.get(lang) as Tally;
-    return `${lang} ${expected - missing.length}/${expected}`;
+    const { expected, missing, shadowed } = tallies.get(lang) as Tally;
+    const counted = `${lang} ${expected - missing.length}/${expected}`;
+    if (shadowed.length === 0) return counted;
+    const names = [...shadowed].sort(comparePaths).slice(0, NAMED).join(", ");
+    return `${counted} (${shadowed.length} shadowed: ${names})`;
   };
   const failing = langs.filter(
     (lang) => (tallies.get(lang) as Tally).missing.length > 0,

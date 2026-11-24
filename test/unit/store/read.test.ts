@@ -321,3 +321,23 @@ it.skipIf(process.platform === "win32")(
     });
   },
 );
+
+it.each<[string, string]>([
+  [
+    "shadowed modules that are not an array",
+    `UPDATE meta SET coverage = json_set(coverage, '$.shadowedPython', json('{}'))`,
+  ],
+  [
+    "a shadowed module without the file that holds its name",
+    `UPDATE meta SET coverage = json_set(coverage, '$.shadowedPython', json('[{"path":"tools/config/__init__.py","name":"config","by":"root"}]'))`,
+  ],
+  [
+    "a shadowed module shadowed by neither a root nor a package",
+    `UPDATE meta SET coverage = json_set(coverage, '$.shadowedPython', json('[{"path":"tools/config/__init__.py","name":"config","heldBy":"sim/src/config.py","by":"stub"}]'))`,
+  ],
+])("answers not an hakutaku store for %s", (_, sql) =>
+  expect(openStore(changed(sql))).toEqual({
+    code: "not_built",
+    reason: "not an hakutaku store",
+  }),
+);

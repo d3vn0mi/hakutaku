@@ -52,6 +52,15 @@ export type EngineName =
 export type Producer = EngineName | "hakutaku-resolver" | "hakutaku";
 export const MODULE_QUALNAME = "<module>";
 
+// A Python file under an import root that claims a module name another file holds: a file of an
+// earlier root, or, within one root, a package's __init__.py over a module of the same name.
+export interface ShadowedModule {
+  path: string;
+  name: string; // the dotted name it would give
+  heldBy: string; // the file that holds that name
+  by: "root" | "package";
+}
+
 export type NodeRef =
   | { kind: "repo"; repo: RepoId }
   // a component; path ends with "/". The root component's path is "./".

@@ -14,7 +14,10 @@ import { readSystemdUnits } from "./systemd.js";
 import type { EntryFact, ManifestInput, Named, ReadContext } from "./types.js";
 
 export { sourceForBuilt } from "./built-paths.js";
-export { pythonModuleIndex } from "./python-modules.js";
+export {
+  pythonModuleIndex,
+  pythonShadowedModules,
+} from "./python-modules.js";
 export type { EntryFact, ManifestInput } from "./types.js";
 
 // The store's key for an entry point (the entry_points table's primary key), in order.

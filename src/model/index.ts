@@ -26,6 +26,7 @@ export type {
   RefRole,
   RepoId,
   Severity,
+  ShadowedModule,
   Stale,
 } from "./types.js";
 export { MODULE_QUALNAME } from "./types.js";

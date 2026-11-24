@@ -6,6 +6,7 @@ import { lstatSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { deflateSync } from "node:zlib";
 import { comparePaths } from "../model/order.js";
+import type { ShadowedModule } from "../model/types.js";
 import { contentHash } from "./hash.js";
 import {
   CONTENT_TABLES,
@@ -340,6 +341,19 @@ function coverageJson(coverage: Coverage): string {
         ["memoryMax", json(out.memoryMax, `${at}.memoryMax`)],
         ["tiers", mapJson(out.tiers, `${at}.tiers`)],
       ]),
+    ]);
+  }
+  // then, only when a Python file is shadowed
+  const shadowed = coverage.shadowedPython;
+  if (shadowed !== undefined) {
+    entries.push([
+      "shadowedPython",
+      arrayJson(
+        shadowed,
+        "meta.coverage.shadowedPython",
+        (m: ShadowedModule, at) =>
+          fieldsJson(m, ["path", "name", "heldBy", "by"], at),
+      ),
     ]);
   }
   return objectJson(entries);

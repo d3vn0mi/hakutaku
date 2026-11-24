@@ -1,7 +1,7 @@
 // Compiler tiers: whether a compiler-backed engine ran for a language in this build, what
 // code_explain's label and note say about how a definition's users were found, and the blind
 // spots of the answers about callers, references, imports, paths and text.
-import type { Label, Lang } from "../model/index.js";
+import { comparePaths, type Label, type Lang } from "../model/index.js";
 import type { Store } from "../store/index.js";
 import type { DefInfo } from "./store-index.js";
 
@@ -174,6 +174,40 @@ const DENIED: CountLine = {
 };
 const SPANS: CountLine = { one: "span", many: "spans" };
 
+// A Python file another file shadows gives no module name, so no import reaches it, whatever the
+// answer's language: one line for those an earlier import root shadows, then one for those a
+// package of the same name shadows within one root, each naming the first five in path order.
+const SHADOWED_BY_ROOT: CountLine = {
+  one: "Python module is shadowed by an earlier import root, so no import reaches it",
+  many: "Python modules are shadowed by an earlier import root, so no import reaches them",
+};
+const SHADOWED_BY_PACKAGE: CountLine = {
+  one: "Python module is shadowed by a package of the same name, so no import reaches it",
+  many: "Python modules are shadowed by a package of the same name, so no import reaches them",
+};
+const SHADOWED_NAMED = 5;
+const MODULES = "<modules>";
+
+function shadowedLines(store: Store): string[] {
+  const all = store.meta.coverage.shadowedPython ?? [];
+  const out: string[] = [];
+  for (const [by, line] of [
+    ["root", SHADOWED_BY_ROOT],
+    ["package", SHADOWED_BY_PACKAGE],
+  ] as const) {
+    const shadowed = all
+      .filter((m) => m.by === by)
+      .sort((a, b) => comparePaths(a.path, b.path));
+    if (shadowed.length === 0) continue;
+    const named = shadowed
+      .slice(0, SHADOWED_NAMED)
+      .map((m) => `${m.path} (${m.name} is ${m.heldBy})`)
+      .join(", ");
+    out.push(`${counted(shadowed.length, line)}: ${named}`);
+  }
+  return out;
+}
+
 function redactedSpans(n: Count): string {
   return `secret-shaped text is redacted (${counted(n, SPANS)} across the map), so it cannot be found`;
 }
@@ -270,6 +304,7 @@ export function blindSpots(
   if (isCompiled(lang) && coverage.unmatchedBoundUses > 0) {
     out.push(unmatchedBoundUses(coverage.unmatchedBoundUses));
   }
+  out.push(...shadowedLines(store));
   return out;
 }
 
@@ -289,6 +324,7 @@ export function referenceBlindSpots(store: Store, lang: Lang | null): string[] {
   if (isCompiled(lang) && unmatched > 0) {
     out.push(unmatchedBoundUses(unmatched));
   }
+  out.push(...shadowedLines(store));
   return out;
 }
 
@@ -314,6 +350,7 @@ export function importBlindSpots(store: Store, lang: Lang | null): string[] {
   if (coverage.denied > 0) {
     out.push(counted(coverage.denied, DENIED_WITH_IMPORTS));
   }
+  out.push(...shadowedLines(store));
   return out;
 }
 
@@ -352,16 +389,21 @@ export function searchBlindSpots(store: Store): string[] {
   }
   if (coverage.denied > 0) out.push(counted(coverage.denied, DENIED));
   if (coverage.redactions > 0) out.push(redactedSpans(coverage.redactions));
+  out.push(...shadowedLines(store));
   return out;
 }
 
 const N = "<n>";
 const LANGUAGE = "<language>";
 const WHY = "<why>";
+const SHADOWED_LINES = [
+  `${counted(N, SHADOWED_BY_ROOT)}: ${MODULES}`,
+  `${counted(N, SHADOWED_BY_PACKAGE)}: ${MODULES}`,
+];
 
 // Every line a blindSpots list can carry, by the answers that carry it, as docs/tools.md lists
 // them: a count as <n>, in the plural, though a count line reads in the singular at 1; a language
-// as <language>, and a reason as <why>. Each is built from the wording the functions above build
+// as <language>, a reason as <why>, and the shadowed modules a line names as <modules>. Each is built from the wording the functions above build
 // their lines from. searchBlindSpots' line for a map that stores no source text is left out:
 // code_search_text answers no_source for such a map, so no answer carries that line.
 export const BLIND_SPOT_LINES = Object.freeze({
@@ -378,12 +420,14 @@ export const BLIND_SPOT_LINES = Object.freeze({
     `${counted(N, COMPUTED)}${COMPUTED_ENDING.noLabels}`,
     counted(N, COMPUTED),
     unmatchedBoundUses(N),
+    ...SHADOWED_LINES,
   ]),
   // code_references for a definition
   references: Object.freeze([
     noCompiler(LANGUAGE, WHY, NO_REFERENCE),
     noReferences(LANGUAGE),
     unmatchedBoundUses(N),
+    ...SHADOWED_LINES,
   ]),
   // code_deps, and code_path via imports, from its from file
   imports: Object.freeze([
@@ -394,6 +438,7 @@ export const BLIND_SPOT_LINES = Object.freeze({
     counted(N, RESOLVED_PYTHON),
     counted(N, RESOLVED_SCRIPTS),
     counted(N, DENIED_WITH_IMPORTS),
+    ...SHADOWED_LINES,
   ]),
   // code_path via calls, after its from definition's lines
   unfollowed: UNFOLLOWED,
@@ -402,5 +447,6 @@ export const BLIND_SPOT_LINES = Object.freeze({
     counted(N, NO_SOURCE_FILES),
     counted(N, DENIED),
     redactedSpans(N),
+    ...SHADOWED_LINES,
   ]),
 });

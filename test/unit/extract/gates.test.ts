@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import {
   type GateInput,
   runGates,
+  shadowedPython,
   storedTexts,
 } from "../../../src/extract/gates.js";
 import type { MergedContent } from "../../../src/extract/merge/index.js";
@@ -439,5 +440,113 @@ it("re-scans every stored text, external names and link targets among them, each
   expect(gate(leaked, "redaction")).toMatchObject({
     ok: false,
     detail: "re-scan found 1: web/a.ts:3 github-token",
+  });
+});
+
+it("counts no Python module that an earlier root's file shadows, and names it", () => {
+  // two roots that both give the top-level name config: the earlier root's module holds it, so
+  // the later root's package is shadowed, as the earlier entry of sys.path wins
+  const files: File[] = [
+    py("sim/src/config.py"),
+    py("sim/src/observatory/__init__.py"),
+    py("tools/config/__init__.py"),
+    py("tools/config/load.py"),
+  ];
+  const results = runGates(
+    withFiles(files, {
+      python: { roots: ["sim/src", "tools"], singleFileModules: [] },
+    }),
+  );
+  expect(gate(results, "files-indexed")).toEqual({
+    gate: "files-indexed",
+    ok: true,
+    detail: "python 2/2 (1 shadowed: tools/config/__init__.py)",
+  });
+  expect(
+    shadowedPython(
+      withFiles(files, {
+        python: { roots: ["sim/src", "tools"], singleFileModules: [] },
+      }),
+    ),
+  ).toEqual([
+    {
+      path: "tools/config/__init__.py",
+      name: "config",
+      heldBy: "sim/src/config.py",
+      by: "root",
+    },
+  ]);
+});
+
+it("still fails for an unnamed Python file that no other file shadows, beside a shadowed one", () => {
+  const results = runGates(
+    withFiles(
+      [
+        py("sim/src/config.py"),
+        py("tools/config/__init__.py"),
+        py("extra/sky/__init__.py"),
+        py("extra/sky/chart.py"),
+      ],
+      { python: { roots: ["sim/src", "tools"], singleFileModules: [] } },
+    ),
+  );
+  expect(gate(results, "files-indexed")).toEqual({
+    gate: "files-indexed",
+    ok: false,
+    detail:
+      "python 0/2 (1 shadowed: tools/config/__init__.py): missing extra/sky/__init__.py, extra/sky/chart.py",
+  });
+});
+
+it("counts no importable module that a package of the same name shadows within one root", () => {
+  const files: File[] = [
+    py("sim/src/observatory/__init__.py"),
+    // orbit.py and orbit/ are both in the package observatory: Python's finder takes the package
+    py("sim/src/observatory/orbit.py"),
+    py("sim/src/observatory/orbit/__init__.py"),
+    py("sim/src/observatory/orbit/kepler.py"),
+    // a loose module the package beside it shadows, which no import statement could name
+    // anyway, so it is neither expected nor named as shadowed
+    py("sim/src/sky.py"),
+    py("sim/src/sky/__init__.py"),
+  ];
+  const over = {
+    python: { roots: ["sim/src"], singleFileModules: [] },
+  };
+  expect(gate(runGates(withFiles(files, over)), "files-indexed")).toEqual({
+    gate: "files-indexed",
+    ok: true,
+    detail: "python 4/4 (1 shadowed: sim/src/observatory/orbit.py)",
+  });
+  expect(shadowedPython(withFiles(files, over))).toEqual([
+    {
+      path: "sim/src/observatory/orbit.py",
+      name: "observatory.orbit",
+      heldBy: "sim/src/observatory/orbit/__init__.py",
+      by: "package",
+    },
+  ]);
+});
+
+it("names at most five shadowed modules in path order, after their count", () => {
+  const names = ["f", "e", "d", "c", "b", "a"];
+  const files: File[] = [
+    ...names.map((n) => py(`sim/src/${n}.py`)),
+    ...names.map((n) => py(`tools/${n}/__init__.py`)),
+  ];
+  expect(
+    gate(
+      runGates(
+        withFiles(files, {
+          python: { roots: ["sim/src", "tools"], singleFileModules: [] },
+        }),
+      ),
+      "files-indexed",
+    ),
+  ).toEqual({
+    gate: "files-indexed",
+    ok: true,
+    detail:
+      "python 0/0 (6 shadowed: tools/a/__init__.py, tools/b/__init__.py, tools/c/__init__.py, tools/d/__init__.py, tools/e/__init__.py)",
   });
 });

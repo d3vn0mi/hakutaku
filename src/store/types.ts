@@ -17,6 +17,7 @@ import type {
   RefRole,
   RepoId,
   Severity,
+  ShadowedModule,
 } from "../model/index.js";
 
 export interface Coverage {
@@ -44,6 +45,10 @@ export interface Coverage {
     memoryMax: string;
     tiers: Partial<Record<EngineName, string>>;
   };
+  // The Python files an import statement could name that give no module, since another file
+  // holds their name, in path order. The files-indexed gate does not count them, and blindSpots
+  // names them. Present only when there is one, so another build's hash is unchanged.
+  shadowedPython?: ShadowedModule[];
 }
 
 export interface GateResult {
