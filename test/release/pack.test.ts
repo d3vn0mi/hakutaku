@@ -106,25 +106,6 @@ function walk(dir: string): string[] {
     .sort(comparePaths);
 }
 
-// Whether git lists a licence text: tracked, or untracked and not ignored, as the tree checks list
-// the repository's files.
-function licenceTextsListed(): boolean {
-  const out = execFileSync(
-    "git",
-    [
-      "ls-files",
-      "-z",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      "--",
-      TEXTS,
-    ],
-    { encoding: "utf8" },
-  );
-  return out.split("\0").some((path) => path.endsWith(".txt"));
-}
-
 const OK = [
   ...REQUIRED,
   "THIRD_PARTY_LICENSES/sigma.txt",
@@ -220,12 +201,7 @@ it("scan.mjs prints each finding, then a clean line and exit 0 or a count and ex
 });
 
 it("the packed file list matches the allowlist", () => {
-  // Until git lists a licence text, the package cannot carry one: that one problem waits for the
-  // texts, and every other rule holds already.
-  const waiting = licenceTextsListed() ? [] : [NO_TEXTS];
-  expect(
-    checkPackList(packedPaths()).filter((p) => !waiting.includes(p)),
-  ).toEqual([]);
+  expect(checkPackList(packedPaths())).toEqual([]);
 });
 
 it("the viewer bundle ships whole", () => {

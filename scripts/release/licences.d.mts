@@ -60,3 +60,52 @@ export function shippedPackages(
 // One line for each package whose licence is unknown or fails licenceAllowed, in the given order:
 // "<name>@<version> (<location>, <via>): <licence, or UNKNOWN>".
 export function licenceProblems(packages: ShippedPackage[]): string[];
+
+// NOTICE's parts, as their "## " headings give them, in their order.
+export const NOTICE_PARTS: readonly [
+  "Bundled in the package",
+  "Installed with the package",
+  "Run as separate programs",
+  "Runtime, not redistributed",
+  "Development tools",
+];
+
+// An entry of NOTICE: its "### <name>" heading, the part it sits in, and its "<Key>: <value>"
+// lines, each key's values in order (only Copyright may hold more than one).
+export interface NoticeEntry {
+  part: string;
+  name: string;
+  fields: Record<string, string[]>;
+}
+
+// NOTICE's parts and entries, after its header. It throws "unknown key <Key>" for a key other
+// than Package, Version, Licence, Copyright, Use and Text, and throws as well for a key other
+// than Copyright given twice, an empty value, an entry heading in the header, and any other line.
+export function parseNotice(text: string): {
+  parts: string[];
+  entries: NoticeEntry[];
+};
+
+// The name of a licence file: /^(licen[cs]e|copying|ofl)([.-].*)?$/i.
+export const LICENCE_FILE: RegExp;
+
+// The names in a folder that LICENCE_FILE matches, regular files only, in path order.
+export function licenceFiles(dir: string): string[];
+
+// A copyright line, read from its start: "Copyright" (perhaps after "Portions", and before a
+// "(c)" or "©") then a year or a capitalised word, or a "(c)" or "©" alone then a year or the
+// word Copyright.
+export const COPYRIGHT_LINE: RegExp;
+
+// An entry's Copyright when no line of its licence text is a copyright line.
+export const NOT_STATED: "not stated in the licence file";
+
+// "THIRD_PARTY_LICENSES/" + name.replaceAll("/", "__") + ".txt"
+export function textFileFor(name: string): string;
+
+// The licence text of each bundled location under root, keyed by its textFileFor file, and the
+// files of the packages that ship no licence file, to be written by hand.
+export function generateTexts(
+  root: string,
+  bundled: string[],
+): { texts: Map<string, string>; missing: string[] };

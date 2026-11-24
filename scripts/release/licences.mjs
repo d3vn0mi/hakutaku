@@ -1,12 +1,28 @@
 // The licences of the shipped tree: the package's production dependencies, read from
 // package-lock.json, and every package bundled into the viewer, read from esbuild's record of
 // the build. Each one must be under a licence on the allowlist below; the engines are installed,
-// not shipped, so it does not gate them.
+// not shipped, so it does not gate them. Then NOTICE, the attribution of every project hakutaku
+// uses, and the full licence texts in THIRD_PARTY_LICENSES/ of what the package bundles, which
+// this module writes:
+//
+//   node scripts/release/licences.mjs --write    (after npm run build)
+//
+// It writes the text of each bundled package that ships a licence file, prints "write by hand:
+// <file>" for each one that ships none, then "licences: <n> texts written", and exits 0. A usage
+// error prints the usage on stderr and exits 2.
 //
 // It runs under plain node, so it never imports src/, and it sorts with JS < on strings, the
 // UTF-16 order of hakutaku's comparePaths.
-import { readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 // The licences the shipped tree may use, as SPDX ids. A package under any other licence is
 // reported, never let through: widening this list changes the project's licence policy.
@@ -210,4 +226,192 @@ export function licenceProblems(packages) {
       (p) =>
         `${p.name}@${p.version} (${p.location}, ${p.via}): ${p.licence ?? "UNKNOWN"}`,
     );
+}
+
+// NOTICE's parts, as their "## " headings give them, in their order.
+export const NOTICE_PARTS = Object.freeze([
+  "Bundled in the package",
+  "Installed with the package",
+  "Run as separate programs",
+  "Runtime, not redistributed",
+  "Development tools",
+]);
+
+// The keys an entry may hold. Copyright alone may be given more than once.
+const NOTICE_KEYS = new Set([
+  "Package",
+  "Version",
+  "Licence",
+  "Copyright",
+  "Use",
+  "Text",
+]);
+
+// NOTICE's parts and entries. Every line before the first "## <part>" heading is the header,
+// which is not read. From there on, a line is a "## <part>" heading, a "### <name>" heading that
+// opens an entry of that part, a "<Key>: <value>" line of the open entry, or blank, which closes
+// the entry. A key outside NOTICE_KEYS throws "unknown key <Key>"; so do a key other than
+// Copyright given twice, an empty value, an entry heading in the header, and any other line.
+export function parseNotice(text) {
+  const parts = [];
+  const entries = [];
+  let part;
+  let entry;
+  for (const line of text.split(/\r?\n/)) {
+    if (line.startsWith("## ")) {
+      part = line.slice(3);
+      parts.push(part);
+      entry = undefined;
+    } else if (part === undefined) {
+      if (line.startsWith("### ")) {
+        throw new Error(`an entry before the first part: ${line.slice(4)}`);
+      }
+    } else if (line.startsWith("### ")) {
+      entry = { part, name: line.slice(4), fields: {} };
+      entries.push(entry);
+    } else if (line === "") {
+      entry = undefined;
+    } else {
+      const colon = line.indexOf(": ");
+      if (entry === undefined || colon < 0) {
+        throw new Error(`not a line of an entry: ${line}`);
+      }
+      const key = line.slice(0, colon);
+      const value = line.slice(colon + 2);
+      if (!NOTICE_KEYS.has(key)) throw new Error(`unknown key ${key}`);
+      if (value.trim() === "")
+        throw new Error(`${entry.name}: ${key} is empty`);
+      const values = entry.fields[key];
+      if (values === undefined) entry.fields[key] = [value];
+      else if (key === "Copyright") values.push(value);
+      else throw new Error(`${entry.name}: ${key} given twice`);
+    }
+  }
+  return { parts, entries };
+}
+
+// The name of a licence file: LICENSE, LICENCE, COPYING or OFL, in any case, alone or followed by
+// a dot or a hyphen and anything, such as LICENSE.txt, LICENSE-MIT or OFL.txt.
+export const LICENCE_FILE = /^(licen[cs]e|copying|ofl)([.-].*)?$/i;
+
+// The licence files in a folder, by name, in path order: each regular file, or link to one, whose
+// name LICENCE_FILE matches. A folder that does not exist throws.
+export function licenceFiles(dir) {
+  return readdirSync(dir)
+    .filter(
+      (name) => LICENCE_FILE.test(name) && statSync(join(dir, name)).isFile(),
+    )
+    .sort(byString);
+}
+
+// A copyright line of a licence text, read from its start: "Copyright" or "COPYRIGHT", perhaps
+// after "Portions" and before a "(c)" or "©", then a year or a capitalised word; or a "(c)" or
+// "©" alone, then a year or the word Copyright. Licence prose that names copyright does not match,
+// nor does the Apache License's clause "(c) You must retain ...", which states no copyright.
+export const COPYRIGHT_LINE =
+  /^\s*(?:Portions\s+)?(?:(?:[Cc]opyright|COPYRIGHT)\s*(?:\([Cc]\)|©)?\s*(?:\d{4}|[A-Z][a-z])|(?:\([Cc]\)|©)\s*(?:\d{4}|[Cc]opyright|COPYRIGHT))/;
+
+// An entry's Copyright when no line of its licence text is a copyright line.
+export const NOT_STATED = "not stated in the licence file";
+
+// Where the licence text of a bundled package is kept: its name, with each "/" written "__".
+export function textFileFor(name) {
+  return `THIRD_PARTY_LICENSES/${name.replaceAll("/", "__")}.txt`;
+}
+
+// A licence file's text with its lines ended by line feeds alone, as the repository stores every
+// text file (.gitattributes), and a line feed at its end: so that each section header below
+// starts a line, and a text written here equals the one a checkout holds.
+function asStored(text) {
+  const lf = text.replaceAll("\r\n", "\n");
+  return lf === "" || lf.endsWith("\n") ? lf : `${lf}\n`;
+}
+
+// The licence text of each bundled package, read from its folder under root, keyed by its
+// textFileFor file:
+//
+//   <name> <version>
+//   Licence: <expression>
+//
+//   ---- <licence file name> ----
+//   <that file's text>
+//
+// with one "---- <file> ----" section per licence file, in path order, a blank line between two
+// sections; each text is the file's word for word, but for its line endings (asStored). The name
+// and version are the package.json's, and the licence is what normaliseLicence reads there, or
+// UNKNOWN. A package that ships no licence file has no text: its file is listed in missing, in
+// the order given, to be written by hand. Two bundled packages of one name throw, since NOTICE
+// credits a package once.
+export function generateTexts(root, bundled) {
+  const texts = new Map();
+  const missing = [];
+  for (const location of bundled) {
+    const dir = join(root, location);
+    const manifest = JSON.parse(
+      readFileSync(join(dir, "package.json"), "utf8"),
+    );
+    const name = named(manifest.name) ?? installedName(location);
+    const file = textFileFor(name);
+    if (texts.has(file) || missing.includes(file)) {
+      throw new Error(`two bundled packages are named ${name}`);
+    }
+    const files = licenceFiles(dir);
+    if (files.length === 0) {
+      missing.push(file);
+      continue;
+    }
+    const sections = files.map(
+      (f) => `---- ${f} ----\n${asStored(readFileSync(join(dir, f), "utf8"))}`,
+    );
+    texts.set(
+      file,
+      [
+        `${name} ${named(manifest.version) ?? "UNKNOWN"}`,
+        `Licence: ${normaliseLicence(manifest) ?? "UNKNOWN"}`,
+        "",
+        sections.join("\n"),
+      ].join("\n"),
+    );
+  }
+  return { texts, missing };
+}
+
+const USAGE = "usage: node scripts/release/licences.mjs --write";
+
+// The repository: two folders above this module.
+const ROOT = fileURLToPath(new URL("../../", import.meta.url));
+
+// The CLI: the texts of the packages the last build bundled, from .cache/viewer-meta.json and
+// package.json's devDependencies, written into THIRD_PARTY_LICENSES/. It returns the exit code.
+function main(args) {
+  if (args.length !== 1 || args[0] !== "--write") {
+    console.error(USAGE);
+    return 2;
+  }
+  const meta = join(ROOT, ".cache", "viewer-meta.json");
+  if (!existsSync(meta)) {
+    console.error(
+      "licences: no .cache/viewer-meta.json: run npm run build first",
+    );
+    return 1;
+  }
+  const { devDependencies = {} } = JSON.parse(
+    readFileSync(join(ROOT, "package.json"), "utf8"),
+  );
+  const { texts, missing } = generateTexts(
+    ROOT,
+    bundledLocations(JSON.parse(readFileSync(meta, "utf8")), devDependencies),
+  );
+  mkdirSync(join(ROOT, "THIRD_PARTY_LICENSES"), { recursive: true });
+  for (const [file, text] of texts) writeFileSync(join(ROOT, file), text);
+  for (const file of missing) console.log(`write by hand: ${file}`);
+  console.log(`licences: ${texts.size} texts written`);
+  return 0;
+}
+
+if (
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  process.exitCode = main(process.argv.slice(2));
 }

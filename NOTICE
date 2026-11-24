@@ -8,59 +8,60 @@ the copyright line copied from that version's licence file.
 ## Bundled in the package
 
 ### SCIP
-Version: v0.10.0 (commit 1c2b6db7e560d5233c944f36e4ac1377cc6963fc), vendored from https://github.com/scip-code/scip/blob/v0.10.0/scip.proto byte for byte
+Version: vendored from https://github.com/scip-code/scip at v0.10.0
 Licence: Apache-2.0
 Copyright: not stated in the licence file
-Use: the SCIP index format, created by Sourcegraph: src/extract/scip/scip.proto is its protobuf schema, and hakutaku's decoder of index.scip is written from that schema
+Use: the SCIP index format, created by Sourcegraph: src/extract/scip/scip.proto is its protobuf schema, the file scip.proto at that tag (commit 1c2b6db7e560d5233c944f36e4ac1377cc6963fc) byte for byte, and hakutaku's decoder of index.scip is written from that schema
+Text: THIRD_PARTY_LICENSES/SCIP.txt
 
-### IBM Plex Mono
-Package: npm:@ibm/plex-mono
+### @ibm/plex-mono
 Version: 2.5.0
 Licence: OFL-1.1
 Copyright: Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
-Use: the viewer's monospaced font, regular and medium, as the unmodified Latin-1 woff2 files, bundled with the viewer and inlined into an exported page
+Use: IBM Plex Mono, the viewer's monospaced font, regular and medium, as the unmodified Latin-1 woff2 files, bundled with the viewer and inlined into an exported page
+Text: THIRD_PARTY_LICENSES/@ibm__plex-mono.txt
 
-### IBM Plex Sans Condensed
-Package: npm:@ibm/plex-sans-condensed
+### @ibm/plex-sans-condensed
 Version: 2.0.0
 Licence: OFL-1.1
 Copyright: Copyright © 2017 IBM Corp. with Reserved Font Name "Plex"
-Use: the viewer's text font, light, regular, medium and semibold, as the unmodified Latin-1 woff2 files, bundled with the viewer and inlined into an exported page
+Use: IBM Plex Sans Condensed, the viewer's text font, light, regular, medium and semibold, as the unmodified Latin-1 woff2 files, bundled with the viewer and inlined into an exported page
+Text: THIRD_PARTY_LICENSES/@ibm__plex-sans-condensed.txt
 
 ### sigma
-Package: npm:sigma
 Version: 3.0.3
 Licence: MIT
 Copyright: Copyright (C) 2013-2025, Alexis Jacomy, Guillaume Plique, Benoît Simard https://www.sigmajs.org
 Use: draws the viewer's map with WebGL, bundled into the viewer's script, which an exported page inlines
+Text: THIRD_PARTY_LICENSES/sigma.txt
 
 ### graphology
-Package: npm:graphology
 Version: 0.26.0
 Licence: MIT
 Copyright: Copyright (c) 2016-2021 Guillaume Plique (Yomguithereal)
 Use: the graph model the map is drawn from, bundled into the viewer's script
+Text: THIRD_PARTY_LICENSES/graphology.txt
 
 ### graphology-utils
-Package: npm:graphology-utils
 Version: 2.5.2
 Licence: MIT
 Copyright: Copyright (c) 2017-2021 Guillaume Plique (Yomguithereal)
 Use: graph helpers that sigma uses, bundled into the viewer's script
+Text: THIRD_PARTY_LICENSES/graphology-utils.txt
 
 ### events
-Package: npm:events
 Version: 3.3.0
 Licence: MIT
 Copyright: Copyright Joyent, Inc. and other Node contributors.
 Use: the event emitter that sigma and graphology use in the browser, bundled into the viewer's script
+Text: THIRD_PARTY_LICENSES/events.txt
 
 ### highlight.js
-Package: npm:highlight.js
 Version: 11.12.0
 Licence: BSD-3-Clause
 Copyright: Copyright (c) 2006, Ivan Sagalaev.
 Use: highlights the viewer's source view, its core with the TypeScript, JavaScript, XML, Python, Bash, JSON, YAML, INI and Markdown grammars, bundled into the viewer's script and into its highlighting worker
+Text: THIRD_PARTY_LICENSES/highlight.js.txt
 
 ## Installed with the package
 
@@ -167,7 +168,8 @@ Use: bundles the viewer's browser code and styles at build time; development onl
 ### @playwright/test
 Version: 1.65.0
 Licence: Apache-2.0
-Copyright: Portions Copyright (c) Microsoft Corporation. Portions Copyright 2017 Google Inc.
+Copyright: Portions Copyright (c) Microsoft Corporation.
+Copyright: Portions Copyright 2017 Google Inc.
 Use: runs the viewer's end-to-end tests in Chromium and Firefox; development only
 
 ### @axe-core/playwright
@@ -181,3 +183,9 @@ Version: 4.14.0
 Licence: MPL-2.0
 Copyright: not stated in the licence file
 Use: the accessibility rules the viewer's end-to-end tests check its pages against, installed with @axe-core/playwright, which runs them in the browser; development only
+
+### yaml
+Version: 2.9.1
+Licence: ISC
+Copyright: Copyright Eemeli Aro <eemeli@gmail.com>
+Use: reads the GitHub workflows in the tests; development only
