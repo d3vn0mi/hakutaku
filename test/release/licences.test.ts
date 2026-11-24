@@ -36,7 +36,7 @@ import {
 } from "../../scripts/release/licences.mjs";
 import { defaultEnginesDir, readLock } from "../../src/engines/index.js";
 import { requireInCI } from "../helpers/live.js";
-import { scipPythonProbe } from "../helpers/sample.js";
+import { samplePythonProbe, scipPythonProbe } from "../helpers/sample.js";
 
 // Only an engine install with --deep holds scip-python, whose licence text the deep engines'
 // test reads.
@@ -396,6 +396,19 @@ function lockLocation(
 function deepEngines(): Set<string> {
   const { devDependencies } = readLock().lock.npm.packageJson;
   return new Set(Object.keys(devDependencies).map((name) => `npm:${name}`));
+}
+
+// The Python engines the engine lock pins, as [NOTICE's Package value, version]: one for each
+// line "<name>==<version> ..." of its pip requirements.
+function pipPins(): Array<[pkg: string, version: string]> {
+  return readLock()
+    .lock.pip.requirements.split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line): [string, string] => {
+      const pin = /^([A-Za-z0-9._-]+)==(\S+)/.exec(line);
+      if (pin === null) throw new Error(`not a pinned requirement: ${line}`);
+      return [`pypi:${pin[1]}`, pin[2] ?? ""];
+    });
 }
 
 // The installed engines directory; it fails the test where the engines are not installed.
@@ -787,14 +800,7 @@ it("every engine in engines.lock.json is credited at its pinned version", () => 
     ...Object.entries({ ...dependencies, ...devDependencies }).map(
       ([name, version]) => [`npm:${name}`, version],
     ),
-    ...lock.pip.requirements
-      .split("\n")
-      .filter((line) => line.trim() !== "")
-      .map((line) => {
-        const pin = /^([A-Za-z0-9._-]+)==(\S+)/.exec(line);
-        if (pin === null) throw new Error(`not a pinned requirement: ${line}`);
-        return [`pypi:${pin[1]}`, pin[2]];
-      }),
+    ...pipPins(),
   ];
   const entries = readNotice().entries.filter((e) => e.part === ENGINES);
   const problems: string[] = [];
@@ -888,14 +894,16 @@ it("every copyright line is copied from the licence text", () => {
   // licence files for Installed entries and development tools. For engines it is the licence
   // files of <defaultEnginesDir()>/npm/node_modules/<package>/, or of the <name>-<version>.dist-info
   // folder under <defaultEnginesDir()>/python/, including its licenses/ folder. When the engines
-  // are absent, the test fails with ENGINES_MISSING. The deep engines have a test of their own.
+  // are absent, the test fails with ENGINES_MISSING. The deep engine and the Python engines have
+  // tests of their own, since only an install with --deep, or with a Python, holds them.
   // Each Copyright value must be a copyright line of that text, or equal NOT_STATED, with no
   // line of the package's own licence files that matches COPYRIGHT_LINE.
   const deep = deepEngines();
   const { problems, withoutFile } = checkCopyrights(
-    readNotice().entries.filter(
-      (e) => e.part !== RUNTIME && !deep.has(field(e, "Package") ?? ""),
-    ),
+    readNotice().entries.filter((e) => {
+      const pkg = field(e, "Package") ?? "";
+      return e.part !== RUNTIME && !deep.has(pkg) && !pkg.startsWith("pypi:");
+    }),
   );
   expect(problems).toEqual([]);
   // @ast-grep/cli and its platform package ship no licence file, so ast-grep's entry can only
@@ -910,6 +918,23 @@ it("the deep engines' copyright lines are copied from their licence texts", (ctx
     (e) => e.part === ENGINES && deep.has(field(e, "Package") ?? ""),
   );
   expect(entries.map((e) => field(e, "Package"))).toEqual([...deep]);
+  const { problems, withoutFile } = checkCopyrights(entries);
+  expect(problems).toEqual([]);
+  expect(withoutFile).toEqual([]);
+});
+
+it("the Python engines' copyright lines are copied from their licence texts", (ctx) => {
+  // Their wheels are installed only where the engine install found a Python, which
+  // installed.json records; the probe reads that file, so a missing install is told first.
+  enginesDir();
+  requireInCI(ctx, samplePythonProbe());
+  const entries = readNotice().entries.filter(
+    (e) =>
+      e.part === ENGINES && (field(e, "Package") ?? "").startsWith("pypi:"),
+  );
+  expect(entries.map((e) => field(e, "Package"))).toEqual(
+    pipPins().map(([pkg]) => pkg),
+  );
   const { problems, withoutFile } = checkCopyrights(entries);
   expect(problems).toEqual([]);
   expect(withoutFile).toEqual([]);
