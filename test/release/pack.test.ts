@@ -13,6 +13,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
+import YAML from "yaml";
 import { scanText } from "../../scripts/release/scan.mjs";
 import { defaultEnginesDir } from "../../src/engines/index.js";
 import { comparePaths } from "../../src/model/index.js";
@@ -292,7 +293,24 @@ it("the packed package maps the sample and answers from outside the repo", () =>
     { encoding: "utf8", timeout: 900_000 },
   );
   expect(r.status, r.stdout + r.stderr).toBe(0);
+  // the command that mapped and answered is the bin npm installed into the empty project
+  expect(r.stdout).toMatch(
+    /^smoke: hakutaku is \/.+\/hakutaku-smoke-[^/]+\/app\/node_modules\/\.bin\/hakutaku$/m,
+  );
   expect(r.stdout.trimEnd().split("\n").at(-1)).toMatch(
     /^smoke: ok \(from-pack, quick, \d+ ms\)$/,
   );
 }, 900_000);
+
+// macOS runs the same smoke from the package, after the job's build and its --version check.
+it("the macOS job runs the smoke from the packed package after its build", () => {
+  const ci = YAML.parse(readFileSync(".github/workflows/ci.yml", "utf8")) as {
+    jobs: Record<string, { steps: Array<{ run?: string }> }>;
+  };
+  const runs = (ci.jobs["macos-smoke"]?.steps ?? []).map((s) => s.run);
+  expect(runs).toContain("node scripts/release/smoke.mjs --from-pack");
+  const at = runs.indexOf("node scripts/release/smoke.mjs --from-pack");
+  expect(runs.indexOf("npm run build")).toBeGreaterThanOrEqual(0);
+  expect(runs.indexOf("npm run build")).toBeLessThan(at);
+  expect(runs.indexOf("node dist/cli/main.js --version")).toBeLessThan(at);
+});

@@ -11,6 +11,9 @@
 // npm's cache there too; and LANG=C.UTF-8. Nothing else of the caller's reaches a child: no npmrc,
 // no NODE_ENV, none of hakutaku's registered repos.
 //
+// With --from-pack, the installed package must hold none of the repository's own folders, and no
+// devDependency may sit beside it; a line names the command that then maps and answers.
+//
 // With --engines-dir, map uses the engines installed in that directory. Without it, map's --yes
 // installs them under the fresh directory, which needs the network.
 //
@@ -25,6 +28,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -127,6 +131,36 @@ function packedTarball(report, dir) {
   return join(dir, filename);
 }
 
+// Throws unless npm installed hakutaku into app with none of the repository's own folders in it,
+// and with none of the repository's devDependencies beside it or inside it.
+function checkInstalled(app) {
+  const pkg = join(app, "node_modules", "hakutaku");
+  if (!existsSync(join(pkg, "package.json"))) {
+    throw new SmokeFailure(
+      "npm install put no hakutaku into the empty project",
+    );
+  }
+  for (const dir of ["src", "fixtures", "test", "scripts"]) {
+    if (existsSync(join(pkg, dir))) {
+      throw new SmokeFailure(`the installed package holds ${dir}/`);
+    }
+  }
+  const dev = Object.keys(
+    JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"))
+      .devDependencies ?? {},
+  );
+  const present = dev.filter(
+    (name) =>
+      existsSync(join(app, "node_modules", name)) ||
+      existsSync(join(pkg, "node_modules", name)),
+  );
+  if (present.length > 0) {
+    throw new SmokeFailure(
+      `npm installed devDependencies with the package: ${present.join(", ")}`,
+    );
+  }
+}
+
 // Throws unless the answer holds the expected ID, kind and link, the store was built from head,
 // and the link is the answer's last key.
 function checkAnswer(printed, head) {
@@ -220,6 +254,7 @@ function smoke({ fromPack, enginesDir }, root) {
       app,
       env,
     );
+    checkInstalled(app);
     hakutaku = [join(app, "node_modules", ".bin", "hakutaku")];
     cwd = app;
     console.log(`smoke: ${basename(tarball)}, installed into an empty project`);
@@ -227,6 +262,7 @@ function smoke({ fromPack, enginesDir }, root) {
     hakutaku = [process.execPath, CLI];
     cwd = root;
   }
+  console.log(`smoke: hakutaku is ${hakutaku.at(-1)}`);
 
   run(
     "hakutaku map",
