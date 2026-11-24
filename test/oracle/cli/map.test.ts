@@ -10,6 +10,8 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -324,6 +326,46 @@ it(
     );
     expect(findEntry("sky")?.snippets).toBe(false);
     expect(findEntry("observatory")).toBeNull();
+  },
+  TIMEOUT,
+);
+
+// A data, config and cache directory reached through a symbolic link, as every directory under
+// macOS's temporary directory is (/var is a link to /private/var), or a home on a linked mount.
+// The engines name the files they resolve by their real path, so the build must read the export
+// by that path too, or every relative import would leave the snapshot.
+it(
+  "maps the sample when hakutaku's directories are reached through a link",
+  async () => {
+    const repo = await sampleRepo();
+    const real = mkdtempSync(join(tmpdir(), "hakutaku-map-real-"));
+    roots.push(real);
+    const link = `${real}-link`;
+    symlinkSync(real, link);
+    try {
+      vi.stubEnv("XDG_DATA_HOME", join(link, "data"));
+      vi.stubEnv("XDG_CONFIG_HOME", join(link, "config"));
+      vi.stubEnv("XDG_CACHE_HOME", join(link, "cache"));
+      const r = await run([
+        "map",
+        repo,
+        "--id",
+        "linked",
+        "--detail",
+        "quick",
+        "--sandbox",
+        "none",
+        "--engines-dir",
+        ENGINES_DIR,
+      ]);
+      expect(r.code, r.err).toBe(0);
+      expect(r.out[0]).toMatch(
+        / linked at [0-9a-f]{12} \(HEAD\), quick detail$/,
+      );
+      expect(existsSync(storePathFor("linked"))).toBe(true);
+    } finally {
+      unlinkSync(link);
+    }
   },
   TIMEOUT,
 );

@@ -19,7 +19,7 @@
 // explained. Any error removes this build's temporary files, records the attempt as failed,
 // and is thrown again. Every reason and warning the build writes is cleaned first: each of its
 // directories, and the home directory, named by token, and every secret redacted.
-import { chmodSync, mkdirSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { join, posix, resolve } from "node:path";
 import {
   defaultEnginesDir,
@@ -237,6 +237,15 @@ export async function extractSnapshot(
   return finish(o, swapped, startedAt, started);
 }
 
+// path with no link in it, or path itself when it cannot be resolved, such as when it is missing.
+function realDir(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
 function optionsOf(opts: ExtractOptions): Options {
   const detail = opts.detail ?? "standard";
   if (!DETAILS.includes(detail)) {
@@ -266,7 +275,11 @@ function optionsOf(opts: ExtractOptions): Options {
   }
   const out = resolve(opts.out);
   const beside = besideStore(out);
-  const dir = resolve(opts.dir);
+  // The export by the path its links resolve to: the engines name each file they resolve by its
+  // real path, so an export reached through a link, as under macOS's temporary directory, would
+  // otherwise see every relative import leave the snapshot.
+  const given = resolve(opts.dir);
+  const dir = realDir(given);
   const enginesDir = resolve(opts.enginesDir ?? defaultEnginesDir());
   const work = beside.work(process.pid);
   const home = opts.home ?? homeRoot();
@@ -284,8 +297,9 @@ function optionsOf(opts: ExtractOptions): Options {
     currentUnresolved,
     tmp: beside.tmp(process.pid),
     work,
-    clean: textCleaner(
-      buildRoots({
+    // the export as given is cleaned too, in case a text names it by its link
+    clean: textCleaner([
+      ...buildRoots({
         snapshotDir: join(dir, "snapshot"),
         exportDir: dir,
         workDir: work,
@@ -293,7 +307,9 @@ function optionsOf(opts: ExtractOptions): Options {
         storeDir: beside.dir,
         home,
       }),
-    ),
+      [join(given, "snapshot"), "<snapshot>"],
+      [given, "<export>"],
+    ]),
   };
 }
 
