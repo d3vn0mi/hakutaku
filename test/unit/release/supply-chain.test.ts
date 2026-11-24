@@ -398,7 +398,9 @@ it("no release job runs a dependency's install script", () => {
       .map((line) => `${job}: ${line}`),
   );
   expect(installs.length).toBeGreaterThanOrEqual(3);
-  expect(installs.filter((i) => !i.endsWith(": npm ci --ignore-scripts"))).toEqual([]);
+  expect(
+    installs.filter((i) => !i.endsWith(": npm ci --ignore-scripts")),
+  ).toEqual([]);
 });
 
 it("every checkout keeps no credentials, each action has one pin, and no release step may fail without failing the release", () => {
