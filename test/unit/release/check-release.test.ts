@@ -269,10 +269,17 @@ it("check-release.mjs --publishing refuses an npm older than trusted publishing 
     };
     const needs = `trusted publishing needs Node >= 22.14.0 and npm >= 11.5.1; this runner has ${process.versions.node} and`;
 
-    npmPrints("10.9.2");
+    // 9.9.4 sorts after 11.5.1 as a string, and 11.10.0 before it
+    for (const old of ["10.9.2", "9.9.4"]) {
+      npmPrints(old);
+      expect(runCli(root, ["v0.1.0", "--publishing"], path), old).toMatchObject(
+        { status: 1, out: [`${needs} ${old}`] },
+      );
+    }
+    npmPrints("11.10.0");
     expect(runCli(root, ["v0.1.0", "--publishing"], path)).toMatchObject({
-      status: 1,
-      out: [`${needs} 10.9.2`],
+      status: 0,
+      out: ["release-check: ok (v0.1.0)"],
     });
     npmPrints("11.5.0");
     expect(runCli(root, ["v0.1.1", "--publishing"], path)).toMatchObject({
